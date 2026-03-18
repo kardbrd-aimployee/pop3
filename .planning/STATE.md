@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-07-PLAN.md (integration wiring)
-last_updated: "2026-03-18T03:53:55Z"
-last_activity: 2026-03-18 -- Completed 02-07 Integration wiring (Phase 2 complete)
+stopped_at: Completed 02-10-PLAN.md (ghost preview rendering)
+last_updated: "2026-03-18T04:33:00Z"
+last_activity: 2026-03-18 -- Completed 02-10 Ghost preview rendering
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 10
-  completed_plans: 7
+  completed_phases: 1
+  total_plans: 13
+  completed_plans: 12
   percent: 70
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 2 of 4 (Economy and Combat) -- COMPLETE
-Plan: 7 of 7 in current phase (wave 3) -- ALL DONE
-Status: Phase 2 complete, ready for Phase 3
-Last activity: 2026-03-18 -- Completed 02-07 Integration wiring
+Phase: 2 of 4 (Economy and Combat)
+Plan: 10 of 10 in current phase (gap closure)
+Status: Completed 02-10 ghost preview rendering
+Last activity: 2026-03-18 -- Completed 02-10 Ghost preview rendering
 
-Progress: [#######...] 70%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [#######...] 70%
 *Updated after each plan completion*
 | Phase 02 P06 | 7min | 2 tasks | 8 files |
 | Phase 02 P07 | 5min | 2 tasks | 8 files |
+| Phase 02 P10 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,12 @@ Recent decisions affecting current work:
 - [02-07]: ManaTickBridge pattern: separate struct holding pool ref + tribe data ref to bridge borrow-checker constraint
 - [02-07]: Mana tick called post-simulation_tick outside TickSubsystems due to borrow conflict with coordinator in objects slot
 - [02-07]: Ghost preview rendering placeholder with alpha/tint logic; full GPU uniform integration deferred to render pipeline refactor
+- [02-10]: Default tribe_index=0 (Blue) for ghost preview; player tribe selection is follow-up
+- [02-10]: Ghost mesh cached by (building_type, cell_x, cell_y) key to avoid per-frame GPU rebuild
+- [02-10]: Ghost pipeline depth_write_enabled=false so transparent ghost doesn't occlude objects
+- [02-08]: BuildingTickActions struct aggregates spawn/convert/combat from single building tick
+- [02-08]: Two-phase collect-then-process in tick_buildings() avoids borrow conflicts
+- [02-08]: spawn_brave_near offsets spawn position by (128, 64) world units from building
 
 ### Pending Todos
 
@@ -102,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T03:53:55Z
-Stopped at: Completed 02-07-PLAN.md (integration wiring -- Phase 2 complete)
+Last session: 2026-03-18T04:33:00Z
+Stopped at: Completed 02-10-PLAN.md (ghost preview rendering)
 Resume file: None
