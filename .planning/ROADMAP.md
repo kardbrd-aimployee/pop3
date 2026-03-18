@@ -70,12 +70,14 @@ Plans:
   3. Selecting a unit or building shows an info panel with relevant stats, and health bars appear above damaged entities
   4. Text renders correctly at 12/16/24pt sizes from the original font data, with English string table loaded
   5. A 512-slot effect pool spawns visual effects for spell impacts, combat hits, deaths, and construction/destruction events
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
-- [ ] 03-03: TBD
+- [ ] 03-01-PLAN.md -- String table and font data parsers (HUD-07, HUD-08)
+- [ ] 03-02-PLAN.md -- Effect pool core with types and entity attachment (FX-01, FX-05)
+- [ ] 03-03-PLAN.md -- HudState extensions: mana bar, population, spell cooldowns (HUD-02, HUD-03, HUD-04)
+- [ ] 03-04-PLAN.md -- Minimap viewport + click-to-move, selection info panel (HUD-01, HUD-05)
+- [ ] 03-05-PLAN.md -- Health bars and effect spawn wiring (HUD-06, FX-02, FX-03, FX-04)
 
 ### Phase 4: Spell System
 **Goal**: The shaman can cast all 12 core spells with mana costs and cooldowns, each spell produces its documented effect, and terrain-affecting spells use the existing cascade pipeline
@@ -120,6 +122,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
 | 2. Economy and Combat | 10/10 | Complete | 2026-03-18 |
-| 3. HUD and Effects | 0/3 | Not started | - |
+| 3. HUD and Effects | 0/5 | Not started | - |
 | 4. Spell System | 0/3 | Not started | - |
 | 5. AI and Campaign | 0/3 | Not started | - |
