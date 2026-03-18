@@ -14,16 +14,18 @@ Implement a unified object pool (1101 slots, two-tier free lists) with a 128x128
 ## Implementation Decisions
 
 ### Pool allocation strategy
-- Two-tier free list matching original binary: high-priority pool for units/buildings (first ~461 slots), low-priority pool for effects/particles (remaining ~640 slots)
-- Fixed-size array, not Vec — `[Option<GameObject>; 1101]` or similar fixed layout
-- Allocation order must match original binary to preserve determinism (RNG usage, AI decisions cascade from allocation order)
-- Object handles are pool indices (u16), not pointers — stable across pool operations
-- Free list is a singly-linked list through the pool slots (matching original's free list at 0x008788B4/B8)
+- Use a modern, Rust-idiomatic object storage — NOT a faithful replica of the original binary's two-tier free list
+- The original's allocation system was a 1998 optimization for sequential single-threaded execution; we can do better with modern approaches (generational arenas, ECS-like storage, slotmap, etc.)
+- What matters is observable behavior equivalence: same objects exist, same spatial relationships, same game logic — NOT identical allocation order
+- Consider using a crate like `slotmap`, `thunderdome`, or a custom generational arena for stable handles with O(1) insert/remove
+- Object handles must be stable (not invalidated by other insertions/removals) — generational indices are ideal
+- Capacity should support at least 1101 objects (original max) but can grow dynamically if needed
+- Separate storage per object type is acceptable (e.g., separate pools for persons, buildings, effects) if it simplifies access patterns and enables parallelism
 
 ### Object struct design
 - Use Rust enum for type-specific data: `GameObjectData { Person(PersonData), Building(BuildingData), ... }`
 - Common fields in a shared header struct: position, angle, model_type, subtype, tribe, flags, health, object_index
-- Header matches original binary's 179-byte object layout for the common prefix fields
+- Header does NOT need to match original binary's 179-byte layout — use idiomatic Rust structs
 - Type-specific data lives after the header via the enum variant
 - For Phase 1, only `Person` variant needs full implementation — other variants are empty stubs (`Building(())`, `Creature(())`, etc.)
 

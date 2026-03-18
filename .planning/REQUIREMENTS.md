@@ -9,8 +9,8 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Core Object System
 
-- [ ] **OBJ-01**: Unified object pool with 1101 max active objects, 179 bytes per object, two-tier free list (high-priority for units/buildings, low-priority for effects)
-- [ ] **OBJ-02**: Object lifecycle (create, destroy, reinitialize) matching original binary's allocation order
+- [ ] **OBJ-01**: Unified object storage supporting all 11 model types with stable handles, at least 1101 capacity (modern Rust-idiomatic approach, not faithful replica of original binary's allocation system)
+- [ ] **OBJ-02**: Object lifecycle (create, destroy, reinitialize) with correct game logic behavior (observable equivalence, not allocation-order faithfulness)
 - [ ] **OBJ-03**: Cell-based spatial grid (128x128, 16 bytes/cell) with per-cell object linked lists
 - [ ] **OBJ-04**: Object position updates that maintain cell linkage (Object_SetPosition)
 - [ ] **OBJ-05**: UnitCoordinator migration to borrow from unified pool instead of owning Vec<Unit>

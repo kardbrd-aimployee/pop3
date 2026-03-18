@@ -84,6 +84,7 @@ Faithful reproduction of the original Populous: The Beginning gameplay experienc
 | FrameState as output boundary | No GPU types leak into engine layer | ✓ Good |
 | Monolithic app.rs | Started organic, may need refactoring | ⚠️ Revisit |
 | Lua scripting for AI instead of bytecode VM | Original uses proprietary bytecode (200+ opcodes) but community has documented Lua equivalents; Lua is more maintainable and extensible | — Pending |
+| Modern object storage instead of faithful pool replica | Original's two-tier free list was a 1998 single-threaded optimization; use Rust-idiomatic arenas/slotmaps for better perf and parallelism potential | — Pending |
 
 ---
 *Last updated: 2026-03-17 after initialization*
