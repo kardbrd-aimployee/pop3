@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02-PLAN.md (terrain modification cascade)
-last_updated: "2026-03-18T03:28:36.270Z"
-last_activity: 2026-03-18 -- Completed 02-01 Building data foundation
+stopped_at: Completed 02-06-PLAN.md (combat subsystem)
+last_updated: "2026-03-18T03:37:45Z"
+last_activity: 2026-03-18 -- Completed 02-06 Combat subsystem
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 10
-  completed_plans: 5
-  percent: 31
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -26,32 +26,32 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 2 of 4 (Economy and Combat)
-Plan: 1 of 7 in current phase (wave 1)
+Plan: 7 of 7 in current phase (wave 2)
 Status: In progress
-Last activity: 2026-03-18 -- Completed 02-01 Building data foundation
+Last activity: 2026-03-18 -- Completed 02-06 Combat subsystem
 
-Progress: [###.......] 31%
+Progress: [######....] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: ~3 min
-- Total execution time: ~15 min
+- Total plans completed: 6
+- Average duration: ~4 min
+- Total execution time: ~22 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-core-object-system | 3/3 | ~7 min | ~2.3 min |
-| 02-economy-and-combat | 2/7 | ~8 min | ~4 min |
+| 02-economy-and-combat | 6/7 | ~27 min | ~4.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2min), 01-03 (3min), 02-03 (4min), 02-01 (4min)
+- Last 5 plans: 01-03 (3min), 02-03 (4min), 02-01 (4min), 02-05 (5min), 02-06 (7min)
 - Trend: Fast
 
 *Updated after each plan completion*
-| Phase 02 P02 | 5min | 1 tasks | 6 files |
+| Phase 02 P06 | 7min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -76,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Normal calculation via cross product of tangent vectors T_z x T_x for correct up-facing normals on flat terrain
 - [Phase 02]: Steep slope threshold at 512 height units between adjacent cells
 - [Phase 02]: CascadeRegion handles toroidal wrapping internally with for_each_cell and contains_tile
+- [02-06]: ShotData fields match original binary projectile tracking (type, target, damage, AOE, knockback, lifetime, speed)
+- [02-06]: fight_damage_for_subtype constants cross-verified against person_type_defaults table
+- [02-06]: Drum tower range 768 world units (about 6 cells at 128 units/cell)
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T03:28:36.267Z
-Stopped at: Completed 02-02-PLAN.md (terrain modification cascade)
+Last session: 2026-03-18T03:37:45Z
+Stopped at: Completed 02-06-PLAN.md (combat subsystem)
 Resume file: None

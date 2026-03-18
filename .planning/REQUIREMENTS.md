@@ -36,11 +36,11 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Combat
 
-- [ ] **CMBT-01**: Complete melee damage formula (FIGHT_DAMAGE[subtype] * health / max_health, min 32)
-- [ ] **CMBT-02**: Projectile system (shot types, tracking, AOE impact, knockback)
-- [ ] **CMBT-03**: Drum tower auto-attack with projectiles
-- [ ] **CMBT-04**: Death states with proper cleanup and kill tracking
-- [ ] **CMBT-05**: Knockback physics (angle-based velocity from Combat_ApplyKnockback)
+- [x] **CMBT-01**: Complete melee damage formula (FIGHT_DAMAGE[subtype] * health / max_health, min 32)
+- [x] **CMBT-02**: Projectile system (shot types, tracking, AOE impact, knockback)
+- [x] **CMBT-03**: Drum tower auto-attack with projectiles
+- [x] **CMBT-04**: Death states with proper cleanup and kill tracking
+- [x] **CMBT-05**: Knockback physics (angle-based velocity from Combat_ApplyKnockback)
 
 ### Spell System
 
@@ -207,11 +207,11 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | PRSN-06 | Phase 2 | Pending |
 | PRSN-07 | Phase 2 | Pending |
 | PRSN-08 | Phase 2 | Pending |
-| CMBT-01 | Phase 2 | Pending |
-| CMBT-02 | Phase 2 | Pending |
-| CMBT-03 | Phase 2 | Pending |
-| CMBT-04 | Phase 2 | Pending |
-| CMBT-05 | Phase 2 | Pending |
+| CMBT-01 | Phase 2 | Complete |
+| CMBT-02 | Phase 2 | Complete |
+| CMBT-03 | Phase 2 | Complete |
+| CMBT-04 | Phase 2 | Complete |
+| CMBT-05 | Phase 2 | Complete |
 | TERR-01 | Phase 2 | Complete |
 | TERR-02 | Phase 2 | Complete |
 | TERR-03 | Phase 2 | Complete |

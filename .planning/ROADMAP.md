@@ -53,7 +53,7 @@ Plans:
 - [x] 02-03-PLAN.md -- Economy module: mana generation, population capacity, wood costs
 - [ ] 02-04-PLAN.md -- Person state extensions: 8 new states (building, training, wood, combat)
 - [ ] 02-05-PLAN.md -- Building behaviors: spawning, training, placement, damage, combat
-- [ ] 02-06-PLAN.md -- Combat subsystem: projectiles, knockback, damage, death, drum towers
+- [x] 02-06-PLAN.md -- Combat subsystem: projectiles, knockback, damage, death, drum towers
 - [ ] 02-07-PLAN.md -- Integration: wire subsystems into game loop, wood gathering, FrameState
 
 ### Phase 3: Spells, Effects, and Interface
@@ -98,6 +98,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
-| 2. Economy and Combat | 2/7 | In progress | - |
+| 2. Economy and Combat | 6/7 | In progress | - |
 | 3. Spells, Effects, and Interface | 0/3 | Not started | - |
 | 4. AI and Campaign | 0/3 | Not started | - |
