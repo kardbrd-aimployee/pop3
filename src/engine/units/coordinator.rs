@@ -676,6 +676,61 @@ impl UnitCoordinator {
         impacts
     }
 
+    /// Process projectile impacts: apply knockback and AOE damage to nearby persons.
+    /// For each impact, queries the CellGrid for persons within the AOE radius,
+    /// then applies knockback velocity and damage to each affected unit.
+    fn process_projectile_impacts(&mut self, impacts: Vec<(WorldCoord, u16, u16, u16)>) {
+        for (impact_pos, damage, aoe_radius, knockback_force) in &impacts {
+            if *aoe_radius == 0 && *knockback_force == 0 {
+                continue;
+            }
+
+            // Find all persons within aoe_radius of impact_pos using cell grid
+            let tile = impact_pos.to_tile();
+            let cell_radius = (*aoe_radius as i32 / 128).max(1); // convert world units to cells
+            let mut affected: Vec<ObjectHandle> = Vec::new();
+
+            for dx in -cell_radius..=cell_radius {
+                for dz in -cell_radius..=cell_radius {
+                    let cx = ((tile.x as i32 + dx) & 127) as u8;
+                    let cz = ((tile.z as i32 + dz) & 127) as u8;
+                    let cell_idx = cz as usize * 128 + cx as usize;
+                    let mut current = self.cell_grid.cell_head(cell_idx);
+                    while let Some(handle) = current {
+                        if let Some(obj) = self.pool.get(handle) {
+                            if obj.header.model_type == ModelType::Person {
+                                affected.push(handle);
+                            }
+                            current = obj.header.next_in_cell;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Apply knockback and AOE damage to each affected person
+            for person_handle in affected {
+                if let Some(obj) = self.pool.get_mut(person_handle) {
+                    // Apply knockback
+                    if *knockback_force > 0 {
+                        combat::apply_knockback(
+                            &obj.header.position,
+                            &mut obj.header.velocity,
+                            impact_pos,
+                            *knockback_force,
+                        );
+                    }
+                    // Apply AOE damage
+                    if *damage > 0 {
+                        let dmg = (*damage).min(obj.header.health);
+                        obj.header.health -= dmg;
+                    }
+                }
+            }
+        }
+    }
+
     /// Mark height-0 cells as water (unwalkable) in the region map,
     /// then erode one cell inward so shore-adjacent land is also unwalkable.
     /// Water cells get region_id=1 so `same_region` returns false when
@@ -805,7 +860,9 @@ impl ObjectTick for UnitCoordinator {
         // 5b. Building state ticks (construction, spawn timers, damage)
         self.tick_buildings();
         // 5c. Projectile ticks (movement, impact detection, expiry)
-        self.tick_projectiles();
+        let impacts = self.tick_projectiles();
+        // 5d. Process projectile impacts: knockback + AOE damage to nearby persons
+        self.process_projectile_impacts(impacts);
     }
 }
 
