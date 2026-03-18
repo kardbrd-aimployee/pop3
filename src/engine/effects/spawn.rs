@@ -2,13 +2,24 @@ use super::{EffectPool, EffectId, EFFECT_ATTACHED};
 use super::types::effect_defaults;
 
 /// Spawn an effect at a world position with type-appropriate defaults.
-pub fn spawn_at(_pool: &mut EffectPool, _effect_type: u8, _x: i32, _y: i32, _z: i32, _owner: u8) -> Option<EffectId> {
-    None // Stub
+pub fn spawn_at(pool: &mut EffectPool, effect_type: u8, x: i32, y: i32, z: i32, owner: u8) -> Option<EffectId> {
+    let id = pool.spawn(effect_type, x, y, z, owner)?;
+    let (max_frame, flags, scale, alpha) = effect_defaults(effect_type);
+    if let Some(effect) = pool.get_mut(id) {
+        effect.max_frame = max_frame;
+        effect.flags = flags;
+        effect.scale = scale;
+        effect.alpha = alpha;
+    }
+    Some(id)
 }
 
 /// Attach an existing effect to an entity so it tracks the entity's position.
-pub fn attach_to_entity(_pool: &mut EffectPool, _effect_id: EffectId, _entity_id: u32) {
-    // Stub
+pub fn attach_to_entity(pool: &mut EffectPool, effect_id: EffectId, entity_id: u32) {
+    if let Some(effect) = pool.get_mut(effect_id) {
+        effect.target = Some(entity_id);
+        effect.flags |= EFFECT_ATTACHED;
+    }
 }
 
 /// Position data for an entity that effects can track.
@@ -23,8 +34,31 @@ pub struct EntityPosition {
 /// Update positions of all attached effects from entity positions.
 /// Call this each tick with current entity positions.
 /// Two-phase pattern: collect entity positions first (immutable), then update effects (mutable).
-pub fn update_attached_positions(_pool: &mut EffectPool, _entities: &[EntityPosition]) {
-    // Stub
+pub fn update_attached_positions(pool: &mut EffectPool, entities: &[EntityPosition]) {
+    for i in 0..super::MAX_EFFECTS {
+        if let Some(effect) = pool.get_mut(i as u16) {
+            if effect.flags & EFFECT_ATTACHED == 0 {
+                continue;
+            }
+            if let Some(target_id) = effect.target {
+                if let Some(ent) = entities.iter().find(|e| e.entity_id == target_id) {
+                    if ent.alive {
+                        effect.x = ent.x;
+                        effect.y = ent.y;
+                        effect.z = ent.z;
+                    } else {
+                        // Entity dead -- detach
+                        effect.target = None;
+                        effect.flags &= !EFFECT_ATTACHED;
+                    }
+                } else {
+                    // Entity not found -- detach
+                    effect.target = None;
+                    effect.flags &= !EFFECT_ATTACHED;
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
