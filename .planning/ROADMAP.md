@@ -28,12 +28,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A 128x128 cell grid tracks which objects occupy each cell, and moving an object updates its cell linkage automatically
   3. The existing UnitCoordinator borrows person-type objects from the pool instead of owning a Vec, and all 260 existing tests pass without behavior changes
   4. Object creation, destruction, and reinitialization follow the original binary's lifecycle (verified by fixture tests against Frida traces)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md -- ObjectPool with two-tier free lists and object lifecycle
+- [ ] 01-02-PLAN.md -- Cell-based spatial grid with per-cell object linked lists
+- [ ] 01-03-PLAN.md -- UnitCoordinator migration to pool-backed storage
 
 ### Phase 2: Economy and Combat
 **Goal**: Players can build structures, gather wood, grow population, train units, fight with melee and projectiles, and modify terrain -- the complete gameplay loop minus spells
