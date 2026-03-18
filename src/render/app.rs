@@ -70,7 +70,8 @@ use crate::engine::{GameCommand, FrameState, translate_key};
 
 use crate::render::hud::{
     self, HudTab, HudState, HudRenderer,
-    MinimapData, MinimapDot, PanelEntry, TribePopulation, SpellCooldown,
+    MinimapData, MinimapDot, MinimapViewport, PanelEntry, SelectedEntityInfo,
+    TribePopulation, SpellCooldown,
     HUD_TRIBE_COLORS, compute_mana_fraction,
 };
 
@@ -481,6 +482,42 @@ impl GameEngine {
                 color: HUD_TRIBE_COLORS[t as usize],
             })
             .collect();
+        // Camera viewport: shift values are in cell coords (0-127)
+        let shift_vec = self.landscape_mesh.get_shift_vector();
+        let cam_cx = (shift_vec.x as f32).rem_euclid(128.0);
+        let cam_cy = (shift_vec.y as f32).rem_euclid(128.0);
+        let view_w = 20.0 / self.zoom.max(0.1);
+        let view_h = view_w * (self.screen.height as f32 / self.screen.width.max(1) as f32);
+        let camera_viewport = MinimapViewport {
+            cam_cell_x: cam_cx,
+            cam_cell_y: cam_cy,
+            view_width_cells: view_w,
+            view_height_cells: view_h,
+        };
+
+        // Selection info: show first selected unit details
+        let selected_info = if let Some(&first_id) = self.unit_coordinator.selection.selected.first() {
+            self.unit_coordinator.units().get(first_id).and_then(|unit| {
+                if !unit.alive { return None; }
+                let name = hud::unit_subtype_name(unit.subtype).to_string();
+                let mut extra_lines = Vec::new();
+                extra_lines.push(format!("State: {:?}", unit.state));
+                if self.unit_coordinator.selection.selected.len() > 1 {
+                    extra_lines.push(format!("Selected: {}", self.unit_coordinator.selection.selected.len()));
+                }
+                Some(SelectedEntityInfo {
+                    name,
+                    health: unit.health,
+                    max_health: unit.max_health,
+                    subtype: unit.subtype,
+                    tribe_index: unit.tribe_index,
+                    extra_lines,
+                })
+            })
+        } else {
+            None
+        };
+
         let player_tribe = &self.game_world.tribes.tribes[0]; // tribe 0 = player
         HudState {
             active_tab: self.hud_tab,
@@ -494,6 +531,8 @@ impl GameEngine {
             player_population: player_tribe.population,
             player_max_population: player_tribe.max_population,
             spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
+            camera_viewport,
+            selected_info,
         }
     }
 
@@ -1758,6 +1797,22 @@ impl App {
         hud.draw_rect(layout.mm_x - 1.0, layout.mm_y - 1.0, layout.mm_size + 2.0, layout.mm_size + 2.0, [0.3, 0.3, 0.4, 1.0]);
         let minimap_rect = Some((layout.mm_x, layout.mm_y, layout.mm_size, layout.mm_size));
 
+        // === Minimap Viewport Rectangle ===
+        {
+            let vp = &hud_state.camera_viewport;
+            let cell_to_px = layout.mm_size / 128.0;
+            let rx = layout.mm_x + vp.cam_cell_x * cell_to_px - vp.view_width_cells * cell_to_px / 2.0;
+            let ry = layout.mm_y + vp.cam_cell_y * cell_to_px - vp.view_height_cells * cell_to_px / 2.0;
+            let rw = vp.view_width_cells * cell_to_px;
+            let rh = vp.view_height_cells * cell_to_px;
+            let border = 1.0;
+            let vp_color = [1.0, 1.0, 1.0, 0.8];
+            hud.draw_rect(rx, ry, rw, border, vp_color);                    // top
+            hud.draw_rect(rx, ry + rh - border, rw, border, vp_color);      // bottom
+            hud.draw_rect(rx, ry, border, rh, vp_color);                    // left
+            hud.draw_rect(rx + rw - border, ry, border, rh, vp_color);      // right
+        }
+
         // === Tab Buttons ===
         let tabs = [("Spells", HudTab::Spells), ("Build", HudTab::Buildings), ("Units", HudTab::Units)];
         for (i, (label, tab_id)) in tabs.iter().enumerate() {
@@ -1821,6 +1876,32 @@ impl App {
         let player_pop_y = mana_bar_y + mana_bar_h + 4.0;
         let pop_text = format!("Pop: {}/{}", hud_state.player_population, hud_state.player_max_population);
         hud.draw_text(&pop_text, layout.mm_pad, player_pop_y, layout.small_font, [0.7, 1.0, 0.7, 0.9]);
+
+        // === Selection Info Panel ===
+        if let Some(ref info) = hud_state.selected_info {
+            let info_y = layout.panel_y + hud_state.panel_entries.len() as f32 * layout.line_h + layout.line_h;
+            // Separator line
+            hud.draw_rect(layout.mm_pad, info_y, layout.sidebar_w - layout.mm_pad * 2.0, 1.0, [0.4, 0.4, 0.5, 0.6]);
+            // Name
+            let name_y = info_y + 4.0;
+            hud.draw_text(&info.name, layout.mm_pad, name_y, layout.font_scale, [1.0, 1.0, 0.8, 1.0]);
+            // Health bar
+            let hp_y = name_y + layout.font_scale + 2.0;
+            let hp_w = layout.sidebar_w - layout.mm_pad * 2.0;
+            let hp_h = 6.0 * layout.scale_y;
+            let hp_frac = info.health as f32 / info.max_health.max(1) as f32;
+            let hp_color = if hp_frac > 0.5 { [0.2, 0.8, 0.2, 0.9] } else if hp_frac > 0.25 { [0.8, 0.8, 0.2, 0.9] } else { [0.8, 0.2, 0.2, 0.9] };
+            hud.draw_rect(layout.mm_pad, hp_y, hp_w, hp_h, [0.15, 0.15, 0.15, 0.8]);
+            hud.draw_rect(layout.mm_pad, hp_y, hp_w * hp_frac, hp_h, hp_color);
+            let hp_text = format!("HP: {}/{}", info.health, info.max_health);
+            hud.draw_text(&hp_text, layout.mm_pad + 2.0, hp_y, layout.small_font * 0.8, [1.0, 1.0, 1.0, 0.9]);
+            // Extra lines
+            let mut ey = hp_y + hp_h + 2.0;
+            for line in &info.extra_lines {
+                hud.draw_text(line, layout.mm_pad, ey, layout.small_font, [0.8, 0.8, 0.8, 0.8]);
+                ey += layout.line_h;
+            }
+        }
 
         // === Tribe population (from HudState data contract) ===
         let pop_x = layout.screen_w - 100.0 * layout.scale_x;
@@ -3288,7 +3369,24 @@ impl ApplicationHandler for App {
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
                         if on_sidebar {
-                            if let Some(tab) = hud::detect_tab_click(self.input.mouse_pos.x, self.input.mouse_pos.y, &layout) {
+                            // Check if click is on minimap for click-to-move
+                            let mx = self.input.mouse_pos.x;
+                            let my = self.input.mouse_pos.y;
+                            if mx >= layout.mm_x && mx <= layout.mm_x + layout.mm_size
+                                && my >= layout.mm_y && my <= layout.mm_y + layout.mm_size
+                            {
+                                let (click_cell_x, click_cell_y) = hud::minimap_click_to_cell(
+                                    mx, my, layout.mm_x, layout.mm_y, layout.mm_size,
+                                );
+                                let shift_vec = self.engine.landscape_mesh.get_shift_vector();
+                                let current_x = (shift_vec.x as f32).rem_euclid(128.0);
+                                let current_y = (shift_vec.y as f32).rem_euclid(128.0);
+                                let dx = hud::toroidal_delta(current_x, click_cell_x);
+                                let dy = hud::toroidal_delta(current_y, click_cell_y);
+                                self.engine.landscape_mesh.shift_x(dx.round() as i32);
+                                self.engine.landscape_mesh.shift_y(dy.round() as i32);
+                                self.rebuild_spawn_model();
+                            } else if let Some(tab) = hud::detect_tab_click(self.input.mouse_pos.x, self.input.mouse_pos.y, &layout) {
                                 self.engine.apply_command(&GameCommand::SetHudTab(tab));
                             }
                             self.do_render = true;

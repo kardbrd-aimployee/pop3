@@ -80,6 +80,8 @@ pub struct HudState {
     pub player_population: u32,
     pub player_max_population: u16,
     pub spell_cooldowns: Vec<SpellCooldown>,
+    pub camera_viewport: MinimapViewport,
+    pub selected_info: Option<SelectedEntityInfo>,
 }
 
 pub struct MinimapData {
@@ -102,6 +104,24 @@ pub struct TribePopulation {
     pub tribe_index: u8,
     pub count: u32,
     pub color: [f32; 4],
+}
+
+/// Minimap viewport rectangle data for camera position overlay.
+pub struct MinimapViewport {
+    pub cam_cell_x: f32,       // camera center in cell coords (0-127)
+    pub cam_cell_y: f32,
+    pub view_width_cells: f32,  // visible area width in cells
+    pub view_height_cells: f32,
+}
+
+/// Selected entity info for sidebar detail panel.
+pub struct SelectedEntityInfo {
+    pub name: String,
+    pub health: u16,
+    pub max_health: u16,
+    pub subtype: u8,
+    pub tribe_index: u8,
+    pub extra_lines: Vec<String>,
 }
 
 /// Spell cooldown state for HUD rendering.
@@ -147,6 +167,35 @@ pub const HUD_TRIBE_COLORS: [[f32; 4]; 4] = [
 pub fn compute_mana_fraction(mana: u32, max_mana: u32) -> f32 {
     if max_mana == 0 { return 0.0; }
     (mana as f32 / max_mana as f32).min(1.0)
+}
+
+/// Convert a minimap pixel click to cell coordinates (0-127).
+pub fn minimap_click_to_cell(click_x: f32, click_y: f32, mm_x: f32, mm_y: f32, mm_size: f32) -> (f32, f32) {
+    let cell_x = ((click_x - mm_x) / mm_size * 128.0).clamp(0.0, 127.0);
+    let cell_y = ((click_y - mm_y) / mm_size * 128.0).clamp(0.0, 127.0);
+    (cell_x, cell_y)
+}
+
+/// Compute shortest toroidal delta on a 128-cell wrapping map.
+pub fn toroidal_delta(from: f32, to: f32) -> f32 {
+    let raw = to - from;
+    if raw > 64.0 { raw - 128.0 }
+    else if raw < -64.0 { raw + 128.0 }
+    else { raw }
+}
+
+/// Map unit subtype id to display name.
+pub fn unit_subtype_name(subtype: u8) -> &'static str {
+    match subtype {
+        1 => "Wild",
+        2 => "Brave",
+        3 => "Warrior",
+        4 => "Preacher",
+        5 => "Spy",
+        6 => "Super Warrior",
+        7 => "Shaman",
+        _ => "Unknown",
+    }
 }
 
 /// 8x8 bitmap font for ASCII 32..127 (96 glyphs).
@@ -1382,5 +1431,75 @@ mod tests {
             cooldown_total: 200,
         };
         assert_eq!(cd.cooldown_remaining as f32 / cd.cooldown_total as f32, 0.5);
+    }
+
+    // -- minimap_click_to_cell --
+
+    #[test]
+    fn click_to_cell_center() {
+        let (cx, cy) = minimap_click_to_cell(64.0, 64.0, 0.0, 0.0, 128.0);
+        assert_eq!(cx, 64.0);
+        assert_eq!(cy, 64.0);
+    }
+
+    #[test]
+    fn click_to_cell_origin() {
+        let (cx, cy) = minimap_click_to_cell(10.0, 10.0, 10.0, 10.0, 128.0);
+        assert_eq!(cx, 0.0);
+        assert_eq!(cy, 0.0);
+    }
+
+    #[test]
+    fn click_to_cell_clamped() {
+        let (cx, _) = minimap_click_to_cell(0.0, 0.0, 10.0, 10.0, 128.0);
+        assert_eq!(cx, 0.0); // clamped, not negative
+    }
+
+    // -- toroidal_delta --
+
+    #[test]
+    fn toroidal_delta_short_positive() {
+        assert_eq!(toroidal_delta(10.0, 30.0), 20.0);
+    }
+
+    #[test]
+    fn toroidal_delta_short_negative() {
+        assert_eq!(toroidal_delta(30.0, 10.0), -20.0);
+    }
+
+    #[test]
+    fn toroidal_delta_wraps_positive() {
+        // from 120 to 5: shortest path is +13 (120->128->5), not -115
+        let d = toroidal_delta(120.0, 5.0);
+        assert!((d - 13.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn toroidal_delta_wraps_negative() {
+        // from 5 to 120: shortest path is -13 (5->0->120), not +115
+        let d = toroidal_delta(5.0, 120.0);
+        assert!((d - (-13.0)).abs() < 0.01);
+    }
+
+    // -- unit_subtype_name --
+
+    #[test]
+    fn subtype_brave_name() {
+        assert_eq!(unit_subtype_name(2), "Brave");
+    }
+
+    #[test]
+    fn subtype_warrior_name() {
+        assert_eq!(unit_subtype_name(3), "Warrior");
+    }
+
+    #[test]
+    fn subtype_shaman_name() {
+        assert_eq!(unit_subtype_name(7), "Shaman");
+    }
+
+    #[test]
+    fn subtype_unknown_fallback() {
+        assert_eq!(unit_subtype_name(255), "Unknown");
     }
 }
