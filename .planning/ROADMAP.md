@@ -14,8 +14,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Core Object System** - Unified object pool with cell grid and UnitCoordinator migration
 - [x] **Phase 2: Economy and Combat** - Buildings, economy loops, person states, combat, and terrain modification
-- [ ] **Phase 3: Spells, Effects, and Interface** - 12 spells with mana economy, visual effects, and full HUD/UI
-- [ ] **Phase 4: AI and Campaign** - Lua AI scripting, menu system, 25-level campaign, save/load
+- [ ] **Phase 3: HUD and Effects** - Complete HUD (minimap, spell bar, health bars, fonts) and visual effect pool
+- [ ] **Phase 4: Spell System** - 12 spells with mana costs, cooldowns, targeting, and visual feedback
+- [ ] **Phase 5: AI and Campaign** - Lua AI scripting, menu system, 25-level campaign, save/load
 
 ## Phase Details
 
@@ -59,16 +60,16 @@ Plans:
 - [x] 02-09-PLAN.md -- Gap closure: wire wood navigation and knockback into game loop
 - [x] 02-10-PLAN.md -- Gap closure: ghost preview GPU rendering with alpha blending
 
-### Phase 3: Spells, Effects, and Interface
-**Goal**: The shaman can cast 12 spells with mana costs and cooldowns, spell impacts produce visual effects, and the player has a complete HUD showing all game state
+### Phase 3: HUD and Effects
+**Goal**: The player has a complete HUD showing all game state (minimap, spell bar, mana, population, health bars, info panels) and a visual effect pool that renders spell impacts, combat hits, and building events
 **Depends on**: Phase 2
-**Requirements**: SPLL-01, SPLL-02, SPLL-03, SPLL-04, SPLL-05, SPLL-06, SPLL-07, SPLL-08, SPLL-09, SPLL-10, SPLL-11, SPLL-12, SPLL-13, SPLL-14, FX-01, FX-02, FX-03, FX-04, FX-05, HUD-01, HUD-02, HUD-03, HUD-04, HUD-05, HUD-06, HUD-07, HUD-08
+**Requirements**: HUD-01, HUD-02, HUD-03, HUD-04, HUD-05, HUD-06, HUD-07, HUD-08, FX-01, FX-02, FX-03, FX-04, FX-05
 **Success Criteria** (what must be TRUE):
-  1. Player can select the shaman, choose a spell from the spell bar, target a location/unit, and the spell executes with correct mana deduction and cooldown timer
-  2. All 12 core spells produce their documented effects: Burn damages a cell, Blast fires 32 projectiles, Lightning strikes buildings in 4 stages, terrain spells (Flatten, Land Bridge, Swamp, Erosion, Earthquake) modify the landscape, Volcano launches fire projectiles, Shield protects units, Teleport moves shaman, Convert Wild converts wild people
-  3. Spell impacts, combat hits, deaths, and construction/destruction produce visible effects from a 512-slot effect pool
-  4. The minimap shows a 128x128 overview with tribe-colored dots, the spell bar shows available spells with cooldown indicators, and mana/population displays update in real time
-  5. Selecting a unit or building shows an info panel, health bars appear above damaged entities, and all text renders correctly at 12/16/24pt sizes from the original font data
+  1. The minimap shows a 128x128 overview with tribe-colored dots, camera viewport rectangle, and click-to-move camera support
+  2. The spell bar shows available spells with cooldown indicators, and mana/population displays update in real time
+  3. Selecting a unit or building shows an info panel with relevant stats, and health bars appear above damaged entities
+  4. Text renders correctly at 12/16/24pt sizes from the original font data, with English string table loaded
+  5. A 512-slot effect pool spawns visual effects for spell impacts, combat hits, deaths, and construction/destruction events
 **Plans**: TBD
 
 Plans:
@@ -76,9 +77,26 @@ Plans:
 - [ ] 03-02: TBD
 - [ ] 03-03: TBD
 
-### Phase 4: AI and Campaign
-**Goal**: AI tribes play against the human through Lua scripts, the 25-level campaign is playable from main menu to victory screen, and game state can be saved/loaded
+### Phase 4: Spell System
+**Goal**: The shaman can cast all 12 core spells with mana costs and cooldowns, each spell produces its documented effect, and terrain-affecting spells use the existing cascade pipeline
 **Depends on**: Phase 3
+**Requirements**: SPLL-01, SPLL-02, SPLL-03, SPLL-04, SPLL-05, SPLL-06, SPLL-07, SPLL-08, SPLL-09, SPLL-10, SPLL-11, SPLL-12, SPLL-13, SPLL-14
+**Success Criteria** (what must be TRUE):
+  1. Player can select the shaman, choose a spell from the spell bar, target a location/unit, and the spell executes with correct mana deduction and cooldown timer
+  2. Offensive spells work: Burn damages a cell, Blast fires 32 projectiles in expanding ring, Lightning strikes buildings in 4 stages, Volcano launches 32 fire projectiles
+  3. Terrain spells modify the landscape: Flatten levels terrain, Land Bridge raises from water, Swamp creates drowning terrain, Erosion lowers into water, Earthquake modifies 25x25 area
+  4. Utility/buff spells work: Shield protects up to 8 passengers with knockback ejection, Teleport moves shaman, Convert Wild converts wild people to tribe braves
+  5. Each spell has a per-type cooldown timer that prevents recasting until expired
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: TBD
+- [ ] 04-02: TBD
+- [ ] 04-03: TBD
+
+### Phase 5: AI and Campaign
+**Goal**: AI tribes play against the human through Lua scripts, the 25-level campaign is playable from main menu to victory screen, and game state can be saved/loaded
+**Depends on**: Phase 4
 **Requirements**: AI-01, AI-02, AI-03, AI-04, AI-05, AI-06, AI-07, MENU-01, MENU-02, MENU-03, MENU-04, MENU-05, CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, SAVE-01, SAVE-02, SAVE-03
 **Success Criteria** (what must be TRUE):
   1. AI tribes execute Lua scripts that build structures, train units, cast spells, and attack the player with difficulty scaling per level
@@ -89,18 +107,19 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
-- [ ] 04-03: TBD
+- [ ] 05-01: TBD
+- [ ] 05-02: TBD
+- [ ] 05-03: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
 | 2. Economy and Combat | 10/10 | Complete | 2026-03-18 |
-| 3. Spells, Effects, and Interface | 0/3 | Not started | - |
-| 4. AI and Campaign | 0/3 | Not started | - |
+| 3. HUD and Effects | 0/3 | Not started | - |
+| 4. Spell System | 0/3 | Not started | - |
+| 5. AI and Campaign | 0/3 | Not started | - |
