@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Object System | 3/3 | Complete | 2026-03-18 |
+| 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
 | 2. Economy and Combat | 0/3 | Not started | - |
 | 3. Spells, Effects, and Interface | 0/3 | Not started | - |
 | 4. AI and Campaign | 0/3 | Not started | - |
