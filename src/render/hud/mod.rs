@@ -3,6 +3,12 @@
 use crate::render::gpu::buffer::GpuBuffer;
 use crate::render::gpu::texture::GpuTexture;
 use crate::data::psfb::ContainerPSFB;
+// FontData provides the multi-size glyph API (8x8, 16x16, 24x24 via integer scaling).
+// Currently draw_text_sized() delegates to the atlas-based draw_text() which already
+// supports arbitrary pixel sizes. FontData will be used directly when loading the
+// original .fon files (font12j/font16j/font24j) for higher-quality scaled text.
+#[allow(unused_imports)]
+use crate::data::font::FontData;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -835,6 +841,22 @@ impl HudRenderer {
         }
     }
 
+    /// Draw text at one of three sizes using FontData scaling.
+    /// font_scale: 1 = 8px (small/tooltip), 2 = 16px (standard HUD), 3 = 24px (headings).
+    /// The `px_size` parameter controls how large each glyph renders on screen (in pixels).
+    /// For default behavior matching the font_scale: pass `font_scale * 8.0`.
+    pub fn draw_text_sized(
+        &mut self,
+        text: &str,
+        x0: f32,
+        y0: f32,
+        font_scale: u32,
+        color: [f32; 4],
+    ) {
+        let px_size = (font_scale * FONT_GLYPH_W) as f32;
+        self.draw_text(text, x0, y0, px_size, color);
+    }
+
     /// Get the sprite region index for panel sprites (offset past white pixel + font glyphs).
     pub fn panel_sprite_index(&self, psfb_index: usize) -> usize {
         panel_sprite_index(self.font_region_start, psfb_index)
@@ -1326,5 +1348,39 @@ mod tests {
 
         // Assert: 1 + 96 + 5 = 102
         assert_eq!(idx, 102);
+    }
+
+    // -- compute_mana_fraction --
+
+    #[test]
+    fn mana_fraction_zero_max_returns_zero() {
+        assert_eq!(compute_mana_fraction(500, 0), 0.0);
+    }
+
+    #[test]
+    fn mana_fraction_full_returns_one() {
+        assert_eq!(compute_mana_fraction(1_000_000, 1_000_000), 1.0);
+    }
+
+    #[test]
+    fn mana_fraction_half() {
+        assert_eq!(compute_mana_fraction(500_000, 1_000_000), 0.5);
+    }
+
+    #[test]
+    fn mana_fraction_overflow_clamped() {
+        assert_eq!(compute_mana_fraction(2_000_000, 1_000_000), 1.0);
+    }
+
+    // -- SpellCooldown --
+
+    #[test]
+    fn spell_cooldown_fraction() {
+        let cd = SpellCooldown {
+            spell_index: 0,
+            cooldown_remaining: 100,
+            cooldown_total: 200,
+        };
+        assert_eq!(cd.cooldown_remaining as f32 / cd.cooldown_total as f32, 0.5);
     }
 }

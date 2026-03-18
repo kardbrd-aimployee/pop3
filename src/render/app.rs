@@ -1777,6 +1777,15 @@ impl App {
                     let col = i % 2;
                     let sx = layout.mm_pad + col as f32 * (layout.sidebar_w / 2.0 - layout.mm_pad);
                     let sy = layout.panel_y + row as f32 * layout.line_h;
+                    let cell_w = layout.sidebar_w / 2.0 - layout.mm_pad;
+                    // Cooldown overlay: darken spell entry proportional to remaining cooldown
+                    let cooldown = hud_state.spell_cooldowns.iter().find(|c| c.spell_index == i as u8);
+                    if let Some(cd) = cooldown {
+                        if cd.cooldown_remaining > 0 {
+                            let cd_frac = cd.cooldown_remaining as f32 / cd.cooldown_total.max(1) as f32;
+                            hud.draw_rect(sx, sy, cell_w, layout.line_h, [0.0, 0.0, 0.0, 0.5 * cd_frac]);
+                        }
+                    }
                     hud.draw_text(&entry.label, sx, sy, layout.small_font, entry.color);
                 }
             }
@@ -1794,6 +1803,24 @@ impl App {
 
         let info = format!("Level: {}  Frame: {}", hud_state.level_num, hud_state.frame_count);
         hud.draw_text(&info, vp_x, layout.screen_h - layout.font_scale - 4.0, layout.font_scale, [1.0, 1.0, 0.5, 0.7]);
+
+        // === Mana Bar (below minimap) ===
+        let mana_bar_y = layout.mm_y + layout.mm_size + 4.0;
+        let mana_bar_h = 8.0 * layout.scale_y;
+        let mana_bar_w = layout.sidebar_w - layout.mm_pad * 2.0;
+        let mana_frac = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
+        // Background
+        hud.draw_rect(layout.mm_pad, mana_bar_y, mana_bar_w, mana_bar_h, [0.1, 0.1, 0.2, 0.8]);
+        // Fill (blue)
+        hud.draw_rect(layout.mm_pad, mana_bar_y, mana_bar_w * mana_frac, mana_bar_h, [0.3, 0.5, 1.0, 0.9]);
+        // Label
+        let mana_text = format!("Mana: {}", hud_state.player_mana / 1000);
+        hud.draw_text(&mana_text, layout.mm_pad + 2.0, mana_bar_y + 1.0, layout.small_font * 0.8, [1.0, 1.0, 1.0, 0.9]);
+
+        // === Population Display ===
+        let player_pop_y = mana_bar_y + mana_bar_h + 4.0;
+        let pop_text = format!("Pop: {}/{}", hud_state.player_population, hud_state.player_max_population);
+        hud.draw_text(&pop_text, layout.mm_pad, player_pop_y, layout.small_font, [0.7, 1.0, 0.7, 0.9]);
 
         // === Tribe population (from HudState data contract) ===
         let pop_x = layout.screen_w - 100.0 * layout.scale_x;
