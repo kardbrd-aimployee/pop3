@@ -17,10 +17,10 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Building System
 
-- [ ] **BLDG-01**: Building state machine (init, construction, active, destroying, sinking, teardown)
-- [ ] **BLDG-02**: Building construction with progress animation and wood consumption
+- [x] **BLDG-01**: Building state machine (init, construction, active, destroying, sinking, teardown)
+- [x] **BLDG-02**: Building construction with progress animation and wood consumption
 - [ ] **BLDG-03**: Building placement UI with ghost preview and terrain validation
-- [ ] **BLDG-04**: Occupant system (6 slots per building, enter/exit, capacity checks)
+- [x] **BLDG-04**: Occupant system (6 slots per building, enter/exit, capacity checks)
 - [ ] **BLDG-05**: Population growth from huts (spawning braves at HUT_SPROG_TIME rates)
 - [ ] **BLDG-06**: Training conversion (brave to warrior/spy/preacher/super warrior) with wood/mana costs
 - [ ] **BLDG-07**: Building damage and destruction with debris and chain damage
@@ -29,10 +29,10 @@ Requirements for playable single-player campaign (25 levels).
 ### Economy
 
 - [ ] **ECON-01**: Wood gathering (brave walks to tree, chops, carries wood back)
-- [ ] **ECON-02**: Wood storage in buildings with consumption tracking
-- [ ] **ECON-03**: Mana generation per unit type and activity (housed, training, idle, working)
-- [ ] **ECON-04**: Mana pool per tribe with MAX_MANA cap
-- [ ] **ECON-05**: Population cap based on housing capacity (hut levels 1-3)
+- [x] **ECON-02**: Wood storage in buildings with consumption tracking
+- [x] **ECON-03**: Mana generation per unit type and activity (housed, training, idle, working)
+- [x] **ECON-04**: Mana pool per tribe with MAX_MANA cap
+- [x] **ECON-05**: Population cap based on housing capacity (hut levels 1-3)
 
 ### Combat
 
@@ -61,9 +61,9 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Terrain Modification
 
-- [ ] **TERR-01**: Height modification function (Terrain_ModifyHeight) with gradual change
-- [ ] **TERR-02**: Terrain cascade after modification (heights -> normals -> walkability -> buildings -> water -> pathfinding -> mesh)
-- [ ] **TERR-03**: Dynamic water level interaction (cells become water/land based on height)
+- [x] **TERR-01**: Height modification function (Terrain_ModifyHeight) with gradual change
+- [x] **TERR-02**: Terrain cascade after modification (heights -> normals -> walkability -> buildings -> water -> pathfinding -> mesh)
+- [x] **TERR-03**: Dynamic water level interaction (cells become water/land based on height)
 
 ### Person State Machine
 
@@ -186,19 +186,19 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | OBJ-03 | Phase 1 | Complete (01-02) |
 | OBJ-04 | Phase 1 | Complete (01-02) |
 | OBJ-05 | Phase 1 | Pending |
-| BLDG-01 | Phase 2 | Pending |
-| BLDG-02 | Phase 2 | Pending |
+| BLDG-01 | Phase 2 | Complete (02-01) |
+| BLDG-02 | Phase 2 | Complete (02-01) |
 | BLDG-03 | Phase 2 | Pending |
-| BLDG-04 | Phase 2 | Pending |
+| BLDG-04 | Phase 2 | Complete (02-01) |
 | BLDG-05 | Phase 2 | Pending |
 | BLDG-06 | Phase 2 | Pending |
 | BLDG-07 | Phase 2 | Pending |
 | BLDG-08 | Phase 2 | Pending |
 | ECON-01 | Phase 2 | Pending |
-| ECON-02 | Phase 2 | Pending |
-| ECON-03 | Phase 2 | Pending |
-| ECON-04 | Phase 2 | Pending |
-| ECON-05 | Phase 2 | Pending |
+| ECON-02 | Phase 2 | Complete |
+| ECON-03 | Phase 2 | Complete |
+| ECON-04 | Phase 2 | Complete |
+| ECON-05 | Phase 2 | Complete |
 | PRSN-01 | Phase 2 | Pending |
 | PRSN-02 | Phase 2 | Pending |
 | PRSN-03 | Phase 2 | Pending |
@@ -212,9 +212,9 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | CMBT-03 | Phase 2 | Pending |
 | CMBT-04 | Phase 2 | Pending |
 | CMBT-05 | Phase 2 | Pending |
-| TERR-01 | Phase 2 | Pending |
-| TERR-02 | Phase 2 | Pending |
-| TERR-03 | Phase 2 | Pending |
+| TERR-01 | Phase 2 | Complete |
+| TERR-02 | Phase 2 | Complete |
+| TERR-03 | Phase 2 | Complete |
 | SPLL-01 | Phase 3 | Pending |
 | SPLL-02 | Phase 3 | Pending |
 | SPLL-03 | Phase 3 | Pending |
