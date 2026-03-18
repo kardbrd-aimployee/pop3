@@ -62,7 +62,7 @@ Requirements for playable single-player campaign (25 levels).
 ### Terrain Modification
 
 - [ ] **TERR-01**: Height modification function (Terrain_ModifyHeight) with gradual change
-- [ ] **TERR-02**: Terrain cascade after modification (heights → normals → walkability → buildings → water → pathfinding → mesh)
+- [ ] **TERR-02**: Terrain cascade after modification (heights -> normals -> walkability -> buildings -> water -> pathfinding -> mesh)
 - [ ] **TERR-03**: Dynamic water level interaction (cells become water/land based on height)
 
 ### Person State Machine
@@ -78,7 +78,7 @@ Requirements for playable single-player campaign (25 levels).
 
 ### AI/Scripting
 
-- [ ] **AI-01**: Bytecode interpreter for CPSCR script files (200+ opcodes)
+- [ ] **AI-01**: AI scripting engine -- Lua-based interpreter (community has documented Lua equivalents of original bytecode scripts) instead of raw bytecode VM
 - [ ] **AI-02**: Script flow control (IF/ELSE/ENDIF, EVERY/DO loops, subroutine calls)
 - [ ] **AI-03**: Script value types (literal, variable, internal attribute 1000-1237)
 - [ ] **AI-04**: AI decision making (target selection scoring, threat assessment)
@@ -179,17 +179,95 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 
 ## Traceability
 
-Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| OBJ-01 | Phase 1 | Pending |
+| OBJ-02 | Phase 1 | Pending |
+| OBJ-03 | Phase 1 | Pending |
+| OBJ-04 | Phase 1 | Pending |
+| OBJ-05 | Phase 1 | Pending |
+| BLDG-01 | Phase 2 | Pending |
+| BLDG-02 | Phase 2 | Pending |
+| BLDG-03 | Phase 2 | Pending |
+| BLDG-04 | Phase 2 | Pending |
+| BLDG-05 | Phase 2 | Pending |
+| BLDG-06 | Phase 2 | Pending |
+| BLDG-07 | Phase 2 | Pending |
+| BLDG-08 | Phase 2 | Pending |
+| ECON-01 | Phase 2 | Pending |
+| ECON-02 | Phase 2 | Pending |
+| ECON-03 | Phase 2 | Pending |
+| ECON-04 | Phase 2 | Pending |
+| ECON-05 | Phase 2 | Pending |
+| PRSN-01 | Phase 2 | Pending |
+| PRSN-02 | Phase 2 | Pending |
+| PRSN-03 | Phase 2 | Pending |
+| PRSN-04 | Phase 2 | Pending |
+| PRSN-05 | Phase 2 | Pending |
+| PRSN-06 | Phase 2 | Pending |
+| PRSN-07 | Phase 2 | Pending |
+| PRSN-08 | Phase 2 | Pending |
+| CMBT-01 | Phase 2 | Pending |
+| CMBT-02 | Phase 2 | Pending |
+| CMBT-03 | Phase 2 | Pending |
+| CMBT-04 | Phase 2 | Pending |
+| CMBT-05 | Phase 2 | Pending |
+| TERR-01 | Phase 2 | Pending |
+| TERR-02 | Phase 2 | Pending |
+| TERR-03 | Phase 2 | Pending |
+| SPLL-01 | Phase 3 | Pending |
+| SPLL-02 | Phase 3 | Pending |
+| SPLL-03 | Phase 3 | Pending |
+| SPLL-04 | Phase 3 | Pending |
+| SPLL-05 | Phase 3 | Pending |
+| SPLL-06 | Phase 3 | Pending |
+| SPLL-07 | Phase 3 | Pending |
+| SPLL-08 | Phase 3 | Pending |
+| SPLL-09 | Phase 3 | Pending |
+| SPLL-10 | Phase 3 | Pending |
+| SPLL-11 | Phase 3 | Pending |
+| SPLL-12 | Phase 3 | Pending |
+| SPLL-13 | Phase 3 | Pending |
+| SPLL-14 | Phase 3 | Pending |
+| FX-01 | Phase 3 | Pending |
+| FX-02 | Phase 3 | Pending |
+| FX-03 | Phase 3 | Pending |
+| FX-04 | Phase 3 | Pending |
+| FX-05 | Phase 3 | Pending |
+| HUD-01 | Phase 3 | Pending |
+| HUD-02 | Phase 3 | Pending |
+| HUD-03 | Phase 3 | Pending |
+| HUD-04 | Phase 3 | Pending |
+| HUD-05 | Phase 3 | Pending |
+| HUD-06 | Phase 3 | Pending |
+| HUD-07 | Phase 3 | Pending |
+| HUD-08 | Phase 3 | Pending |
+| AI-01 | Phase 4 | Pending |
+| AI-02 | Phase 4 | Pending |
+| AI-03 | Phase 4 | Pending |
+| AI-04 | Phase 4 | Pending |
+| AI-05 | Phase 4 | Pending |
+| AI-06 | Phase 4 | Pending |
+| AI-07 | Phase 4 | Pending |
+| MENU-01 | Phase 4 | Pending |
+| MENU-02 | Phase 4 | Pending |
+| MENU-03 | Phase 4 | Pending |
+| MENU-04 | Phase 4 | Pending |
+| MENU-05 | Phase 4 | Pending |
+| CAMP-01 | Phase 4 | Pending |
+| CAMP-02 | Phase 4 | Pending |
+| CAMP-03 | Phase 4 | Pending |
+| CAMP-04 | Phase 4 | Pending |
+| CAMP-05 | Phase 4 | Pending |
+| SAVE-01 | Phase 4 | Pending |
+| SAVE-02 | Phase 4 | Pending |
+| SAVE-03 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 72 total
-- Mapped to phases: 0
-- Unmapped: 72
+- v1 requirements: 81 total
+- Mapped to phases: 81
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 after roadmap creation*
