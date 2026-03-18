@@ -88,11 +88,11 @@ Requirements for playable single-player campaign (25 levels).
 
 ### HUD/UI
 
-- [ ] **HUD-01**: Minimap rendering (128x128, tribe-colored unit dots)
+- [x] **HUD-01**: Minimap rendering (128x128, tribe-colored unit dots)
 - [x] **HUD-02**: Spell bar with available spells and cooldown indicators
 - [x] **HUD-03**: Mana bar display
 - [x] **HUD-04**: Population display
-- [ ] **HUD-05**: Unit/building info panel on selection
+- [x] **HUD-05**: Unit/building info panel on selection
 - [ ] **HUD-06**: Health bars above units and buildings
 - [x] **HUD-07**: Font loading and text rendering (12/16/24pt)
 - [x] **HUD-08**: String table loading (English, 0x526 strings)
@@ -234,11 +234,11 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | FX-03 | Phase 3 | Pending |
 | FX-04 | Phase 3 | Pending |
 | FX-05 | Phase 3 | Complete |
-| HUD-01 | Phase 3 | Pending |
+| HUD-01 | Phase 3 | Complete |
 | HUD-02 | Phase 3 | Complete |
 | HUD-03 | Phase 3 | Complete |
 | HUD-04 | Phase 3 | Complete |
-| HUD-05 | Phase 3 | Pending |
+| HUD-05 | Phase 3 | Complete |
 | HUD-06 | Phase 3 | Pending |
 | HUD-07 | Phase 3 | Complete |
 | HUD-08 | Phase 3 | Complete |

@@ -76,7 +76,7 @@ Plans:
 - [x] 03-01-PLAN.md -- String table and font data parsers (HUD-07, HUD-08)
 - [x] 03-02-PLAN.md -- Effect pool core with types and entity attachment (FX-01, FX-05)
 - [x] 03-03-PLAN.md -- HudState extensions: mana bar, population, spell cooldowns (HUD-02, HUD-03, HUD-04)
-- [ ] 03-04-PLAN.md -- Minimap viewport + click-to-move, selection info panel (HUD-01, HUD-05)
+- [x] 03-04-PLAN.md -- Minimap viewport + click-to-move, selection info panel (HUD-01, HUD-05)
 - [ ] 03-05-PLAN.md -- Health bars and effect spawn wiring (HUD-06, FX-02, FX-03, FX-04)
 
 ### Phase 4: Spell System

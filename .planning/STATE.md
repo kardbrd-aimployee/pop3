@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 03-01-PLAN.md (string table + font data parsers)
-last_updated: "2026-03-18T15:25:00Z"
-last_activity: 2026-03-18 -- Completed 03-01 String table and font data parsers
+stopped_at: Completed 03-04-PLAN.md (minimap viewport, click-to-move, selection info panel)
+last_updated: "2026-03-18T15:33:20Z"
+last_activity: 2026-03-18 -- Completed 03-04 Minimap viewport and selection info
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 17
-  percent: 94
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 3 of 5 (HUD and Effects) -- IN PROGRESS
-Plan: 4 of 5 in current phase (03-01 done, 03-02 done, 03-03 done)
+Plan: 5 of 5 in current phase (03-01 done, 03-02 done, 03-03 done, 03-04 done)
 Status: Executing Phase 3 plans
-Last activity: 2026-03-18 -- Completed 03-01 String table and font data parsers
+Last activity: 2026-03-18 -- Completed 03-04 Minimap viewport and selection info
 
-Progress: [█████████░] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [█████████░] 94%
 | Phase 03 P02 | 3min | 2 tasks | 4 files |
 | Phase 03 P03 | 4min | 2 tasks | 2 files |
 | Phase 03 P01 | 4min | 2 tasks | 4 files |
+| Phase 03 P04 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,9 @@ Recent decisions affecting current work:
 - [03-03]: Mana displayed in K units (player_mana / 1000) for readability
 - [03-03]: spell_cooldowns as Vec<SpellCooldown> populated empty now, Phase 4 fills from SpellSystem
 - [03-03]: Population display placed below mana bar in sidebar layout
+- [03-04]: Viewport rect size = 20.0/zoom cells wide, aspect-ratio-corrected height
+- [03-04]: Camera center from get_shift_vector().rem_euclid(128) for toroidal cell coords
+- [03-04]: Minimap click uses rebuild_spawn_model() same as keyboard panning for consistency
 
 ### Pending Todos
 
@@ -124,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T15:24:00Z
-Stopped at: Completed 03-03-PLAN.md (HudState mana, population, spell cooldowns)
+Last session: 2026-03-18T15:33:20Z
+Stopped at: Completed 03-04-PLAN.md (minimap viewport, click-to-move, selection info panel)
 Resume file: None
