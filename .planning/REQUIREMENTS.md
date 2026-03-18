@@ -67,14 +67,14 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Person State Machine
 
-- [ ] **PRSN-01**: Enter building state (walk into building, become occupant)
-- [ ] **PRSN-02**: Exit building state (walk out, facing direction)
-- [ ] **PRSN-03**: Housed state (inside housing, contributes to population)
-- [ ] **PRSN-04**: Training state (in training building, conversion timer)
-- [ ] **PRSN-05**: Gather wood state (walk to tree, chop, carry back)
-- [ ] **PRSN-06**: Drown state (drowning in water)
-- [ ] **PRSN-07**: Guard state (hold position)
-- [ ] **PRSN-08**: Death effects (proper death state with cleanup)
+- [x] **PRSN-01**: Enter building state (walk into building, become occupant)
+- [x] **PRSN-02**: Exit building state (walk out, facing direction)
+- [x] **PRSN-03**: Housed state (inside housing, contributes to population)
+- [x] **PRSN-04**: Training state (in training building, conversion timer)
+- [x] **PRSN-05**: Gather wood state (walk to tree, chop, carry back)
+- [x] **PRSN-06**: Drown state (drowning in water)
+- [x] **PRSN-07**: Guard state (hold position)
+- [x] **PRSN-08**: Death effects (proper death state with cleanup)
 
 ### AI/Scripting
 
@@ -199,14 +199,14 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | ECON-03 | Phase 2 | Complete |
 | ECON-04 | Phase 2 | Complete |
 | ECON-05 | Phase 2 | Complete |
-| PRSN-01 | Phase 2 | Pending |
-| PRSN-02 | Phase 2 | Pending |
-| PRSN-03 | Phase 2 | Pending |
-| PRSN-04 | Phase 2 | Pending |
-| PRSN-05 | Phase 2 | Pending |
-| PRSN-06 | Phase 2 | Pending |
-| PRSN-07 | Phase 2 | Pending |
-| PRSN-08 | Phase 2 | Pending |
+| PRSN-01 | Phase 2 | Complete |
+| PRSN-02 | Phase 2 | Complete |
+| PRSN-03 | Phase 2 | Complete |
+| PRSN-04 | Phase 2 | Complete |
+| PRSN-05 | Phase 2 | Complete |
+| PRSN-06 | Phase 2 | Complete |
+| PRSN-07 | Phase 2 | Complete |
+| PRSN-08 | Phase 2 | Complete |
 | CMBT-01 | Phase 2 | Complete |
 | CMBT-02 | Phase 2 | Complete |
 | CMBT-03 | Phase 2 | Complete |

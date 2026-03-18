@@ -82,6 +82,9 @@ Recent decisions affecting current work:
 - [02-06]: ShotData fields match original binary projectile tracking (type, target, damage, AOE, knockback, lifetime, speed)
 - [02-06]: fight_damage_for_subtype constants cross-verified against person_type_defaults table
 - [02-06]: Drum tower range 768 world units (about 6 cells at 128 units/cell)
+- [02-04]: DeferredAction pattern avoids borrow checker conflicts between Unit tick and building pool data
+- [02-04]: tick_state returns (TickResult, DeferredAction) tuple; existing states return DeferredAction::None
+- [02-04]: Guard behavior uses guard_position field on Unit, managed by coordinator (no Guard enum variant)
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T03:37:45Z
-Stopped at: Completed 02-06-PLAN.md (combat subsystem)
+Last session: 2026-03-18T03:40:00Z
+Stopped at: Completed 02-04-PLAN.md (person state extensions)
 Resume file: None
