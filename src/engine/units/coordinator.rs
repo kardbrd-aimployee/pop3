@@ -13,7 +13,11 @@ use crate::engine::movement::{
 };
 use crate::data::units::{ModelType, UnitRaw};
 use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid, GameObjectData};
-use crate::engine::buildings;
+use crate::engine::buildings::{
+    self,
+    tick::BuildingTickActions,
+    SpawnAction, ConvertAction, BuildingCombatAction,
+};
 use crate::engine::combat;
 use super::unit::Unit;
 use super::person_state::{

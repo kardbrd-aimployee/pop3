@@ -52,4 +52,6 @@ pub struct Unit {
     pub wood_carried: u16,
     // Guard position — where this unit should hold (for Guard state)
     pub guard_position: Option<WorldCoord>,
+    // Gather target — tree position for Gathering state navigation
+    pub gather_target: Option<WorldCoord>,
 }

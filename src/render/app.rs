@@ -42,7 +42,7 @@ use crate::data::landscape::{make_texture_land, draw_texture_u8};
 
 use crate::engine::units::{UnitCoordinator, DragState, Unit};
 use crate::engine::units::coords::{cell_to_world, cell_to_tile, triangle_to_cell, project_to_screen, ScreenRect};
-use crate::render::buildings::build_building_meshes;
+use crate::render::buildings::{build_building_meshes, build_ghost_building_mesh};
 use crate::render::sprites::{
     LevelObject, UnitTypeRender,
     obj_colors, convert_palette,
@@ -729,6 +729,13 @@ pub struct App {
     building_bind_group_1: Option<wgpu::BindGroup>,
     model_buildings: Option<ModelEnvelop<TexModel>>,
 
+    // Ghost building preview
+    ghost_uniform_buffer: Option<wgpu::Buffer>,
+    ghost_bind_group: Option<wgpu::BindGroup>,
+    ghost_building_pipeline: Option<wgpu::RenderPipeline>,
+    ghost_model: Option<ModelEnvelop<TexModel>>,
+    ghost_last_key: Option<(u8, i32, i32)>,
+
     // Sky
     sky_pipeline: Option<wgpu::RenderPipeline>,
     sky_bind_group: Option<wgpu::BindGroup>,
@@ -882,6 +889,11 @@ impl App {
             building_pipeline: None,
             building_bind_group_1: None,
             model_buildings: None,
+            ghost_uniform_buffer: None,
+            ghost_bind_group: None,
+            ghost_building_pipeline: None,
+            ghost_model: None,
+            ghost_last_key: None,
             sky_pipeline: None,
             sky_bind_group: None,
             sky_uniform_buffer: None,
@@ -2127,6 +2139,27 @@ impl App {
             label: Some("render_encoder"),
         });
 
+        // Rebuild ghost mesh if ghost preview position/type changed
+        if let Some(ref ghost) = frame.ghost_preview {
+            let ghost_key = (ghost.building_type, ghost.cell_x, ghost.cell_y);
+            if self.ghost_last_key != Some(ghost_key) {
+                self.ghost_model = build_ghost_building_mesh(
+                    &gpu.device,
+                    ghost.building_type,
+                    0, // tribe_index: default to Blue tribe (TODO: use player's tribe)
+                    ghost.cell_x as f32,
+                    ghost.cell_y as f32,
+                    &self.engine.building_objects,
+                    &self.engine.landscape_mesh,
+                    if self.engine.curvature_enabled { self.engine.curvature_scale } else { 0.0 },
+                );
+                self.ghost_last_key = Some(ghost_key);
+            }
+        } else if self.ghost_last_key.is_some() {
+            self.ghost_model = None;
+            self.ghost_last_key = None;
+        }
+
         // Shadow depth pass: render buildings + sprites from light's POV
         if frame.show_shadows {
             if let (Some(ref shadow_view), Some(ref shadow_g0)) =
@@ -2222,35 +2255,54 @@ impl App {
 
             // Draw 3D building meshes
             if frame.show_objects {
-                if let (Some(ref pipeline), Some(ref bg0), Some(ref bg1)) =
-                    (&self.building_pipeline, &self.building_bind_group_0, &self.building_bind_group_1)
+                if let (Some(ref pipeline), Some(ref bg0), Some(ref bg1), Some(ref ghost_bg)) =
+                    (&self.building_pipeline, &self.building_bind_group_0, &self.building_bind_group_1, &self.ghost_bind_group)
                 {
                     render_pass.set_pipeline(pipeline);
                     render_pass.set_bind_group(0, bg0, &[]);
                     render_pass.set_bind_group(1, bg1, &[]);
+                    render_pass.set_bind_group(3, ghost_bg, &[]);
+                    if let Some(ref shadow_bg2) = self.shadow_recv_group2 {
+                        render_pass.set_bind_group(2, shadow_bg2, &[]);
+                    }
                     if let Some(ref model) = self.model_buildings {
                         model.draw(&mut render_pass);
                     }
 
-                    // Ghost preview rendering — transparent building at placement position.
-                    // When ghost_preview is Some, we would draw the building mesh a second time
-                    // at the ghost position with alpha blending. The ghost_alpha and ghost_tint
-                    // uniforms control transparency and color:
-                    //   - ghost_alpha = 0.5 (semi-transparent)
-                    //   - ghost_tint = [0.3, 1.0, 0.3] if valid (green)
-                    //   - ghost_tint = [1.0, 0.3, 0.3] if invalid (red)
-                    // NOTE: Full GPU uniform buffer + shader integration deferred to render
-                    // pipeline refactor. This placeholder documents the rendering intent.
-                    if let Some(ref ghost) = frame.ghost_preview {
-                        let _ghost_alpha: f32 = 0.5;
-                        let _ghost_tint: [f32; 3] = if ghost.valid {
+                    // Ghost preview rendering — transparent building at placement position
+                    if let (Some(ref ghost), Some(ref ghost_model), Some(ref ghost_pipeline), Some(ref ghost_ubuf)) =
+                        (&frame.ghost_preview, &self.ghost_model, &self.ghost_building_pipeline, &self.ghost_uniform_buffer)
+                    {
+                        // Write ghost tint/alpha uniforms
+                        let ghost_alpha: f32 = 0.5;
+                        let ghost_tint: [f32; 3] = if ghost.valid {
                             [0.3, 1.0, 0.3] // green = valid placement
                         } else {
                             [1.0, 0.3, 0.3] // red = invalid placement
                         };
-                        // TODO: Create separate ghost uniform buffer, bind ghost_alpha/ghost_tint
-                        // to building fragment shader, draw building mesh at ghost position with
-                        // BlendState::ALPHA_BLENDING enabled on the building pipeline color state.
+                        gpu.queue.write_buffer(
+                            ghost_ubuf,
+                            0,
+                            bytemuck::cast_slice(&[ghost_tint[0], ghost_tint[1], ghost_tint[2], ghost_alpha]),
+                        );
+
+                        // Switch to ghost pipeline (alpha blending, no depth write)
+                        render_pass.set_pipeline(ghost_pipeline);
+                        render_pass.set_bind_group(0, bg0, &[]);
+                        render_pass.set_bind_group(1, bg1, &[]);
+                        if let Some(ref shadow_bg2) = self.shadow_recv_group2 {
+                            render_pass.set_bind_group(2, shadow_bg2, &[]);
+                        }
+                        render_pass.set_bind_group(3, ghost_bg, &[]);
+                        ghost_model.draw_single(&mut render_pass, 0);
+
+                        // Restore identity ghost uniforms for subsequent draws
+                        gpu.queue.write_buffer(
+                            ghost_ubuf,
+                            0,
+                            bytemuck::cast_slice(&[1.0f32, 1.0, 1.0, 1.0]),
+                        );
+
                         log::trace!(
                             "[ghost] preview type={} at ({},{}) valid={}",
                             ghost.building_type, ghost.cell_x, ghost.cell_y, ghost.valid
@@ -2808,6 +2860,38 @@ impl ApplicationHandler for App {
             ],
         });
 
+        // Ghost bind group layout (group 3: ghost overlay params)
+        let ghost_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ghost_bind_group_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Ghost uniform buffer — identity values [1,1,1,1] for normal rendering
+        let ghost_uniform_data: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+        let ghost_uniform_buf = GpuBuffer::new_uniform_init(
+            device, bytemuck::cast_slice(&ghost_uniform_data), "ghost_uniform_buffer",
+        );
+
+        // Ghost bind group
+        let ghost_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ghost_bind_group"),
+            layout: &ghost_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: ghost_uniform_buf.buffer.as_entire_binding() },
+            ],
+        });
+
         // Building pipeline (objects_tex.wgsl with directional lighting)
         let building_shader_source = include_str!("../../shaders/objects_tex.wgsl");
         let building_vertex_layouts = TexModel::vertex_buffer_layouts();
@@ -2817,7 +2901,7 @@ impl ApplicationHandler for App {
         });
         let building_pipe_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("building_pipeline_layout"),
-            bind_group_layouts: &[&lit_group0_layout, &sprite_group1_layout, &shadow_recv_group2_layout],
+            bind_group_layouts: &[&lit_group0_layout, &sprite_group1_layout, &shadow_recv_group2_layout, &ghost_bind_group_layout],
             immediate_size: 0,
         });
         let building_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -2851,6 +2935,56 @@ impl ApplicationHandler for App {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
                 depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: None,
+            cache: None,
+        });
+
+        // Ghost building pipeline (alpha blending, no depth write)
+        let ghost_pipe_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ghost_building_pipeline_layout"),
+            bind_group_layouts: &[&lit_group0_layout, &sprite_group1_layout, &shadow_recv_group2_layout, &ghost_bind_group_layout],
+            immediate_size: 0,
+        });
+        let ghost_building_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("ghost_building_pipeline"),
+            layout: Some(&ghost_pipe_layout),
+            vertex: wgpu::VertexState {
+                module: &building_shader,
+                entry_point: Some("vs_main"),
+                buffers: &building_vertex_layouts,
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &building_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: gpu.surface_format(),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
@@ -3026,6 +3160,9 @@ impl ApplicationHandler for App {
         self.engine.shape_footprints = shape_footprints;
         self.building_pipeline = Some(building_pipeline);
         self.building_bind_group_1 = Some(building_bind_group_1);
+        self.ghost_uniform_buffer = Some(ghost_uniform_buf.buffer);
+        self.ghost_bind_group = Some(ghost_bind_group);
+        self.ghost_building_pipeline = Some(ghost_building_pipeline);
         self.sky_pipeline = sky_pipeline;
         self.sky_bind_group = sky_bind_group;
         self.sky_uniform_buffer = sky_uniform_buffer;

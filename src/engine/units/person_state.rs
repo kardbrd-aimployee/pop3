@@ -235,6 +235,8 @@ pub enum DeferredAction {
     DepositWood { building_handle: u16, amount: u16 },
     /// Person spawning at building exit (after training).
     SpawnAtBuilding { building_handle: u16 },
+    /// Person needs nearest tree position for wood gathering navigation.
+    FindNearestTree { unit_index: usize },
 }
 
 /// Per-tick state update for a single unit.
@@ -508,20 +510,52 @@ fn tick_wait_outside(unit: &mut Unit) -> (TickResult, DeferredAction) {
     }
 }
 
-/// Gathering enter: find nearest tree, set target position, clear wood carried.
+/// Gathering enter: clear wood carried, request tree target via deferred action.
+/// state_timer: 0 = waiting for tree target, 1 = navigating to tree.
 fn enter_gathering(unit: &mut Unit) {
-    unit.state_timer = 0;
+    unit.state_timer = 0; // need tree target
     unit.wood_carried = 0;
+    unit.gather_target = None;
+    unit.movement.speed = 0;
+    unit.movement.flags1 &= !0x1000; // stop moving until we have a target
 }
 
-/// Gathering tick: walk toward tree; when arrived, transition to GatheringWood.
+/// Gathering tick: navigate toward tree target; transition to GatheringWood on arrival.
+/// state_timer=0: emit FindNearestTree deferred action (coordinator sets gather_target + state_timer=1).
+/// state_timer=1: walk toward gather_target; when within 128 world units, transition.
 fn tick_gathering(unit: &mut Unit) -> (TickResult, DeferredAction) {
-    unit.state_timer += 1;
-    if unit.state_timer >= 40 {
-        (TickResult::Transition(PersonState::GatheringWood), DeferredAction::None)
-    } else {
-        (TickResult::Continue, DeferredAction::None)
+    if unit.state_timer == 0 {
+        // Need a tree target — ask coordinator
+        return (TickResult::Continue, DeferredAction::FindNearestTree { unit_index: unit.id });
     }
+
+    // state_timer == 1: navigating toward tree
+    if let Some(target) = unit.gather_target {
+        let dx = (target.x as i32 - unit.movement.position.x as i32);
+        let dz = (target.z as i32 - unit.movement.position.z as i32);
+        let dist = dx.abs() + dz.abs();
+
+        if dist < 128 {
+            // Arrived at tree — transition to GatheringWood
+            unit.movement.speed = 0;
+            unit.movement.flags1 &= !0x1000;
+            return (TickResult::Transition(PersonState::GatheringWood), DeferredAction::None);
+        }
+
+        // Move toward tree: step of ~4 world units per axis per tick (matching brave walk speed)
+        let step = 4i32;
+        if dx.abs() > 0 {
+            unit.movement.position.x += (dx.signum() * step.min(dx.abs())) as i16;
+        }
+        if dz.abs() > 0 {
+            unit.movement.position.z += (dz.signum() * step.min(dz.abs())) as i16;
+        }
+    } else {
+        // Had state_timer=1 but no target (shouldn't happen) — re-request
+        unit.state_timer = 0;
+    }
+
+    (TickResult::Continue, DeferredAction::None)
 }
 
 /// GatheringWood enter: start chop timer (60 ticks).
@@ -683,6 +717,7 @@ mod tests {
             building_handle: None,
             wood_carried: 0,
             guard_position: None,
+            gather_target: None,
         }
     }
 
@@ -1091,23 +1126,42 @@ mod tests {
     }
 
     #[test]
-    fn gathering_transitions_to_gathering_wood() {
+    fn gathering_emits_find_nearest_tree_when_no_target() {
         let mut unit = make_unit(2, 0);
         let mut rng = GameRng::new(42);
         enter_state(&mut unit, PersonState::Gathering, &mut rng);
         assert_eq!(unit.state, PersonState::Gathering);
         assert_eq!(unit.wood_carried, 0);
-        assert_eq!(unit.state_timer, 0);
+        assert_eq!(unit.state_timer, 0); // needs tree target
+        assert_eq!(unit.gather_target, None);
 
-        // Tick 39 times — should continue
-        for _ in 0..39 {
+        // First tick: state_timer=0 emits FindNearestTree
+        let (result, action) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Continue));
+        assert_eq!(action, DeferredAction::FindNearestTree { unit_index: 0 });
+    }
+
+    #[test]
+    fn gathering_navigates_to_tree_and_transitions() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.movement.position = WorldCoord::new(0, 0);
+        enter_state(&mut unit, PersonState::Gathering, &mut rng);
+
+        // Simulate coordinator setting tree target (200 units away on x-axis)
+        unit.gather_target = Some(WorldCoord::new(200, 0));
+        unit.state_timer = 1; // has target
+
+        // Tick until arrival (200 / 4 = 50 ticks max)
+        let mut transitioned = false;
+        for _ in 0..60 {
             let (result, _) = tick_state(&mut unit, &mut rng);
-            assert!(matches!(result, TickResult::Continue));
+            if matches!(result, TickResult::Transition(PersonState::GatheringWood)) {
+                transitioned = true;
+                break;
+            }
         }
-
-        // Tick 40 — should transition to GatheringWood
-        let (result, _) = tick_state(&mut unit, &mut rng);
-        assert!(matches!(result, TickResult::Transition(PersonState::GatheringWood)));
+        assert!(transitioned, "Should transition to GatheringWood when near tree");
     }
 
     #[test]
@@ -1158,13 +1212,25 @@ mod tests {
         let mut unit = make_unit(2, 0);
         let mut rng = GameRng::new(42);
         unit.building_handle = Some(3);
+        unit.movement.position = WorldCoord::new(0, 0);
         enter_state(&mut unit, PersonState::Gathering, &mut rng);
 
-        // Phase 1: Gathering (walk to tree) — 40 ticks
-        for _ in 0..40 {
-            tick_state(&mut unit, &mut rng);
+        // Phase 1: Gathering — first tick emits FindNearestTree
+        let (_, action) = tick_state(&mut unit, &mut rng);
+        assert_eq!(action, DeferredAction::FindNearestTree { unit_index: 0 });
+
+        // Simulate coordinator setting tree target (close by, 100 units away)
+        unit.gather_target = Some(WorldCoord::new(100, 0));
+        unit.state_timer = 1;
+
+        // Navigate to tree until transition
+        for _ in 0..50 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            if matches!(result, TickResult::Transition(PersonState::GatheringWood)) {
+                break;
+            }
         }
-        // Should now want GatheringWood — simulate coordinator transition
+        // Simulate coordinator transition
         enter_state(&mut unit, PersonState::GatheringWood, &mut rng);
 
         // Phase 2: GatheringWood (chop) — 60 ticks
@@ -1172,7 +1238,7 @@ mod tests {
             tick_state(&mut unit, &mut rng);
         }
         assert_eq!(unit.wood_carried, 1);
-        // Should now want CarryingWood
+        // Simulate coordinator transition
         enter_state(&mut unit, PersonState::CarryingWood, &mut rng);
 
         // Phase 3: CarryingWood (walk to building) — 40 ticks
@@ -1197,6 +1263,8 @@ mod tests {
         assert_eq!(remove, DeferredAction::RemoveFromBuilding { building_handle: 2 });
         assert_eq!(deposit, DeferredAction::DepositWood { building_handle: 3, amount: 5 });
         assert_eq!(spawn, DeferredAction::SpawnAtBuilding { building_handle: 4 });
+        let find_tree = DeferredAction::FindNearestTree { unit_index: 5 };
+        assert_eq!(find_tree, DeferredAction::FindNearestTree { unit_index: 5 });
     }
 
     #[test]
@@ -1205,6 +1273,7 @@ mod tests {
         assert_eq!(unit.building_handle, None);
         assert_eq!(unit.wood_carried, 0);
         assert_eq!(unit.guard_position, None);
+        assert_eq!(unit.gather_target, None);
     }
 
     #[test]

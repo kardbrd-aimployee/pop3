@@ -30,6 +30,13 @@ struct LightParams {
 @group(2) @binding(1) var shadow_samp: sampler_comparison;
 @group(2) @binding(2) var<uniform> shadow_light_mvp: mat4x4<f32>;
 
+// Group 3: Ghost overlay (for placement preview)
+struct GhostParams {
+    tint: vec3<f32>,
+    alpha: f32,
+};
+@group(3) @binding(0) var<uniform> ghost: GhostParams;
+
 // Vertex input
 struct VertexInput {
     @location(0) coord3d: vec3<f32>,
@@ -84,7 +91,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let shadow_factor = 0.3 + 0.7 * shadow;
 
     if (in.tex_id < 0 || in.tex_id > 255) {
-        return vec4<f32>(vec3<f32>(0.6) * brightness * shadow_factor * in.viewport_fade, 1.0);
+        return vec4<f32>(vec3<f32>(0.6) * brightness * shadow_factor * in.viewport_fade * ghost.tint, ghost.alpha);
     }
 
     let row = in.tex_id / 8;
@@ -98,5 +105,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (color.w > 0.0) {
         discard;
     }
-    return vec4<f32>(color.rgb * brightness * shadow_factor * in.viewport_fade, color.a);
+    return vec4<f32>(color.rgb * brightness * shadow_factor * in.viewport_fade * ghost.tint, ghost.alpha);
 }

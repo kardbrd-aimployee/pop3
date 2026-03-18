@@ -68,6 +68,7 @@ pub struct PersonData {
     pub building_handle: Option<u16>,
     pub wood_carried: u16,
     pub guard_position: Option<WorldCoord>,
+    pub gather_target: Option<WorldCoord>,
 }
 
 impl Default for PersonData {
@@ -94,6 +95,7 @@ impl Default for PersonData {
             building_handle: None,
             wood_carried: 0,
             guard_position: None,
+            gather_target: None,
         }
     }
 }

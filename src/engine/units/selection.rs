@@ -93,6 +93,7 @@ mod tests {
             building_handle: None,
             wood_carried: 0,
             guard_position: None,
+            gather_target: None,
         }
     }
 
