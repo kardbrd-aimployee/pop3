@@ -30,6 +30,18 @@ pub struct TribeData {
 
     /// Current population count (persons alive for this tribe).
     pub population: u32,
+
+    // -- Economy fields --
+
+    /// Current mana pool. Capped at economy::mana::MAX_MANA (1,000,000).
+    pub mana: u32,
+
+    /// Housing capacity (recalculated from hut counts each tick).
+    /// Capped at economy::population::MAX_POP_VALUE (199).
+    pub max_population: u16,
+
+    /// Total wood gathered this game (for stats tracking).
+    pub wood_gathered: u32,
 }
 
 impl TribeData {
@@ -40,6 +52,9 @@ impl TribeData {
             reincarnation_timer: 0,
             victory_flags: 0,
             population: 0,
+            mana: 0,
+            max_population: 0,
+            wood_gathered: 0,
         }
     }
 
