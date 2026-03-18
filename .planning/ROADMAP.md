@@ -12,7 +12,7 @@ Pop3 transforms from a rendering tech demo into a playable 25-level Populous: Th
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Core Object System** - Unified object pool with cell grid and UnitCoordinator migration
+- [x] **Phase 1: Core Object System** - Unified object pool with cell grid and UnitCoordinator migration
 - [ ] **Phase 2: Economy and Combat** - Buildings, economy loops, person states, combat, and terrain modification
 - [ ] **Phase 3: Spells, Effects, and Interface** - 12 spells with mana economy, visual effects, and full HUD/UI
 - [ ] **Phase 4: AI and Campaign** - Lua AI scripting, menu system, 25-level campaign, save/load
@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md -- ObjectPool with create/destroy/get and person iteration (TDD)
 - [x] 01-02-PLAN.md -- Cell-based spatial grid with per-cell doubly-linked object lists (TDD)
-- [ ] 01-03-PLAN.md -- UnitCoordinator migration to pool-backed storage
+- [x] 01-03-PLAN.md -- UnitCoordinator migration to pool-backed storage
 
 ### Phase 2: Economy and Combat
 **Goal**: Players can build structures, gather wood, grow population, train units, fight with melee and projectiles, and modify terrain -- the complete gameplay loop minus spells
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Object System | 2/3 | In progress | - |
+| 1. Core Object System | 3/3 | Complete | 2026-03-18 |
 | 2. Economy and Combat | 0/3 | Not started | - |
 | 3. Spells, Effects, and Interface | 0/3 | Not started | - |
 | 4. AI and Campaign | 0/3 | Not started | - |
