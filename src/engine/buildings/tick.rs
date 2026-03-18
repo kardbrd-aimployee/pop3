@@ -1,5 +1,7 @@
 use super::types::*;
 use super::state_machine::*;
+use super::spawning::{tick_spawn, SpawnAction};
+use super::training::{tick_convert, ConvertAction};
 use crate::engine::objects::ObjectHeader;
 
 /// Per-tick building update following original binary's BLD.7 pipeline order.
@@ -21,7 +23,7 @@ pub fn tick_building(building: &mut BuildingData, header: &mut ObjectHeader) {
             on_construction_complete(building);
             transition_building_state(building, BuildingState::Active);
         }
-        BuildingState::Active => tick_active(building, header),
+        BuildingState::Active => { tick_active(building, header); },
         BuildingState::Destroying => tick_destroying(building, header),
         BuildingState::Sinking => tick_sinking(building, header),
         BuildingState::FinalTeardown => { /* removal handled by caller */ }
@@ -40,8 +42,10 @@ fn tick_constructing(building: &mut BuildingData, _header: &mut ObjectHeader) {
     }
 }
 
-fn tick_active(_building: &mut BuildingData, _header: &mut ObjectHeader) {
-    // Spawning, training, wood consumption wired in Plan 05
+fn tick_active(building: &mut BuildingData, _header: &mut ObjectHeader) -> (SpawnAction, ConvertAction) {
+    let spawn = tick_spawn(building);
+    let convert = tick_convert(building);
+    (spawn, convert)
 }
 
 fn tick_destroying(building: &mut BuildingData, _header: &mut ObjectHeader) {
