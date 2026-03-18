@@ -54,6 +54,9 @@ pub struct HudLayout {
     pub mm_size: f32,
     pub mm_x: f32,
     pub mm_y: f32,
+    pub mana_bar_y: f32,
+    pub mana_bar_h: f32,
+    pub pop_y: f32,
     pub tab_y: f32,
     pub tab_h: f32,
     pub tab_w: f32,
@@ -452,14 +455,18 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
 pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     let scale_x = screen_w / 640.0;
     let scale_y = screen_h / 480.0;
-    let sidebar_w = (100.0 * scale_x).round();
+    let sidebar_w = (160.0 * scale_x).round();
     let font_scale = (12.0 * scale_y).max(10.0).round();
     let small_font = (font_scale * 0.75).round();
     let mm_pad = 4.0 * scale_x;
     let mm_size = sidebar_w - mm_pad * 2.0;
     let mm_x = mm_pad;
     let mm_y = mm_pad;
-    let tab_y = mm_y + mm_size + 4.0 * scale_y;
+    // Vertical order: minimap -> mana bar -> population -> tabs -> panel
+    let mana_bar_y = mm_y + mm_size + 4.0 * scale_y;
+    let mana_bar_h = (8.0 * scale_y).round();
+    let pop_y = mana_bar_y + mana_bar_h + 3.0 * scale_y;
+    let tab_y = pop_y + small_font + 4.0 * scale_y;
     let tab_h = font_scale + 6.0 * scale_y;
     let tab_w = (sidebar_w - mm_pad * 2.0) / 3.0;
     let panel_y = tab_y + tab_h + 2.0 * scale_y;
@@ -468,6 +475,7 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
         screen_w, screen_h, scale_x, scale_y,
         sidebar_w, font_scale, small_font,
         mm_pad, mm_size, mm_x, mm_y,
+        mana_bar_y, mana_bar_h, pop_y,
         tab_y, tab_h, tab_w,
         panel_y, line_h,
     }
