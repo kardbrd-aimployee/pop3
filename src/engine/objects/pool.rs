@@ -2,6 +2,7 @@ use super::handle::ObjectHandle;
 use super::types::*;
 use crate::data::units::ModelType;
 use crate::engine::buildings::BuildingData;
+use crate::engine::combat::projectile::ShotData;
 use crate::engine::movement::WorldCoord;
 
 pub const MAX_OBJECTS: usize = 1101;
@@ -77,7 +78,7 @@ impl ObjectPool {
             ModelType::Scenery => GameObjectData::Scenery(()),
             ModelType::General => GameObjectData::General(()),
             ModelType::Effect => GameObjectData::Effect(()),
-            ModelType::Shot => GameObjectData::Shot(()),
+            ModelType::Shot => GameObjectData::Shot(ShotData::default()),
             ModelType::Shape => GameObjectData::Shape(()),
             ModelType::Internal => GameObjectData::Internal(()),
             ModelType::Spell => GameObjectData::Spell(()),
@@ -176,6 +177,32 @@ impl ObjectPool {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Person(ref mut pd) = obj.data {
                     return Some((i as ObjectHandle, &mut obj.header, pd));
+                }
+            }
+            None
+        })
+    }
+
+    /// Iterate over all Shot objects, yielding (handle, header, shot_data).
+    pub fn shots(&self) -> impl Iterator<Item = (ObjectHandle, &ObjectHeader, &ShotData)> {
+        self.slots.iter().enumerate().filter_map(|(i, slot)| {
+            if let PoolSlot::Occupied(obj) = slot {
+                if let GameObjectData::Shot(ref sd) = obj.data {
+                    return Some((i as ObjectHandle, &obj.header, sd));
+                }
+            }
+            None
+        })
+    }
+
+    /// Iterate over all Shot objects with mutable access.
+    pub fn shots_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (ObjectHandle, &mut ObjectHeader, &mut ShotData)> {
+        self.slots.iter_mut().enumerate().filter_map(|(i, slot)| {
+            if let PoolSlot::Occupied(obj) = slot {
+                if let GameObjectData::Shot(ref mut sd) = obj.data {
+                    return Some((i as ObjectHandle, &mut obj.header, sd));
                 }
             }
             None

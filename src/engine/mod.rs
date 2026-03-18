@@ -7,6 +7,7 @@ pub mod objects;
 pub mod terrain;
 pub mod units;
 pub mod buildings;
+pub mod combat;
 
 pub use command::{GameCommand, translate_key};
 pub use frame::FrameState;

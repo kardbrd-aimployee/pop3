@@ -3,6 +3,7 @@ use crate::engine::movement::{PersonMovement, WorldCoord};
 use crate::engine::units::person_state::PersonState;
 use crate::engine::units::animation::AnimationState;
 use crate::engine::buildings::BuildingData;
+use crate::engine::combat::projectile::ShotData;
 use super::handle::ObjectHandle;
 
 /// Common header fields for all game objects.
@@ -36,7 +37,7 @@ pub enum GameObjectData {
     Scenery(()),
     General(()),
     Effect(()),
-    Shot(()),
+    Shot(ShotData),
     Shape(()),
     Internal(()),
     Spell(()),
@@ -64,6 +65,9 @@ pub struct PersonData {
     pub shielded: bool,
     pub cell_x: f32,
     pub cell_y: f32,
+    pub building_handle: Option<u16>,
+    pub wood_carried: u16,
+    pub guard_position: Option<WorldCoord>,
 }
 
 impl Default for PersonData {
@@ -87,6 +91,9 @@ impl Default for PersonData {
             shielded: false,
             cell_x: 0.0,
             cell_y: 0.0,
+            building_handle: None,
+            wood_carried: 0,
+            guard_position: None,
         }
     }
 }
@@ -167,7 +174,7 @@ mod tests {
             GameObjectData::Scenery(()),
             GameObjectData::General(()),
             GameObjectData::Effect(()),
-            GameObjectData::Shot(()),
+            GameObjectData::Shot(ShotData::default()),
             GameObjectData::Shape(()),
             GameObjectData::Internal(()),
             GameObjectData::Spell(()),
