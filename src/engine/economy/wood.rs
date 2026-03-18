@@ -1,7 +1,49 @@
 // Wood storage constants and tracking.
 // Construction and training wood costs.
 
-// TODO: implement constants and functions
+/// Construction wood costs by building subtype.
+pub const WOOD_COST_SMALL_HUT: u16 = 3;
+pub const WOOD_COST_MEDIUM_HUT: u16 = 5;
+pub const WOOD_COST_LARGE_HUT: u16 = 7;
+pub const WOOD_COST_DRUM_TOWER: u16 = 5;
+pub const WOOD_COST_TEMPLE: u16 = 6;
+pub const WOOD_COST_TRAINING: u16 = 5;
+pub const WOOD_COST_DEFAULT: u16 = 4;
+
+/// Training wood costs by target person subtype.
+pub const WOOD_TRAIN_WARRIOR: u16 = 3;
+pub const WOOD_TRAIN_SPY: u16 = 2;
+pub const WOOD_TRAIN_PREACHER: u16 = 2;
+pub const WOOD_TRAIN_SUPER_WARRIOR: u16 = 5;
+
+/// Wood cost to construct a building of given subtype.
+pub fn construction_wood_cost(building_subtype: u8) -> u16 {
+    match building_subtype {
+        1 => WOOD_COST_SMALL_HUT,
+        2 => WOOD_COST_MEDIUM_HUT,
+        3 => WOOD_COST_LARGE_HUT,
+        4 => WOOD_COST_DRUM_TOWER,
+        5 => WOOD_COST_TEMPLE,
+        6 | 7 | 8 => WOOD_COST_TRAINING,
+        _ => WOOD_COST_DEFAULT,
+    }
+}
+
+/// Wood cost to train a unit of given target subtype.
+pub fn training_wood_cost(target_subtype: u8) -> u16 {
+    match target_subtype {
+        3 => WOOD_TRAIN_WARRIOR,       // Warrior
+        4 => WOOD_TRAIN_PREACHER,      // Religious/Preacher
+        5 => WOOD_TRAIN_SPY,           // Spy
+        6 => WOOD_TRAIN_SUPER_WARRIOR, // Super Warrior
+        _ => 0,
+    }
+}
+
+/// Sum total wood stored across a slice of wood values.
+pub fn total_wood_stored(wood_values: &[u16]) -> u32 {
+    wood_values.iter().map(|&w| w as u32).sum()
+}
 
 #[cfg(test)]
 mod tests {

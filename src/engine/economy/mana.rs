@@ -1,7 +1,60 @@
 // Mana generation rates and pool management.
 // Original binary constants from things-to-implement.md section 22.
 
-// TODO: implement constants and functions
+/// Per-unit mana generation rates (per tick).
+pub const MANA_F_BRAVE: u32 = 1;
+pub const MANA_F_WARR: u32 = 1;
+pub const MANA_F_SPY: u32 = 1;
+pub const MANA_F_PREACH: u32 = 2;
+pub const MANA_F_SWARR: u32 = 1;
+pub const MANA_F_SHAMEN: u32 = 1;
+
+/// Per-housing-level mana generation rates.
+pub const MANA_F_HUT_LEVEL_1: u32 = 1;
+pub const MANA_F_HUT_LEVEL_2: u32 = 2;
+pub const MANA_F_HUT_LEVEL_3: u32 = 3;
+
+/// Maximum mana pool per tribe. Original: 0xF4240.
+pub const MAX_MANA: u32 = 1_000_000;
+
+/// Returns mana generation rate for a person subtype (per tick).
+/// Subtypes: 1=Wild(0), 2=Brave, 3=Warrior, 4=Preacher, 5=Spy, 6=SuperWarrior, 7=Shaman
+pub fn mana_rate_for_person(subtype: u8) -> u32 {
+    match subtype {
+        2 => MANA_F_BRAVE,
+        3 => MANA_F_WARR,
+        4 => MANA_F_PREACH,
+        5 => MANA_F_SPY,
+        6 => MANA_F_SWARR,
+        7 => MANA_F_SHAMEN,
+        _ => 0, // Wild and unknown generate no mana
+    }
+}
+
+/// Returns mana generation rate for a housing level (1, 2, or 3).
+pub fn mana_rate_for_housing(hut_level: u8) -> u32 {
+    match hut_level {
+        1 => MANA_F_HUT_LEVEL_1,
+        2 => MANA_F_HUT_LEVEL_2,
+        3 => MANA_F_HUT_LEVEL_3,
+        _ => 0,
+    }
+}
+
+/// Add mana to a tribe's pool, capped at MAX_MANA.
+pub fn add_mana(current: &mut u32, amount: u32) {
+    *current = (*current + amount).min(MAX_MANA);
+}
+
+/// Deduct mana from pool. Returns false if insufficient.
+pub fn deduct_mana(current: &mut u32, amount: u32) -> bool {
+    if *current >= amount {
+        *current -= amount;
+        true
+    } else {
+        false
+    }
+}
 
 #[cfg(test)]
 mod tests {

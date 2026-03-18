@@ -1,7 +1,37 @@
 // Population tracking and housing capacity.
 // Original binary constants from things-to-implement.md section 22.
 
-// TODO: implement constants and functions
+/// Maximum occupants per hut level.
+pub const MAX_POP_VALUE_HUT_1: u16 = 3;
+pub const MAX_POP_VALUE_HUT_2: u16 = 4;
+pub const MAX_POP_VALUE_HUT_3: u16 = 5;
+
+/// Tribe population cap (absolute maximum regardless of housing).
+pub const MAX_POP_VALUE: u16 = 199;
+
+/// Returns max occupants for a hut level.
+pub fn hut_capacity(level: u8) -> u16 {
+    match level {
+        1 => MAX_POP_VALUE_HUT_1,
+        2 => MAX_POP_VALUE_HUT_2,
+        3 => MAX_POP_VALUE_HUT_3,
+        _ => 0,
+    }
+}
+
+/// Calculate total housing capacity from hut counts by level.
+/// hut_counts: [level_1_count, level_2_count, level_3_count]
+pub fn calculate_housing_capacity(hut_counts: [u16; 3]) -> u16 {
+    let raw = hut_counts[0] * MAX_POP_VALUE_HUT_1
+            + hut_counts[1] * MAX_POP_VALUE_HUT_2
+            + hut_counts[2] * MAX_POP_VALUE_HUT_3;
+    raw.min(MAX_POP_VALUE)
+}
+
+/// Check if tribe can spawn more units.
+pub fn can_spawn(current_population: u16, max_population: u16) -> bool {
+    current_population < max_population
+}
 
 #[cfg(test)]
 mod tests {
