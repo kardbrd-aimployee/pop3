@@ -12,7 +12,9 @@ use crate::engine::movement::{
     atan2,
 };
 use crate::data::units::{ModelType, UnitRaw};
-use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid};
+use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid, GameObjectData};
+use crate::engine::buildings;
+use crate::engine::combat;
 use super::unit::Unit;
 use super::person_state::{
     PersonState, person_type_defaults, enter_state, tick_state, TickResult, DeferredAction,
@@ -204,17 +206,30 @@ impl UnitCoordinator {
     pub fn tick(&mut self) {
         let unit_count = self.units.len();
 
+        // Collect deferred actions and dead handles during person iteration
+        let mut deferred_actions: Vec<(usize, DeferredAction)> = Vec::new();
+        let mut dead_indices: Vec<usize> = Vec::new();
+
         // Phase 1: State machine tick + movement for each unit
         for i in 0..unit_count {
             let unit = &mut self.units[i];
             if !unit.alive { continue; }
 
             // Run state machine tick
-            let (result, _deferred) = tick_state(unit, &mut self.rng);
+            let (result, deferred) = tick_state(unit, &mut self.rng);
             if let TickResult::Transition(new_state) = result {
                 enter_state(unit, new_state, &mut self.rng);
             }
-            // TODO: Process deferred actions (building occupancy, wood deposit, etc.)
+
+            // Collect deferred actions for post-loop processing
+            if deferred != DeferredAction::None {
+                deferred_actions.push((i, deferred));
+            }
+
+            // Check if unit just became dead (alive=false after tick_dead countdown)
+            if !unit.alive {
+                dead_indices.push(i);
+            }
 
             // Select animation every tick (matches decomp — walk→idle override needs movement check)
             select_animation(&mut unit.anim, unit.state, unit.subtype, &self.anim_frame_counts, unit.movement.is_moving());
@@ -251,6 +266,84 @@ impl UnitCoordinator {
 
         // Phase 4: Process combat damage for fighting units
         self.process_combat();
+
+        // Phase 5: Process deferred actions (building occupancy, wood deposit, etc.)
+        // CRITICAL: Must happen after combat so dying units' final actions are processed.
+        self.process_deferred_actions(deferred_actions);
+
+        // Phase 6: Process deaths — units whose alive flag was cleared by tick_dead
+        self.process_dead_units(dead_indices);
+    }
+
+    /// Process deferred actions collected during person tick loop.
+    fn process_deferred_actions(&mut self, actions: Vec<(usize, DeferredAction)>) {
+        for (_unit_idx, action) in actions {
+            match action {
+                DeferredAction::None => {},
+                DeferredAction::AddToBuilding { building_handle } => {
+                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                        if let GameObjectData::Building(ref mut bd) = building_obj.data {
+                            let _ = buildings::add_occupant(bd, building_handle);
+                        }
+                    }
+                },
+                DeferredAction::RemoveFromBuilding { building_handle } => {
+                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                        if let GameObjectData::Building(ref mut bd) = building_obj.data {
+                            buildings::remove_occupant(bd, building_handle);
+                        }
+                    }
+                },
+                DeferredAction::DepositWood { building_handle, amount } => {
+                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                        if let GameObjectData::Building(ref mut bd) = building_obj.data {
+                            bd.wood_stored += amount;
+                        }
+                    }
+                },
+                DeferredAction::SpawnAtBuilding { building_handle: _ } => {
+                    // Spawn processing handled by population tick subsystem
+                    // (coordinator just records the intent; actual spawn happens in
+                    // tick_update_population to avoid re-entrant pool mutation)
+                },
+            }
+        }
+    }
+
+    /// Process dead units: call process_death, remove from cell grid, destroy in pool.
+    fn process_dead_units(&mut self, dead_indices: Vec<usize>) {
+        for idx in dead_indices.iter().rev() {
+            let unit = &self.units[*idx];
+            let tribe = unit.tribe_index;
+            let last_attacker = None; // attacker tracking is coordinator-level
+            let pos = unit.movement.position;
+
+            // Get death actions (kill tracking)
+            let death_actions = combat::process_death(0, tribe, last_attacker);
+
+            // If unit has a pool handle in person_handles, clean up pool and grid
+            // (For units also tracked in pool, handle cleanup)
+            let cell_idx = CellGrid::cell_index_from_world(&pos);
+
+            // Find matching person handle by index
+            if *idx < self.person_handles.len() {
+                let handle = self.person_handles[*idx];
+                self.cell_grid.remove_object(handle, cell_idx, self.pool.slots_mut());
+                self.pool.destroy(handle);
+            }
+
+            // Track kill for killer tribe if applicable
+            if let Some(_killer_tribe) = death_actions.last_attacker_tribe {
+                // Kill count tracking deferred to stats subsystem
+            }
+        }
+
+        // Remove dead entries from person_handles (reverse order to preserve indices)
+        for idx in dead_indices.iter().rev() {
+            if *idx < self.person_handles.len() {
+                self.person_handles.remove(*idx);
+            }
+        }
     }
 
     /// Move a unit one step along its path (waypoint advancement + position update).
@@ -444,6 +537,55 @@ impl UnitCoordinator {
                 }
             }
         }
+    }
+
+    /// Tick all buildings in the pool.
+    pub fn tick_buildings(&mut self) {
+        let building_handles: Vec<ObjectHandle> = self.pool.buildings()
+            .map(|(h, _, _)| h)
+            .collect();
+
+        for handle in building_handles {
+            if let Some(obj) = self.pool.get_mut(handle) {
+                if let GameObjectData::Building(ref mut bd) = obj.data {
+                    buildings::tick::tick_building(bd, &mut obj.header);
+                }
+            }
+        }
+    }
+
+    /// Tick all projectiles in the pool. Returns list of impacts:
+    /// (position, damage, aoe_radius, knockback_force).
+    pub fn tick_projectiles(&mut self) -> Vec<(WorldCoord, u16, u16, u16)> {
+        let shot_handles: Vec<ObjectHandle> = self.pool.shots()
+            .map(|(h, _, _)| h)
+            .collect();
+
+        let mut impacts = Vec::new();
+        let mut expired = Vec::new();
+
+        for handle in shot_handles {
+            if let Some(obj) = self.pool.get_mut(handle) {
+                if let GameObjectData::Shot(ref mut sd) = obj.data {
+                    match combat::tick_projectile(sd, &mut obj.header) {
+                        combat::ProjectileResult::Impact { position, damage, aoe_radius, knockback_force } => {
+                            impacts.push((position, damage, aoe_radius, knockback_force));
+                            expired.push(handle);
+                        }
+                        combat::ProjectileResult::Expired => {
+                            expired.push(handle);
+                        }
+                        combat::ProjectileResult::Continue => {}
+                    }
+                }
+            }
+        }
+
+        for handle in expired {
+            self.pool.destroy(handle);
+        }
+
+        impacts
     }
 
     /// Mark height-0 cells as water (unwalkable) in the region map,

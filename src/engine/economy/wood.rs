@@ -1,5 +1,98 @@
 // Wood storage constants and tracking.
 // Construction and training wood costs.
+// Tree and building search via CellGrid.
+
+use crate::data::units::ModelType;
+use crate::engine::buildings::{BuildingData, BuildingState};
+use crate::engine::movement::WorldCoord;
+use crate::engine::objects::cell_grid::CellGrid;
+use crate::engine::objects::pool::ObjectPool;
+use crate::engine::objects::types::{GameObjectData, PoolSlot};
+
+/// Maximum tree subtype value (0-8 are tree variants in original scenery table).
+const MAX_TREE_SUBTYPE: u8 = 8;
+
+/// Find the nearest tree to a position by querying the CellGrid for scenery objects.
+/// Trees are scenery objects (ModelType::Scenery) with subtypes 0-8 (tree variants).
+/// Searches in expanding rings around the unit's tile position up to max_radius.
+pub fn find_nearest_tree_position(
+    unit_pos: &WorldCoord,
+    cell_grid: &CellGrid,
+    pool: &ObjectPool,
+) -> Option<WorldCoord> {
+    let tile = unit_pos.to_tile();
+    let max_radius: i32 = 15;
+
+    for radius in 1..=max_radius {
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                if dx.abs() != radius && dz.abs() != radius {
+                    continue; // ring only
+                }
+                let cx = ((tile.x as i32 + dx) & 127) as u8;
+                let cz = ((tile.z as i32 + dz) & 127) as u8;
+                let cell_idx = cz as usize * 128 + cx as usize;
+
+                // Walk linked list in this cell
+                let mut current = cell_grid.cell_head(cell_idx);
+                while let Some(handle) = current {
+                    if let Some(obj) = pool.get(handle) {
+                        if obj.header.model_type == ModelType::Scenery
+                            && obj.header.subtype <= MAX_TREE_SUBTYPE
+                        {
+                            return Some(obj.header.position);
+                        }
+                        current = obj.header.next_in_cell;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find nearest active building owned by tribe to deposit wood at.
+pub fn find_nearest_building_position(
+    unit_pos: &WorldCoord,
+    tribe: u8,
+    cell_grid: &CellGrid,
+    pool: &ObjectPool,
+) -> Option<WorldCoord> {
+    let tile = unit_pos.to_tile();
+    let max_radius: i32 = 20;
+
+    for radius in 1..=max_radius {
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                if dx.abs() != radius && dz.abs() != radius {
+                    continue;
+                }
+                let cx = ((tile.x as i32 + dx) & 127) as u8;
+                let cz = ((tile.z as i32 + dz) & 127) as u8;
+                let cell_idx = cz as usize * 128 + cx as usize;
+
+                let mut current = cell_grid.cell_head(cell_idx);
+                while let Some(handle) = current {
+                    if let Some(obj) = pool.get(handle) {
+                        if let GameObjectData::Building(ref bd) = obj.data {
+                            if obj.header.tribe == tribe
+                                && bd.state == BuildingState::Active
+                            {
+                                return Some(obj.header.position);
+                            }
+                        }
+                        current = obj.header.next_in_cell;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Construction wood costs by building subtype.
 pub const WOOD_COST_SMALL_HUT: u16 = 3;
