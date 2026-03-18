@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-10-PLAN.md (ghost preview rendering)
-last_updated: "2026-03-18T04:33:00Z"
-last_activity: 2026-03-18 -- Completed 02-10 Ghost preview rendering
+stopped_at: Completed 02-09-PLAN.md (gathering navigation + knockback wiring)
+last_updated: "2026-03-18T04:35:00Z"
+last_activity: 2026-03-18 -- Completed 02-09 Gathering navigation + knockback wiring (Phase 2 fully complete)
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 13
-  completed_plans: 12
-  percent: 70
+  completed_plans: 13
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 2 of 4 (Economy and Combat)
-Plan: 10 of 10 in current phase (gap closure)
-Status: Completed 02-10 ghost preview rendering
-Last activity: 2026-03-18 -- Completed 02-10 Ghost preview rendering
+Phase: 2 of 4 (Economy and Combat) -- COMPLETE
+Plan: 10 of 10 in current phase -- ALL DONE
+Status: Phase 2 fully complete (all 10 plans), ready for Phase 3
+Last activity: 2026-03-18 -- Completed 02-09 Gathering navigation + knockback wiring
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [█████████░] 92%
 | Phase 02 P06 | 7min | 2 tasks | 8 files |
 | Phase 02 P07 | 5min | 2 tasks | 8 files |
 | Phase 02 P10 | 5min | 2 tasks | 4 files |
+| Phase 02 P09 | 7min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,9 @@ Recent decisions affecting current work:
 - [02-08]: BuildingTickActions struct aggregates spawn/convert/combat from single building tick
 - [02-08]: Two-phase collect-then-process in tick_buildings() avoids borrow conflicts
 - [02-08]: spawn_brave_near offsets spawn position by (128, 64) world units from building
+- [02-09]: gather_target field on Unit instead of reusing movement.target_pos (avoids pathfinding conflicts)
+- [02-09]: state_timer as flag (0=need target, 1=navigating) for Gathering state machine
+- [02-09]: AOE radius to cell radius via (radius / 128).max(1) for CellGrid knockback queries
 
 ### Pending Todos
 
@@ -109,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T04:33:00Z
-Stopped at: Completed 02-10-PLAN.md (ghost preview rendering)
+Last session: 2026-03-18T04:35:00Z
+Stopped at: Completed 02-09-PLAN.md (gathering navigation + knockback wiring -- Phase 2 fully complete)
 Resume file: None
