@@ -89,13 +89,13 @@ Requirements for playable single-player campaign (25 levels).
 ### HUD/UI
 
 - [ ] **HUD-01**: Minimap rendering (128x128, tribe-colored unit dots)
-- [ ] **HUD-02**: Spell bar with available spells and cooldown indicators
-- [ ] **HUD-03**: Mana bar display
-- [ ] **HUD-04**: Population display
+- [x] **HUD-02**: Spell bar with available spells and cooldown indicators
+- [x] **HUD-03**: Mana bar display
+- [x] **HUD-04**: Population display
 - [ ] **HUD-05**: Unit/building info panel on selection
 - [ ] **HUD-06**: Health bars above units and buildings
-- [ ] **HUD-07**: Font loading and text rendering (12/16/24pt)
-- [ ] **HUD-08**: String table loading (English, 0x526 strings)
+- [x] **HUD-07**: Font loading and text rendering (12/16/24pt)
+- [x] **HUD-08**: String table loading (English, 0x526 strings)
 
 ### Menu System
 
@@ -229,19 +229,19 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | SPLL-12 | Phase 3 | Pending |
 | SPLL-13 | Phase 3 | Pending |
 | SPLL-14 | Phase 3 | Pending |
-| FX-01 | Phase 3 | Pending |
+| FX-01 | Phase 3 | Complete |
 | FX-02 | Phase 3 | Pending |
 | FX-03 | Phase 3 | Pending |
 | FX-04 | Phase 3 | Pending |
 | FX-05 | Phase 3 | Pending |
 | HUD-01 | Phase 3 | Pending |
-| HUD-02 | Phase 3 | Pending |
-| HUD-03 | Phase 3 | Pending |
-| HUD-04 | Phase 3 | Pending |
+| HUD-02 | Phase 3 | Complete |
+| HUD-03 | Phase 3 | Complete |
+| HUD-04 | Phase 3 | Complete |
 | HUD-05 | Phase 3 | Pending |
 | HUD-06 | Phase 3 | Pending |
-| HUD-07 | Phase 3 | Pending |
-| HUD-08 | Phase 3 | Pending |
+| HUD-07 | Phase 3 | Complete |
+| HUD-08 | Phase 3 | Complete |
 | AI-01 | Phase 4 | Pending |
 | AI-02 | Phase 4 | Pending |
 | AI-03 | Phase 4 | Pending |

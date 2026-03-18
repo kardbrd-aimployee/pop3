@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 02-09-PLAN.md (gathering navigation + knockback wiring -- Phase 2 fully complete)
-last_updated: "2026-03-18T04:41:35.463Z"
-last_activity: 2026-03-18 -- Completed 02-09 Gathering navigation + knockback wiring
+status: in_progress
+stopped_at: Completed 03-01-PLAN.md (string table + font data parsers)
+last_updated: "2026-03-18T15:25:00Z"
+last_activity: 2026-03-18 -- Completed 03-01 String table and font data parsers
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 100
+  total_plans: 18
+  completed_plans: 17
+  percent: 94
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** Faithful reproduction of the original Populous: The Beginning gameplay on modern platforms
-**Current focus:** Phase 2: Economy and Combat
+**Current focus:** Phase 3: HUD and Effects
 
 ## Current Position
 
-Phase: 2 of 4 (Economy and Combat) -- COMPLETE
-Plan: 10 of 10 in current phase -- ALL DONE
-Status: Phase 2 fully complete (all 10 plans), ready for Phase 3
-Last activity: 2026-03-18 -- Completed 02-09 Gathering navigation + knockback wiring
+Phase: 3 of 5 (HUD and Effects) -- IN PROGRESS
+Plan: 4 of 5 in current phase (03-01 done, 03-02 done, 03-03 done)
+Status: Executing Phase 3 plans
+Last activity: 2026-03-18 -- Completed 03-01 String table and font data parsers
 
-Progress: [██████████] 100%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -55,6 +55,9 @@ Progress: [██████████] 100%
 | Phase 02 P07 | 5min | 2 tasks | 8 files |
 | Phase 02 P10 | 5min | 2 tasks | 4 files |
 | Phase 02 P09 | 7min | 2 tasks | 5 files |
+| Phase 03 P02 | 3min | 2 tasks | 4 files |
+| Phase 03 P03 | 4min | 2 tasks | 2 files |
+| Phase 03 P01 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -100,6 +103,14 @@ Recent decisions affecting current work:
 - [02-09]: gather_target field on Unit instead of reusing movement.target_pos (avoids pathfinding conflicts)
 - [02-09]: state_timer as flag (0=need target, 1=navigating) for Gathering state machine
 - [02-09]: AOE radius to cell radius via (radius / 128).max(1) for CellGrid knockback queries
+- [03-01]: Integer scaling of 8x8 base font rather than loading original .fon files (sufficient quality, simpler)
+- [03-01]: draw_text_sized delegates to atlas-based draw_text with computed pixel size (avoids duplicate render path)
+- [03-02]: LIFO free list with Vec<u16> for EffectPool (same pattern as ObjectPool, cache-friendly)
+- [03-02]: Effect state=0xFF as inactive sentinel matching original binary pattern
+- [03-02]: Two-phase entity position sync via EntityPosition struct (matches DeferredAction pattern)
+- [03-03]: Mana displayed in K units (player_mana / 1000) for readability
+- [03-03]: spell_cooldowns as Vec<SpellCooldown> populated empty now, Phase 4 fills from SpellSystem
+- [03-03]: Population display placed below mana bar in sidebar layout
 
 ### Pending Todos
 
@@ -113,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T04:35:00Z
-Stopped at: Completed 02-09-PLAN.md (gathering navigation + knockback wiring -- Phase 2 fully complete)
+Last session: 2026-03-18T15:24:00Z
+Stopped at: Completed 03-03-PLAN.md (HudState mana, population, spell cooldowns)
 Resume file: None

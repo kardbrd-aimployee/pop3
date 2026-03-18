@@ -73,9 +73,9 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- String table and font data parsers (HUD-07, HUD-08)
-- [ ] 03-02-PLAN.md -- Effect pool core with types and entity attachment (FX-01, FX-05)
-- [ ] 03-03-PLAN.md -- HudState extensions: mana bar, population, spell cooldowns (HUD-02, HUD-03, HUD-04)
+- [x] 03-01-PLAN.md -- String table and font data parsers (HUD-07, HUD-08)
+- [x] 03-02-PLAN.md -- Effect pool core with types and entity attachment (FX-01, FX-05)
+- [x] 03-03-PLAN.md -- HudState extensions: mana bar, population, spell cooldowns (HUD-02, HUD-03, HUD-04)
 - [ ] 03-04-PLAN.md -- Minimap viewport + click-to-move, selection info panel (HUD-01, HUD-05)
 - [ ] 03-05-PLAN.md -- Health bars and effect spawn wiring (HUD-06, FX-02, FX-03, FX-04)
 
@@ -122,6 +122,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
 | 2. Economy and Combat | 10/10 | Complete | 2026-03-18 |
-| 3. HUD and Effects | 0/5 | Not started | - |
+| 3. HUD and Effects | 3/5 | In progress | - |
 | 4. Spell System | 0/3 | Not started | - |
 | 5. AI and Campaign | 0/3 | Not started | - |
