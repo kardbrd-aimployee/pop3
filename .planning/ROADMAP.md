@@ -51,8 +51,8 @@ Plans:
 - [x] 02-01-PLAN.md -- Building data foundation: BuildingData, state machine, occupants, pool integration
 - [ ] 02-02-PLAN.md -- Terrain modification with height change and cascade pipeline
 - [x] 02-03-PLAN.md -- Economy module: mana generation, population capacity, wood costs
-- [ ] 02-04-PLAN.md -- Person state extensions: 8 new states (building, training, wood, combat)
-- [ ] 02-05-PLAN.md -- Building behaviors: spawning, training, placement, damage, combat
+- [x] 02-04-PLAN.md -- Person state extensions: 8 new states (building, training, wood, combat)
+- [x] 02-05-PLAN.md -- Building behaviors: spawning, training, placement, damage, combat
 - [x] 02-06-PLAN.md -- Combat subsystem: projectiles, knockback, damage, death, drum towers
 - [ ] 02-07-PLAN.md -- Integration: wire subsystems into game loop, wood gathering, FrameState
 

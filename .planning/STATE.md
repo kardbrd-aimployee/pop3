@@ -76,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Normal calculation via cross product of tangent vectors T_z x T_x for correct up-facing normals on flat terrain
 - [Phase 02]: Steep slope threshold at 512 height units between adjacent cells
 - [Phase 02]: CascadeRegion handles toroidal wrapping internally with for_each_cell and contains_tile
+- [02-05]: Reuse construction_progress as spawn timer in Active state (matches original binary pattern)
+- [02-05]: Building combat base damage = 100 per fighter slot per tick
+- [02-05]: Placement checks water (0x04), steep (0x02), occupied in priority order
 - [02-06]: ShotData fields match original binary projectile tracking (type, target, damage, AOE, knockback, lifetime, speed)
 - [02-06]: fight_damage_for_subtype constants cross-verified against person_type_defaults table
 - [02-06]: Drum tower range 768 world units (about 6 cells at 128 units/cell)
