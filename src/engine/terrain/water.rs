@@ -3,13 +3,14 @@
 
 use super::cascade::CascadeRegion;
 
+const GRID_MASK: usize = 127;
+
 /// Walkability flag indicating a cell is water.
 pub const WATER_WALKABILITY_FLAG: u8 = 0x04;
 
 /// Check if a cell is water based on height vs water level.
 pub fn is_water_cell(height: u16, water_level: u16) -> bool {
-    // Stub: always returns false (RED phase)
-    false
+    height < water_level
 }
 
 /// Update water flags for cells in the given region.
@@ -21,6 +22,20 @@ pub fn update_water_cells(
     region: &CascadeRegion,
     water_level: u16,
 ) -> Vec<(usize, usize)> {
-    // Stub: returns empty (RED phase)
-    Vec::new()
+    let mut changed = Vec::new();
+
+    region.for_each_cell(|x, y| {
+        let is_water = is_water_cell(heights[y][x], water_level);
+        let was_water = water_flags[y][x] & WATER_WALKABILITY_FLAG != 0;
+
+        if is_water && !was_water {
+            water_flags[y][x] |= WATER_WALKABILITY_FLAG;
+            changed.push((x, y));
+        } else if !is_water && was_water {
+            water_flags[y][x] &= !WATER_WALKABILITY_FLAG;
+            changed.push((x, y));
+        }
+    });
+
+    changed
 }
