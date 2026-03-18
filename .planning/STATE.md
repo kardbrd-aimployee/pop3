@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-06-PLAN.md (combat subsystem)
-last_updated: "2026-03-18T03:37:45Z"
-last_activity: 2026-03-18 -- Completed 02-06 Combat subsystem
+stopped_at: Completed 02-07-PLAN.md (integration wiring)
+last_updated: "2026-03-18T03:53:55Z"
+last_activity: 2026-03-18 -- Completed 02-07 Integration wiring (Phase 2 complete)
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 6
-  percent: 60
+  completed_plans: 7
+  percent: 70
 ---
 
 # Project State
@@ -25,33 +25,34 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 2 of 4 (Economy and Combat)
-Plan: 7 of 7 in current phase (wave 2)
-Status: In progress
-Last activity: 2026-03-18 -- Completed 02-06 Combat subsystem
+Phase: 2 of 4 (Economy and Combat) -- COMPLETE
+Plan: 7 of 7 in current phase (wave 3) -- ALL DONE
+Status: Phase 2 complete, ready for Phase 3
+Last activity: 2026-03-18 -- Completed 02-07 Integration wiring
 
-Progress: [######....] 60%
+Progress: [#######...] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: ~4 min
-- Total execution time: ~22 min
+- Total execution time: ~27 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-core-object-system | 3/3 | ~7 min | ~2.3 min |
-| 02-economy-and-combat | 6/7 | ~27 min | ~4.5 min |
+| 02-economy-and-combat | 7/7 | ~32 min | ~4.6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (3min), 02-03 (4min), 02-01 (4min), 02-05 (5min), 02-06 (7min)
+- Last 5 plans: 02-03 (4min), 02-01 (4min), 02-05 (5min), 02-06 (7min), 02-07 (5min)
 - Trend: Fast
 
 *Updated after each plan completion*
 | Phase 02 P06 | 7min | 2 tasks | 8 files |
+| Phase 02 P07 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,9 @@ Recent decisions affecting current work:
 - [02-04]: DeferredAction pattern avoids borrow checker conflicts between Unit tick and building pool data
 - [02-04]: tick_state returns (TickResult, DeferredAction) tuple; existing states return DeferredAction::None
 - [02-04]: Guard behavior uses guard_position field on Unit, managed by coordinator (no Guard enum variant)
+- [02-07]: ManaTickBridge pattern: separate struct holding pool ref + tribe data ref to bridge borrow-checker constraint
+- [02-07]: Mana tick called post-simulation_tick outside TickSubsystems due to borrow conflict with coordinator in objects slot
+- [02-07]: Ghost preview rendering placeholder with alpha/tint logic; full GPU uniform integration deferred to render pipeline refactor
 
 ### Pending Todos
 
@@ -98,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T03:40:00Z
-Stopped at: Completed 02-04-PLAN.md (person state extensions)
+Last session: 2026-03-18T03:53:55Z
+Stopped at: Completed 02-07-PLAN.md (integration wiring -- Phase 2 complete)
 Resume file: None

@@ -19,7 +19,7 @@ Requirements for playable single-player campaign (25 levels).
 
 - [x] **BLDG-01**: Building state machine (init, construction, active, destroying, sinking, teardown)
 - [x] **BLDG-02**: Building construction with progress animation and wood consumption
-- [ ] **BLDG-03**: Building placement UI with ghost preview and terrain validation
+- [x] **BLDG-03**: Building placement UI with ghost preview and terrain validation
 - [x] **BLDG-04**: Occupant system (6 slots per building, enter/exit, capacity checks)
 - [ ] **BLDG-05**: Population growth from huts (spawning braves at HUT_SPROG_TIME rates)
 - [ ] **BLDG-06**: Training conversion (brave to warrior/spy/preacher/super warrior) with wood/mana costs
@@ -28,7 +28,7 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Economy
 
-- [ ] **ECON-01**: Wood gathering (brave walks to tree, chops, carries wood back)
+- [x] **ECON-01**: Wood gathering (brave walks to tree, chops, carries wood back)
 - [x] **ECON-02**: Wood storage in buildings with consumption tracking
 - [x] **ECON-03**: Mana generation per unit type and activity (housed, training, idle, working)
 - [x] **ECON-04**: Mana pool per tribe with MAX_MANA cap
@@ -188,13 +188,13 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | OBJ-05 | Phase 1 | Pending |
 | BLDG-01 | Phase 2 | Complete (02-01) |
 | BLDG-02 | Phase 2 | Complete (02-01) |
-| BLDG-03 | Phase 2 | Pending |
+| BLDG-03 | Phase 2 | Complete |
 | BLDG-04 | Phase 2 | Complete (02-01) |
 | BLDG-05 | Phase 2 | Pending |
 | BLDG-06 | Phase 2 | Pending |
 | BLDG-07 | Phase 2 | Pending |
 | BLDG-08 | Phase 2 | Pending |
-| ECON-01 | Phase 2 | Pending |
+| ECON-01 | Phase 2 | Complete |
 | ECON-02 | Phase 2 | Complete |
 | ECON-03 | Phase 2 | Complete |
 | ECON-04 | Phase 2 | Complete |

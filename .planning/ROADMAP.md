@@ -54,7 +54,7 @@ Plans:
 - [x] 02-04-PLAN.md -- Person state extensions: 8 new states (building, training, wood, combat)
 - [x] 02-05-PLAN.md -- Building behaviors: spawning, training, placement, damage, combat
 - [x] 02-06-PLAN.md -- Combat subsystem: projectiles, knockback, damage, death, drum towers
-- [ ] 02-07-PLAN.md -- Integration: wire subsystems into game loop, wood gathering, FrameState
+- [x] 02-07-PLAN.md -- Integration: wire subsystems into game loop, wood gathering, FrameState
 
 ### Phase 3: Spells, Effects, and Interface
 **Goal**: The shaman can cast 12 spells with mana costs and cooldowns, spell impacts produce visual effects, and the player has a complete HUD showing all game state
