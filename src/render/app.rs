@@ -643,6 +643,12 @@ impl GameEngine {
                 true
             }
             GameCommand::Quit => true,
+            // Building commands: handled by game logic, not renderer
+            GameCommand::PlaceBuilding { .. }
+            | GameCommand::CancelPlacement
+            | GameCommand::EnterBuildMode { .. }
+            | GameCommand::EnterBuilding { .. }
+            | GameCommand::TrainUnit { .. } => false,
         }
     }
 

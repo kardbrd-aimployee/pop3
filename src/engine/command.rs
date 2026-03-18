@@ -58,6 +58,14 @@ pub enum GameCommand {
     ToggleCompass,
     ToggleWalkability,
 
+    // Building placement
+    PlaceBuilding { building_type: u8, cell_x: i32, cell_y: i32 },
+    CancelPlacement,
+    EnterBuildMode { building_type: u8 },
+    // Building interaction
+    EnterBuilding { unit_id: usize, building_handle: u16 },
+    TrainUnit { building_handle: u16 },
+
     // Lifecycle
     Quit,
 }
@@ -258,5 +266,23 @@ mod tests {
     fn test_translate_unmapped_returns_none() {
         assert!(translate_key(KeyCode::Enter).is_none());
         assert!(translate_key(KeyCode::Tab).is_none());
+    }
+
+    #[test]
+    fn test_building_commands_exist() {
+        let place = GameCommand::PlaceBuilding { building_type: 1, cell_x: 10, cell_y: 20 };
+        assert!(matches!(place, GameCommand::PlaceBuilding { .. }));
+
+        let cancel = GameCommand::CancelPlacement;
+        assert!(matches!(cancel, GameCommand::CancelPlacement));
+
+        let build_mode = GameCommand::EnterBuildMode { building_type: 5 };
+        assert!(matches!(build_mode, GameCommand::EnterBuildMode { .. }));
+
+        let enter = GameCommand::EnterBuilding { unit_id: 1, building_handle: 42 };
+        assert!(matches!(enter, GameCommand::EnterBuilding { .. }));
+
+        let train = GameCommand::TrainUnit { building_handle: 10 };
+        assert!(matches!(train, GameCommand::TrainUnit { .. }));
     }
 }
