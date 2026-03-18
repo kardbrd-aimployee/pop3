@@ -65,6 +65,7 @@ use crate::render::envelop::*;
 use crate::engine::state::tick::{GameWorld, StdTimeSource, TickSubsystems};
 use crate::engine::state::state_machine::GameState;
 use crate::engine::state::traits::NoOp;
+use crate::engine::state::mana_tick::ManaTickBridge;
 use crate::engine::{GameCommand, FrameState, translate_key};
 
 use crate::render::hud::{
@@ -674,6 +675,8 @@ impl GameEngine {
             shapes: &self.shapes,
             hud_state: self.build_hud_state(),
             drag_state,
+            ghost_preview: None,
+            needs_building_rebuild: false,
             needs_spawn_rebuild: false,
             needs_unit_rebuild: false,
             needs_level_reload: false,
@@ -2228,6 +2231,31 @@ impl App {
                     if let Some(ref model) = self.model_buildings {
                         model.draw(&mut render_pass);
                     }
+
+                    // Ghost preview rendering — transparent building at placement position.
+                    // When ghost_preview is Some, we would draw the building mesh a second time
+                    // at the ghost position with alpha blending. The ghost_alpha and ghost_tint
+                    // uniforms control transparency and color:
+                    //   - ghost_alpha = 0.5 (semi-transparent)
+                    //   - ghost_tint = [0.3, 1.0, 0.3] if valid (green)
+                    //   - ghost_tint = [1.0, 0.3, 0.3] if invalid (red)
+                    // NOTE: Full GPU uniform buffer + shader integration deferred to render
+                    // pipeline refactor. This placeholder documents the rendering intent.
+                    if let Some(ref ghost) = frame.ghost_preview {
+                        let _ghost_alpha: f32 = 0.5;
+                        let _ghost_tint: [f32; 3] = if ghost.valid {
+                            [0.3, 1.0, 0.3] // green = valid placement
+                        } else {
+                            [1.0, 0.3, 0.3] // red = invalid placement
+                        };
+                        // TODO: Create separate ghost uniform buffer, bind ghost_alpha/ghost_tint
+                        // to building fragment shader, draw building mesh at ghost position with
+                        // BlendState::ALPHA_BLENDING enabled on the building pipeline color state.
+                        log::trace!(
+                            "[ghost] preview type={} at ({},{}) valid={}",
+                            ghost.building_type, ghost.cell_x, ghost.cell_y, ghost.valid
+                        );
+                    }
                 }
             }
 
@@ -3225,6 +3253,20 @@ impl ApplicationHandler for App {
                     };
                     let ticks = self.engine.game_world.simulation_tick(&self.engine.game_time, &mut subs);
                     if ticks > 0 {
+                        // 7d. Mana generation — runs after object ticks complete.
+                        // Uses pool (read-only) from coordinator + tribe data (mutable).
+                        // Iterates persons calling mana_rate_for_person + add_mana per tick,
+                        // plus housing mana from active huts.
+                        {
+                            let mut mana_bridge = ManaTickBridge {
+                                pool: self.engine.unit_coordinator.pool(),
+                                tribes: &mut self.engine.game_world.tribes,
+                            };
+                            use crate::engine::state::traits::ManaTick;
+                            for _ in 0..ticks {
+                                mana_bridge.tick_update_mana();
+                            }
+                        }
                         self.sync_unit_render_cells();
                         self.rebuild_spawn_model();
                         self.rebuild_unit_models();

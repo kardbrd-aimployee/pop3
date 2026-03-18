@@ -7,6 +7,16 @@ use crate::render::sprites::LevelObject;
 use crate::engine::units::{UnitCoordinator, DragState};
 use crate::render::camera::{Camera, Screen};
 
+/// Ghost preview state for building placement UI.
+/// Used by the renderer to draw a transparent building mesh at the mouse position.
+#[derive(Debug)]
+pub struct GhostPreviewState {
+    pub building_type: u8,
+    pub cell_x: i32,
+    pub cell_y: i32,
+    pub valid: bool,
+}
+
 /// Output boundary — everything the renderer needs to produce one frame.
 /// Produced by GameEngine, consumed by Renderer.
 pub struct FrameState<'a> {
@@ -31,6 +41,10 @@ pub struct FrameState<'a> {
     pub building_objects: &'a [Option<Object3D>],
     pub scenery_objects: &'a [Option<Object3D>],
     pub shapes: &'a [Shape],
+
+    // Buildings (new)
+    pub ghost_preview: Option<GhostPreviewState>,
+    pub needs_building_rebuild: bool,
 
     // HUD
     pub hud_state: HudState,

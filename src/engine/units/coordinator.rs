@@ -708,10 +708,15 @@ impl UnitCoordinator {
 }
 
 /// ObjectTick implementation — plugs UnitCoordinator into GameWorld's tick loop.
-/// Original: Tick_UpdateObjects (0x004a7550) calls Object_ProcessPersonState for each person.
+/// Original: Tick_UpdateObjects (0x004a7550) processes persons, buildings, projectiles.
 impl ObjectTick for UnitCoordinator {
     fn tick_update_objects(&mut self) {
+        // 5a. Person state ticks, movement, combat, deferred actions, death handling
         self.tick();
+        // 5b. Building state ticks (construction, spawn timers, damage)
+        self.tick_buildings();
+        // 5c. Projectile ticks (movement, impact detection, expiry)
+        self.tick_projectiles();
     }
 }
 

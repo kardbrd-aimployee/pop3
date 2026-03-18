@@ -197,7 +197,7 @@ impl GameWorld {
         // 4. Tick_UpdateTerrain (0x0048bda0)
         subs.terrain.tick_update_terrain();
 
-        // 5. Tick_UpdateObjects (0x004a7550)
+        // 5. Tick_UpdateObjects (0x004a7550) -- persons, buildings, projectiles via UnitCoordinator
         subs.objects.tick_update_objects();
 
         // 6. Tick_UpdateWater (0x0048bf10)
@@ -226,10 +226,11 @@ impl GameWorld {
                 }
             }
 
-            // 7c. Tick_UpdatePopulation (0x004198f0)
+            // 7c. Tick_UpdatePopulation (0x004198f0) -- building spawn processing, housing capacity
             subs.population.tick_update_population();
 
-            // 7d. Tick_UpdateMana (0x004aeac0) — the main object update dispatcher
+            // 7d. Tick_UpdateMana (0x004aeac0) -- mana generation from persons + housing
+            //     via mana_rate_for_person/add_mana per person per tick
             subs.mana.tick_update_mana();
         }
 
