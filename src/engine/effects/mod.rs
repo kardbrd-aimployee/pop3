@@ -178,6 +178,13 @@ impl EffectPool {
     }
 }
 
+/// Deferred effect action — collected during tick, processed after to avoid borrow conflicts.
+#[derive(Debug, Clone)]
+pub enum EffectAction {
+    /// Spawn an effect at a world position.
+    SpawnAt { effect_type: u8, x: i32, y: i32, z: i32, owner: u8 },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

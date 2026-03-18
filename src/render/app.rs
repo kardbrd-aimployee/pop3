@@ -66,12 +66,14 @@ use crate::engine::state::tick::{GameWorld, StdTimeSource, TickSubsystems};
 use crate::engine::state::state_machine::GameState;
 use crate::engine::state::traits::NoOp;
 use crate::engine::state::mana_tick::ManaTickBridge;
+use crate::engine::effects::{EffectPool, EffectAction};
+use crate::engine::effects::spawn::spawn_at as effect_spawn_at;
 use crate::engine::{GameCommand, FrameState, translate_key};
 
 use crate::render::hud::{
     self, HudTab, HudState, HudRenderer,
     MinimapData, MinimapDot, MinimapViewport, PanelEntry, SelectedEntityInfo,
-    TribePopulation, SpellCooldown, HealthBarEntry, HealthBarType,
+    TribePopulation, HealthBarEntry, HealthBarType,
     HUD_TRIBE_COLORS, compute_mana_fraction,
 };
 
@@ -174,6 +176,7 @@ pub struct GameEngine {
     unit_coordinator: UnitCoordinator,
     game_world: GameWorld,
     game_time: StdTimeSource,
+    effect_pool: EffectPool,
 
     // Level data
     level_objects: Vec<LevelObject>,
@@ -919,6 +922,7 @@ impl App {
                     w
                 },
                 game_time: StdTimeSource::new(),
+                effect_pool: EffectPool::new(),
                 level_objects: Vec::new(),
                 building_objects: Vec::new(),
                 scenery_objects: Vec::new(),
@@ -3575,6 +3579,20 @@ impl ApplicationHandler for App {
                             for _ in 0..ticks {
                                 mana_bridge.tick_update_mana();
                             }
+                        }
+                        // 7e. Process effect actions from combat/death/building events.
+                        // Collect then process to avoid borrow conflicts.
+                        let effect_actions = self.engine.unit_coordinator.drain_effect_actions();
+                        for action in effect_actions {
+                            match action {
+                                EffectAction::SpawnAt { effect_type, x, y, z, owner } => {
+                                    effect_spawn_at(&mut self.engine.effect_pool, effect_type, x, y, z, owner);
+                                }
+                            }
+                        }
+                        // 7f. Update all active effects (velocity, gravity, frame, lifetime).
+                        for _ in 0..ticks {
+                            self.engine.effect_pool.update_all();
                         }
                         self.sync_unit_render_cells();
                         self.rebuild_spawn_model();

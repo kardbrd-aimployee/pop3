@@ -17,8 +17,11 @@ use crate::engine::buildings::{
     self,
     tick::BuildingTickActions,
     SpawnAction, ConvertAction, BuildingCombatAction,
+    BuildingState,
 };
 use crate::engine::combat;
+use crate::engine::effects::EffectAction;
+use crate::engine::effects::types::EffectType;
 use super::unit::Unit;
 use super::person_state::{
     PersonState, person_type_defaults, enter_state, tick_state, TickResult, DeferredAction,
@@ -54,6 +57,9 @@ pub struct UnitCoordinator {
 
     // State machine RNG (same LCG as original binary)
     pub rng: GameRng,
+
+    // Deferred effect actions collected during tick, drained by app loop
+    pending_effect_actions: Vec<EffectAction>,
 }
 
 impl UnitCoordinator {
@@ -72,6 +78,7 @@ impl UnitCoordinator {
             landscape_size: 128.0,
             anim_frame_counts: Vec::new(),
             rng: GameRng::new(0x1234),
+            pending_effect_actions: Vec::new(),
         }
     }
 
@@ -337,6 +344,15 @@ impl UnitCoordinator {
             let last_attacker = None; // attacker tracking is coordinator-level
             let pos = unit.movement.position;
 
+            // Spawn death puff effect at unit's position
+            self.pending_effect_actions.push(EffectAction::SpawnAt {
+                effect_type: EffectType::DeathPuff as u8,
+                x: pos.x as i32,
+                y: pos.z as i32, // z in WorldCoord maps to y in effect space
+                z: 0,
+                owner: tribe,
+            });
+
             // Get death actions (kill tracking)
             let death_actions = combat::process_death(0, tribe, last_attacker);
 
@@ -539,8 +555,25 @@ impl UnitCoordinator {
         // Apply damage
         for (target_idx, damage, _attacker_tribe) in damage_events {
             let target = &mut self.units[target_idx];
+            let target_pos = target.movement.position;
+            // Spawn hit spark effect at target position
+            self.pending_effect_actions.push(EffectAction::SpawnAt {
+                effect_type: EffectType::HitSpark as u8,
+                x: target_pos.x as i32,
+                y: target_pos.z as i32,
+                z: 0,
+                owner: target.tribe_index,
+            });
             apply_damage(target, damage);
             if target.health == 0 {
+                // Spawn blood spray on fatal hit
+                self.pending_effect_actions.push(EffectAction::SpawnAt {
+                    effect_type: EffectType::BloodSpray as u8,
+                    x: target_pos.x as i32,
+                    y: target_pos.z as i32,
+                    z: 0,
+                    owner: target.tribe_index,
+                });
                 enter_state(target, PersonState::Dead, &mut self.rng);
             }
         }
@@ -564,12 +597,38 @@ impl UnitCoordinator {
             .map(|(h, _, _)| h)
             .collect();
 
-        // Phase 1: tick each building, collect actions
+        // Phase 1: tick each building, collect actions + effect spawns for state transitions
         let mut all_actions: Vec<(ObjectHandle, BuildingTickActions)> = Vec::new();
         for handle in building_handles {
             if let Some(obj) = self.pool.get_mut(handle) {
                 if let GameObjectData::Building(ref mut bd) = obj.data {
+                    let state_before = bd.state;
                     let actions = buildings::tick::tick_building(bd, &mut obj.header, handle);
+                    let state_after = bd.state;
+                    let pos = obj.header.position;
+                    let tribe = obj.header.tribe;
+                    // Spawn effects on state transitions
+                    if state_before == BuildingState::Init && state_after != BuildingState::Init {
+                        // Construction completing -> construction dust
+                        self.pending_effect_actions.push(EffectAction::SpawnAt {
+                            effect_type: EffectType::ConstructionDust as u8,
+                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                        });
+                    }
+                    if state_before == BuildingState::Active && state_after == BuildingState::Destroying {
+                        // Building destroyed -> destruction collapse
+                        self.pending_effect_actions.push(EffectAction::SpawnAt {
+                            effect_type: EffectType::DestructionCollapse as u8,
+                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                        });
+                    }
+                    if state_after == BuildingState::Destroying && bd.damage_accumulated > 0 {
+                        // Building on fire while destroying
+                        self.pending_effect_actions.push(EffectAction::SpawnAt {
+                            effect_type: EffectType::BuildingFire as u8,
+                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                        });
+                    }
                     all_actions.push((handle, actions));
                 }
             }
@@ -600,8 +659,12 @@ impl UnitCoordinator {
             for combat_action in &actions.combat {
                 if let BuildingCombatAction::AttackTarget { target, damage, .. } = combat_action {
                     if let Some(target_obj) = self.pool.get_mut(*target) {
-                        let dmg = (*damage).min(target_obj.header.health);
-                        target_obj.header.health -= dmg;
+                        if let GameObjectData::Building(ref mut bd) = target_obj.data {
+                            buildings::apply_building_damage(bd, &mut target_obj.header, *damage);
+                        } else {
+                            let dmg = (*damage).min(target_obj.header.health);
+                            target_obj.header.health -= dmg;
+                        }
                     }
                 }
             }
@@ -698,7 +761,9 @@ impl UnitCoordinator {
                     let mut current = self.cell_grid.cell_head(cell_idx);
                     while let Some(handle) = current {
                         if let Some(obj) = self.pool.get(handle) {
-                            if obj.header.model_type == ModelType::Person {
+                            if obj.header.model_type == ModelType::Person
+                                || obj.header.model_type == ModelType::Building
+                            {
                                 affected.push(handle);
                             }
                             current = obj.header.next_in_cell;
@@ -709,11 +774,11 @@ impl UnitCoordinator {
                 }
             }
 
-            // Apply knockback and AOE damage to each affected person
-            for person_handle in affected {
-                if let Some(obj) = self.pool.get_mut(person_handle) {
-                    // Apply knockback
-                    if *knockback_force > 0 {
+            // Apply knockback and AOE damage to each affected object
+            for handle in affected {
+                if let Some(obj) = self.pool.get_mut(handle) {
+                    // Apply knockback (persons only)
+                    if *knockback_force > 0 && obj.header.model_type == ModelType::Person {
                         combat::apply_knockback(
                             &obj.header.position,
                             &mut obj.header.velocity,
@@ -723,8 +788,12 @@ impl UnitCoordinator {
                     }
                     // Apply AOE damage
                     if *damage > 0 {
-                        let dmg = (*damage).min(obj.header.health);
-                        obj.header.health -= dmg;
+                        if let GameObjectData::Building(ref mut bd) = obj.data {
+                            buildings::apply_building_damage(bd, &mut obj.header, *damage);
+                        } else {
+                            let dmg = (*damage).min(obj.header.health);
+                            obj.header.health -= dmg;
+                        }
                     }
                 }
             }
@@ -828,6 +897,11 @@ impl UnitCoordinator {
     }
 
     /// Access the object pool.
+    /// Drain pending effect actions collected during the last tick.
+    pub fn drain_effect_actions(&mut self) -> Vec<EffectAction> {
+        std::mem::take(&mut self.pending_effect_actions)
+    }
+
     pub fn pool(&self) -> &ObjectPool {
         &self.pool
     }

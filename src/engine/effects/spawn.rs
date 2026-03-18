@@ -61,6 +61,28 @@ pub fn update_attached_positions(pool: &mut EffectPool, entities: &[EntityPositi
     }
 }
 
+/// Spawn a visual effect for a spell impact at the given world position.
+/// Called by the spell system (Phase 4) when a spell hits its target.
+/// Maps each spell type to its corresponding visual effect type.
+pub fn spawn_on_spell_impact(pool: &mut EffectPool, spell_type: u8, x: i32, y: i32, z: i32, caster_tribe: u8) {
+    let effect_type = match spell_type {
+        0x01 => 0x01, // Burn -> BurnFlame
+        0x02 => 0x02, // Blast -> BlastProjectile
+        0x03 => 0x03, // Lightning -> LightningBolt
+        0x04 => 0x04, // Tornado -> TornadoVortex
+        0x05 => 0x05, // Swamp -> SwampBubble
+        0x06 => 0x06, // Flatten -> FlattenWave
+        0x07 => 0x07, // Earthquake -> EarthquakeCrack
+        0x08 => 0x08, // Erosion -> ErosionDrip
+        0x09 => 0x09, // Volcano -> VolcanoEruption
+        0x0A => 0x0A, // Firestorm -> FirestormRain
+        0x0B => 0x0B, // AngelOfDeath -> AngelSwirl
+        0x0C => 0x0C, // Shield -> ShieldBubble
+        _ => return,  // Unknown spell, no effect
+    };
+    spawn_at(pool, effect_type, x, y, z, caster_tribe);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +164,44 @@ mod tests {
         let effect = pool.get(id).unwrap();
         assert_eq!(effect.target, None);
         assert_eq!(effect.flags & EFFECT_ATTACHED, 0);
+    }
+
+    // --- spawn_on_spell_impact tests ---
+
+    #[test]
+    fn spell_burn_spawns_effect() {
+        let mut pool = EffectPool::new();
+        spawn_on_spell_impact(&mut pool, 0x01, 100, 200, 50, 0);
+        assert_eq!(pool.active_count(), 1);
+    }
+
+    #[test]
+    fn spell_blast_spawns_effect() {
+        let mut pool = EffectPool::new();
+        spawn_on_spell_impact(&mut pool, 0x02, 100, 200, 50, 0);
+        assert_eq!(pool.active_count(), 1);
+    }
+
+    #[test]
+    fn spell_lightning_spawns_effect() {
+        let mut pool = EffectPool::new();
+        spawn_on_spell_impact(&mut pool, 0x03, 100, 200, 50, 0);
+        assert_eq!(pool.active_count(), 1);
+    }
+
+    #[test]
+    fn unknown_spell_spawns_nothing() {
+        let mut pool = EffectPool::new();
+        spawn_on_spell_impact(&mut pool, 0xFF, 100, 200, 50, 0);
+        assert_eq!(pool.active_count(), 0);
+    }
+
+    #[test]
+    fn all_12_spells_have_effect_mapping() {
+        for spell_type in 0x01..=0x0C {
+            let mut pool = EffectPool::new();
+            spawn_on_spell_impact(&mut pool, spell_type, 0, 0, 0, 0);
+            assert_eq!(pool.active_count(), 1, "Spell type 0x{:02X} should spawn an effect", spell_type);
+        }
     }
 }
