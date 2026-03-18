@@ -1,6 +1,7 @@
 use super::handle::ObjectHandle;
 use super::types::*;
 use crate::data::units::ModelType;
+use crate::engine::buildings::BuildingData;
 use crate::engine::movement::WorldCoord;
 
 pub const MAX_OBJECTS: usize = 1101;
@@ -70,7 +71,7 @@ impl ObjectPool {
 
         let data = match model_type {
             ModelType::Person => GameObjectData::Person(PersonData::default()),
-            ModelType::Building => GameObjectData::Building(()),
+            ModelType::Building => GameObjectData::Building(BuildingData::default()),
             ModelType::Creature => GameObjectData::Creature(()),
             ModelType::Vehicle => GameObjectData::Vehicle(()),
             ModelType::Scenery => GameObjectData::Scenery(()),
@@ -175,6 +176,32 @@ impl ObjectPool {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Person(ref mut pd) = obj.data {
                     return Some((i as ObjectHandle, &mut obj.header, pd));
+                }
+            }
+            None
+        })
+    }
+
+    /// Iterate over all Building objects, yielding (handle, header, building_data).
+    pub fn buildings(&self) -> impl Iterator<Item = (ObjectHandle, &ObjectHeader, &BuildingData)> {
+        self.slots.iter().enumerate().filter_map(|(i, slot)| {
+            if let PoolSlot::Occupied(obj) = slot {
+                if let GameObjectData::Building(ref bd) = obj.data {
+                    return Some((i as ObjectHandle, &obj.header, bd));
+                }
+            }
+            None
+        })
+    }
+
+    /// Iterate over all Building objects with mutable access.
+    pub fn buildings_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (ObjectHandle, &mut ObjectHeader, &mut BuildingData)> {
+        self.slots.iter_mut().enumerate().filter_map(|(i, slot)| {
+            if let PoolSlot::Occupied(obj) = slot {
+                if let GameObjectData::Building(ref mut bd) = obj.data {
+                    return Some((i as ObjectHandle, &mut obj.header, bd));
                 }
             }
             None

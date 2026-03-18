@@ -2,6 +2,7 @@ use crate::data::units::ModelType;
 use crate::engine::movement::{PersonMovement, WorldCoord};
 use crate::engine::units::person_state::PersonState;
 use crate::engine::units::animation::AnimationState;
+use crate::engine::buildings::BuildingData;
 use super::handle::ObjectHandle;
 
 /// Common header fields for all game objects.
@@ -27,10 +28,9 @@ pub struct ObjectHeader {
 }
 
 /// Type-specific data for each object kind.
-/// Only Person has a real implementation in Phase 1; others are stubs.
 pub enum GameObjectData {
     Person(PersonData),
-    Building(()),
+    Building(BuildingData),
     Creature(()),
     Vehicle(()),
     Scenery(()),
@@ -161,7 +161,7 @@ mod tests {
         // Ensure all 11 variants can be constructed
         let variants: Vec<GameObjectData> = vec![
             GameObjectData::Person(PersonData::default()),
-            GameObjectData::Building(()),
+            GameObjectData::Building(BuildingData::default()),
             GameObjectData::Creature(()),
             GameObjectData::Vehicle(()),
             GameObjectData::Scenery(()),
