@@ -93,7 +93,7 @@ Requirements for playable single-player campaign (25 levels).
 - [x] **HUD-03**: Mana bar display
 - [x] **HUD-04**: Population display
 - [x] **HUD-05**: Unit/building info panel on selection
-- [ ] **HUD-06**: Health bars above units and buildings
+- [x] **HUD-06**: Health bars above units and buildings
 - [x] **HUD-07**: Font loading and text rendering (12/16/24pt)
 - [x] **HUD-08**: String table loading (English, 0x526 strings)
 
@@ -122,9 +122,9 @@ Requirements for playable single-player campaign (25 levels).
 ### Effects (Minimal)
 
 - [x] **FX-01**: Effect pool (512 max, 64 bytes per effect)
-- [ ] **FX-02**: Spell impact visual effects (burn, blast, lightning)
-- [ ] **FX-03**: Death/combat effects (blood, hit sparks)
-- [ ] **FX-04**: Construction/destruction building effects
+- [x] **FX-02**: Spell impact visual effects (burn, blast, lightning)
+- [x] **FX-03**: Death/combat effects (blood, hit sparks)
+- [x] **FX-04**: Construction/destruction building effects
 - [x] **FX-05**: Effect attachment to moving objects
 
 ## v2 Requirements
@@ -230,16 +230,16 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | SPLL-13 | Phase 3 | Pending |
 | SPLL-14 | Phase 3 | Pending |
 | FX-01 | Phase 3 | Complete |
-| FX-02 | Phase 3 | Pending |
-| FX-03 | Phase 3 | Pending |
-| FX-04 | Phase 3 | Pending |
+| FX-02 | Phase 3 | Complete |
+| FX-03 | Phase 3 | Complete |
+| FX-04 | Phase 3 | Complete |
 | FX-05 | Phase 3 | Complete |
 | HUD-01 | Phase 3 | Complete |
 | HUD-02 | Phase 3 | Complete |
 | HUD-03 | Phase 3 | Complete |
 | HUD-04 | Phase 3 | Complete |
 | HUD-05 | Phase 3 | Complete |
-| HUD-06 | Phase 3 | Pending |
+| HUD-06 | Phase 3 | Complete |
 | HUD-07 | Phase 3 | Complete |
 | HUD-08 | Phase 3 | Complete |
 | AI-01 | Phase 4 | Pending |

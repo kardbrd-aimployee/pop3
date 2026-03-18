@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 03-04-PLAN.md (minimap viewport, click-to-move, selection info panel)
-last_updated: "2026-03-18T15:33:20Z"
-last_activity: 2026-03-18 -- Completed 03-04 Minimap viewport and selection info
+stopped_at: Completed 03-05-PLAN.md (health bars and effect spawning wiring)
+last_updated: "2026-03-18T15:43:27Z"
+last_activity: 2026-03-18 -- Completed 03-05 Health bars and effect spawning wiring (Phase 3 complete)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 18
-  completed_plans: 18
+  completed_plans: 19
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 3 of 5 (HUD and Effects) -- IN PROGRESS
-Plan: 5 of 5 in current phase (03-01 done, 03-02 done, 03-03 done, 03-04 done)
-Status: Executing Phase 3 plans
-Last activity: 2026-03-18 -- Completed 03-04 Minimap viewport and selection info
+Phase: 3 of 5 (HUD and Effects) -- COMPLETE
+Plan: 5 of 5 in current phase (all done)
+Status: Phase 3 complete, ready for Phase 4
+Last activity: 2026-03-18 -- Completed 03-05 Health bars and effect spawning wiring
 
 Progress: [██████████] 100%
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 | Phase 03 P03 | 4min | 2 tasks | 2 files |
 | Phase 03 P01 | 4min | 2 tasks | 4 files |
 | Phase 03 P04 | 4min | 2 tasks | 2 files |
+| Phase 03 P05 | 7min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,10 @@ Recent decisions affecting current work:
 - [03-04]: Viewport rect size = 20.0/zoom cells wide, aspect-ratio-corrected height
 - [03-04]: Camera center from get_shift_vector().rem_euclid(128) for toroidal cell coords
 - [03-04]: Minimap click uses rebuild_spawn_model() same as keyboard panning for consistency
+- [03-05]: Health bars reuse unit_pvm/unit_screen_pos for world-to-screen projection (no new matrix)
+- [03-05]: EffectAction deferred pattern matches DeferredAction/BuildingTickActions collect-then-process approach
+- [03-05]: pending_effect_actions Vec on UnitCoordinator, drained by app loop via drain_effect_actions()
+- [03-05]: Building fire effect spawns every tick while in Destroying state (continuous visual via LOOP flag)
 
 ### Pending Todos
 
@@ -128,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-18T15:33:20Z
-Stopped at: Completed 03-04-PLAN.md (minimap viewport, click-to-move, selection info panel)
+Last session: 2026-03-18T15:43:27Z
+Stopped at: Completed 03-05-PLAN.md (health bars and effect spawning wiring)
 Resume file: None
