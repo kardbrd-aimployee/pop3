@@ -163,6 +163,7 @@ impl UnitCoordinator {
                 building_handle: None,
                 wood_carried: 0,
                 guard_position: None,
+                gather_target: None,
             });
             // Initialize idle state with a random timer (matches Person_Init calling Person_SetState)
             let idx = self.units.len() - 1;
@@ -305,6 +306,20 @@ impl UnitCoordinator {
                     // Spawn processing handled by population tick subsystem
                     // (coordinator just records the intent; actual spawn happens in
                     // tick_update_population to avoid re-entrant pool mutation)
+                },
+                DeferredAction::FindNearestTree { unit_index } => {
+                    if let Some(unit) = self.units.get(unit_index) {
+                        let pos = unit.movement.position;
+                        if let Some(tree_pos) = crate::engine::economy::wood::find_nearest_tree_position(
+                            &pos, &self.cell_grid, &self.pool
+                        ) {
+                            if let Some(unit) = self.units.get_mut(unit_index) {
+                                unit.gather_target = Some(tree_pos);
+                                unit.state_timer = 1; // mark as "has target, navigating"
+                            }
+                        }
+                        // If no tree found, state_timer stays 0 and next tick will retry
+                    }
                 },
             }
         }
@@ -548,7 +563,7 @@ impl UnitCoordinator {
         for handle in building_handles {
             if let Some(obj) = self.pool.get_mut(handle) {
                 if let GameObjectData::Building(ref mut bd) = obj.data {
-                    buildings::tick::tick_building(bd, &mut obj.header);
+                    buildings::tick::tick_building(bd, &mut obj.header, handle);
                 }
             }
         }
@@ -674,6 +689,7 @@ impl UnitCoordinator {
                 building_handle: person.building_handle,
                 wood_carried: person.wood_carried,
                 guard_position: person.guard_position,
+                gather_target: person.gather_target,
             });
         }
     }

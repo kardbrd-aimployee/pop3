@@ -2,11 +2,30 @@ use super::types::*;
 use super::state_machine::*;
 use super::spawning::{tick_spawn, SpawnAction};
 use super::training::{tick_convert, ConvertAction};
-use crate::engine::objects::ObjectHeader;
+use super::combat::{tick_building_combat, BuildingCombatAction};
+use crate::engine::objects::{ObjectHeader, ObjectHandle};
+
+/// Aggregated actions emitted by a single building tick.
+#[derive(Debug)]
+pub struct BuildingTickActions {
+    pub spawn: SpawnAction,
+    pub convert: ConvertAction,
+    pub combat: Vec<BuildingCombatAction>,
+}
+
+impl BuildingTickActions {
+    pub fn none() -> Self {
+        Self {
+            spawn: SpawnAction::None,
+            convert: ConvertAction::None,
+            combat: Vec::new(),
+        }
+    }
+}
 
 /// Per-tick building update following original binary's BLD.7 pipeline order.
 /// Original: Building_Update called from Tick_UpdateObjects at 0x0042E5F0.
-pub fn tick_building(building: &mut BuildingData, header: &mut ObjectHeader) {
+pub fn tick_building(building: &mut BuildingData, header: &mut ObjectHeader, handle: ObjectHandle) -> BuildingTickActions {
     // 1. Damage cooldown decrement
     if building.damage_cooldown > 0 {
         building.damage_cooldown -= 1;
@@ -18,15 +37,25 @@ pub fn tick_building(building: &mut BuildingData, header: &mut ObjectHeader) {
 
     // 3. State dispatch
     match building.state {
-        BuildingState::Init => tick_constructing(building, header),
+        BuildingState::Init => {
+            tick_constructing(building, header);
+            BuildingTickActions::none()
+        }
         BuildingState::ConstructionDone => {
             on_construction_complete(building);
             transition_building_state(building, BuildingState::Active);
+            BuildingTickActions::none()
         }
-        BuildingState::Active => { tick_active(building, header); },
-        BuildingState::Destroying => tick_destroying(building, header),
-        BuildingState::Sinking => tick_sinking(building, header),
-        BuildingState::FinalTeardown => { /* removal handled by caller */ }
+        BuildingState::Active => tick_active(building, header, handle),
+        BuildingState::Destroying => {
+            tick_destroying(building, header);
+            BuildingTickActions::none()
+        }
+        BuildingState::Sinking => {
+            tick_sinking(building, header);
+            BuildingTickActions::none()
+        }
+        BuildingState::FinalTeardown => BuildingTickActions::none(),
     }
 }
 
@@ -42,10 +71,11 @@ fn tick_constructing(building: &mut BuildingData, _header: &mut ObjectHeader) {
     }
 }
 
-fn tick_active(building: &mut BuildingData, _header: &mut ObjectHeader) -> (SpawnAction, ConvertAction) {
+fn tick_active(building: &mut BuildingData, _header: &mut ObjectHeader, handle: ObjectHandle) -> BuildingTickActions {
     let spawn = tick_spawn(building);
     let convert = tick_convert(building);
-    (spawn, convert)
+    let combat = tick_building_combat(building, handle);
+    BuildingTickActions { spawn, convert, combat }
 }
 
 fn tick_destroying(building: &mut BuildingData, _header: &mut ObjectHeader) {
@@ -106,13 +136,15 @@ mod tests {
         }
     }
 
+    const DUMMY_HANDLE: ObjectHandle = 0;
+
     #[test]
     fn tick_decrements_damage_cooldown() {
         let mut b = BuildingData::default();
         b.state = BuildingState::Active;
         b.damage_cooldown = 3;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.damage_cooldown, 2);
     }
 
@@ -123,7 +155,7 @@ mod tests {
         b.shake_x = 8;
         b.shake_z = -6;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.shake_x, 4);
         assert_eq!(b.shake_z, -3);
     }
@@ -135,7 +167,7 @@ mod tests {
         b.wood_stored = 10;
         b.construction_progress = 0;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.wood_stored, 9);
         assert_eq!(b.construction_progress, 1);
     }
@@ -147,11 +179,7 @@ mod tests {
         b.wood_stored = 10;
         b.construction_progress = 2; // one more tick to reach 3
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
-        // progress goes to 3, triggers ConstructionDone, then next tick would go to Active
-        // But the tick also handles ConstructionDone immediately if transitioned
-        // Actually, Init tick: progress=3, transitions to ConstructionDone
-        // State is now ConstructionDone, but the match already ran for Init
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::ConstructionDone);
     }
 
@@ -161,7 +189,7 @@ mod tests {
         b.state = BuildingState::ConstructionDone;
         b.building_subtype = BuildingSubtype::SmallHut;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::Active);
         assert_eq!(b.behavior_flags, 0x20); // housing flag set
     }
@@ -172,7 +200,7 @@ mod tests {
         b.state = BuildingState::Destroying;
         b.damage_accumulated = 100;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::Sinking);
     }
 
@@ -182,7 +210,7 @@ mod tests {
         b.state = BuildingState::Destroying;
         b.damage_accumulated = 50;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::Destroying);
     }
 
@@ -192,7 +220,7 @@ mod tests {
         b.state = BuildingState::Sinking;
         b.construction_progress = 59;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::FinalTeardown);
     }
 
@@ -202,7 +230,7 @@ mod tests {
         b.state = BuildingState::Sinking;
         b.construction_progress = 0;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::Sinking);
         assert_eq!(b.construction_progress, 1);
     }
@@ -225,7 +253,7 @@ mod tests {
         b.wood_stored = 0;
         b.construction_progress = 0;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.construction_progress, 0);
         assert_eq!(b.state, BuildingState::Init); // stuck without wood
     }
@@ -235,7 +263,37 @@ mod tests {
         let mut b = BuildingData::default();
         b.state = BuildingState::FinalTeardown;
         let mut h = make_header();
-        tick_building(&mut b, &mut h);
+        tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::FinalTeardown); // caller handles removal
+    }
+
+    #[test]
+    fn tick_active_returns_building_tick_actions() {
+        let mut b = BuildingData::default();
+        b.state = BuildingState::Active;
+        b.building_subtype = BuildingSubtype::SmallHut;
+        b.behavior_flags = 0x20; // housing flag
+        b.construction_progress = 0;
+        let mut h = make_header();
+        let actions = tick_building(&mut b, &mut h, DUMMY_HANDLE);
+        // Spawn timer just incremented, not at threshold yet
+        assert_eq!(actions.spawn, SpawnAction::None);
+        assert_eq!(actions.convert, ConvertAction::None);
+        assert!(actions.combat.is_empty());
+    }
+
+    #[test]
+    fn tick_active_returns_combat_actions() {
+        let mut b = BuildingData::default();
+        b.state = BuildingState::Active;
+        b.building_subtype = BuildingSubtype::DrumTower;
+        b.behavior_flags = 0x08; // fighting flag
+        b.occupant_slots[0] = Some(10);
+        b.occupant_count = 1;
+        b.num_fighting = 1;
+        b.target_person = Some(99);
+        let mut h = make_header();
+        let actions = tick_building(&mut b, &mut h, DUMMY_HANDLE);
+        assert_eq!(actions.combat.len(), 1);
     }
 }
