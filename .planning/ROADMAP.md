@@ -20,19 +20,19 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Core Object System
-**Goal**: Every game object (person, building, effect, projectile) lives in a single unified pool with spatial indexing, and all 260 existing tests still pass
+**Goal**: Every game object (person, building, effect, projectile) lives in a unified pool with spatial indexing via a modern Rust-idiomatic approach, and all 266 existing tests still pass
 **Depends on**: Nothing (first phase)
 **Requirements**: OBJ-01, OBJ-02, OBJ-03, OBJ-04, OBJ-05
 **Success Criteria** (what must be TRUE):
-  1. Objects are allocated from a fixed-size 1101-slot pool with two-tier priority free lists matching the original binary's allocation order
+  1. Objects are allocated from a 1101-capacity pool with stable handles and O(1) create/destroy (modern Rust approach, not faithful binary replica)
   2. A 128x128 cell grid tracks which objects occupy each cell, and moving an object updates its cell linkage automatically
-  3. The existing UnitCoordinator borrows person-type objects from the pool instead of owning a Vec, and all 260 existing tests pass without behavior changes
-  4. Object creation, destruction, and reinitialization follow the original binary's lifecycle (verified by fixture tests against Frida traces)
+  3. The existing UnitCoordinator uses the pool instead of owning a Vec, and all 266 existing tests pass without behavior changes
+  4. Object creation, destruction, and reinitialization produce correct observable behavior (same objects exist, same spatial relationships)
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- ObjectPool with two-tier free lists and object lifecycle
-- [ ] 01-02-PLAN.md -- Cell-based spatial grid with per-cell object linked lists
+- [ ] 01-01-PLAN.md -- ObjectPool with create/destroy/get and person iteration (TDD)
+- [ ] 01-02-PLAN.md -- Cell-based spatial grid with per-cell doubly-linked object lists (TDD)
 - [ ] 01-03-PLAN.md -- UnitCoordinator migration to pool-backed storage
 
 ### Phase 2: Economy and Combat
