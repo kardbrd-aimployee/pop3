@@ -79,6 +79,21 @@ Plans:
 - [x] 03-04-PLAN.md -- Minimap viewport + click-to-move, selection info panel (HUD-01, HUD-05)
 - [x] 03-05-PLAN.md -- Health bars and effect spawn wiring (HUD-06, FX-02, FX-03, FX-04)
 
+### Phase 03.1: HUD polish (INSERTED)
+
+**Goal:** Fix HUD layout issues: overlapping mana/population text, truncated spell names in 2-column layout, text sizing relative to sidebar width, and overall spacing to make the HUD readable and functional
+**Depends on:** Phase 3
+**Requirements:** HUD-POLISH-01, HUD-POLISH-02, HUD-POLISH-03, HUD-POLISH-04
+**Success Criteria** (what must be TRUE):
+  1. Mana and population text do not overlap — each on its own line with clear spacing
+  2. Spell names are fully visible (no truncation) in the spell panel
+  3. Tab labels (Spells, Build, Units) are clearly readable and non-overlapping
+  4. Overall HUD is visually clean with consistent spacing between elements
+**Plans:** 1 plan
+
+Plans:
+- [ ] 03.1-01-PLAN.md -- Fix sidebar width, vertical layout ordering, and single-column spell list
+
 ### Phase 4: Spell System
 **Goal**: The shaman can cast all 12 core spells with mana costs and cooldowns, each spell produces its documented effect, and terrain-affecting spells use the existing cascade pipeline
 **Depends on**: Phase 3
@@ -116,12 +131,13 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 3.1 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
 | 2. Economy and Combat | 10/10 | Complete | 2026-03-18 |
 | 3. HUD and Effects | 5/5 | Complete | 2026-03-18 |
+| 3.1 HUD Polish | 0/1 | Not started | - |
 | 4. Spell System | 0/3 | Not started | - |
 | 5. AI and Campaign | 0/3 | Not started | - |
