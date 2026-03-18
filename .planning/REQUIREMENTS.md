@@ -121,11 +121,11 @@ Requirements for playable single-player campaign (25 levels).
 
 ### Effects (Minimal)
 
-- [ ] **FX-01**: Effect pool (512 max, 64 bytes per effect)
+- [x] **FX-01**: Effect pool (512 max, 64 bytes per effect)
 - [ ] **FX-02**: Spell impact visual effects (burn, blast, lightning)
 - [ ] **FX-03**: Death/combat effects (blood, hit sparks)
 - [ ] **FX-04**: Construction/destruction building effects
-- [ ] **FX-05**: Effect attachment to moving objects
+- [x] **FX-05**: Effect attachment to moving objects
 
 ## v2 Requirements
 
