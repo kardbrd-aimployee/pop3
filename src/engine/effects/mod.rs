@@ -68,34 +68,74 @@ pub struct EffectPool {
 }
 
 impl EffectPool {
-    /// Create a new pool with all 512 slots free.
+    /// Create a new pool with all 512 slots pre-allocated, all free.
+    /// Free list is filled 0..511 so that pop() yields 511, 510, ... 0.
     pub fn new() -> Self {
-        // Stub - will be implemented in GREEN phase
+        let slots = vec![Effect::default(); MAX_EFFECTS];
+        let free_list: Vec<u16> = (0..MAX_EFFECTS as u16).collect();
         Self {
-            slots: Vec::new(),
-            free_list: Vec::new(),
+            slots,
+            free_list,
             active_count: 0,
         }
     }
 
-    /// Allocate a new effect. Returns None if pool is full.
-    pub fn spawn(&mut self, _effect_type: u8, _x: i32, _y: i32, _z: i32, _owner: u8) -> Option<EffectId> {
-        None // Stub
+    /// Allocate a new effect from the LIFO free list. Returns None if pool is full.
+    pub fn spawn(&mut self, effect_type: u8, x: i32, y: i32, z: i32, owner: u8) -> Option<EffectId> {
+        let slot_idx = self.free_list.pop()?;
+        let slot = &mut self.slots[slot_idx as usize];
+        *slot = Effect {
+            effect_type,
+            state: 0, // active
+            owner,
+            x,
+            y,
+            z,
+            ..Effect::default()
+        };
+        // Override state from default (which sets INACTIVE)
+        slot.state = 0;
+        self.active_count += 1;
+        Some(slot_idx)
     }
 
-    /// Free an effect slot back to the pool.
-    pub fn destroy(&mut self, _id: EffectId) {
-        // Stub
+    /// Free an effect slot back to the pool (LIFO push).
+    pub fn destroy(&mut self, id: EffectId) {
+        let idx = id as usize;
+        if idx >= MAX_EFFECTS {
+            return;
+        }
+        if self.slots[idx].state == EFFECT_INACTIVE {
+            return; // already free
+        }
+        self.slots[idx].state = EFFECT_INACTIVE;
+        self.free_list.push(id);
+        self.active_count -= 1;
     }
 
-    /// Get a reference to an active effect.
-    pub fn get(&self, _id: EffectId) -> Option<&Effect> {
-        None // Stub
+    /// Get a reference to an active effect. Returns None if inactive or out of bounds.
+    pub fn get(&self, id: EffectId) -> Option<&Effect> {
+        let idx = id as usize;
+        if idx >= MAX_EFFECTS {
+            return None;
+        }
+        let slot = &self.slots[idx];
+        if slot.state == EFFECT_INACTIVE {
+            return None;
+        }
+        Some(slot)
     }
 
     /// Get a mutable reference to an active effect.
-    pub fn get_mut(&mut self, _id: EffectId) -> Option<&mut Effect> {
-        None // Stub
+    pub fn get_mut(&mut self, id: EffectId) -> Option<&mut Effect> {
+        let idx = id as usize;
+        if idx >= MAX_EFFECTS {
+            return None;
+        }
+        if self.slots[idx].state == EFFECT_INACTIVE {
+            return None;
+        }
+        Some(&mut self.slots[idx])
     }
 
     /// Number of currently active effects.
@@ -105,7 +145,36 @@ impl EffectPool {
 
     /// Update all active effects: apply velocity, gravity, advance frames, handle lifetime.
     pub fn update_all(&mut self) {
-        // Stub
+        for i in 0..MAX_EFFECTS {
+            if self.slots[i].state == EFFECT_INACTIVE {
+                continue;
+            }
+
+            let effect = &mut self.slots[i];
+
+            // Apply gravity if flagged
+            if effect.flags & EFFECT_GRAVITY != 0 {
+                effect.velocity_z -= GRAVITY_ACCEL;
+            }
+
+            // Apply velocity (fixed-point >>8 per tick)
+            effect.x += effect.velocity_x >> 8;
+            effect.y += effect.velocity_y >> 8;
+            effect.z += effect.velocity_z >> 8;
+
+            // Advance animation frame
+            effect.frame += 1;
+            if effect.frame >= effect.max_frame {
+                if effect.flags & EFFECT_LOOP != 0 {
+                    effect.frame = 0;
+                } else {
+                    // Effect finished -- mark inactive and free
+                    effect.state = EFFECT_INACTIVE;
+                    self.free_list.push(i as u16);
+                    self.active_count -= 1;
+                }
+            }
+        }
     }
 }
 
