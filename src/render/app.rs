@@ -70,8 +70,8 @@ use crate::engine::{GameCommand, FrameState, translate_key};
 
 use crate::render::hud::{
     self, HudTab, HudState, HudRenderer,
-    MinimapData, MinimapDot, PanelEntry, TribePopulation,
-    HUD_TRIBE_COLORS,
+    MinimapData, MinimapDot, PanelEntry, TribePopulation, SpellCooldown,
+    HUD_TRIBE_COLORS, compute_mana_fraction,
 };
 
 /******************************************************************************/
@@ -481,6 +481,7 @@ impl GameEngine {
                 color: HUD_TRIBE_COLORS[t as usize],
             })
             .collect();
+        let player_tribe = &self.game_world.tribes.tribes[0]; // tribe 0 = player
         HudState {
             active_tab: self.hud_tab,
             minimap,
@@ -488,6 +489,11 @@ impl GameEngine {
             tribe_populations,
             level_num: self.level_num as u32,
             frame_count: self.frame_count as u64,
+            player_mana: player_tribe.mana,
+            player_max_mana: 1_000_000,
+            player_population: player_tribe.population,
+            player_max_population: player_tribe.max_population,
+            spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
         }
     }
 

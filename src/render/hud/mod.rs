@@ -68,6 +68,12 @@ pub struct HudState {
     pub tribe_populations: Vec<TribePopulation>,
     pub level_num: u32,
     pub frame_count: u64,
+    // Phase 3: player resource and spell cooldown data
+    pub player_mana: u32,
+    pub player_max_mana: u32,
+    pub player_population: u32,
+    pub player_max_population: u16,
+    pub spell_cooldowns: Vec<SpellCooldown>,
 }
 
 pub struct MinimapData {
@@ -90,6 +96,14 @@ pub struct TribePopulation {
     pub tribe_index: u8,
     pub count: u32,
     pub color: [f32; 4],
+}
+
+/// Spell cooldown state for HUD rendering.
+/// Phase 4 will populate from SpellSystem cooldown timers.
+pub struct SpellCooldown {
+    pub spell_index: u8,        // 0-15 matching spell panel order
+    pub cooldown_remaining: u32, // ticks remaining (0 = ready)
+    pub cooldown_total: u32,     // total cooldown duration
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +132,16 @@ pub const HUD_TRIBE_COLORS: [[f32; 4]; 4] = [
     [1.0, 1.0, 0.3, 0.9],  // Yellow
     [0.3, 1.0, 0.3, 0.9],  // Green
 ];
+
+// ---------------------------------------------------------------------------
+// HUD data helpers
+// ---------------------------------------------------------------------------
+
+/// Compute mana bar fill fraction, clamped to [0.0, 1.0].
+pub fn compute_mana_fraction(mana: u32, max_mana: u32) -> f32 {
+    if max_mana == 0 { return 0.0; }
+    (mana as f32 / max_mana as f32).min(1.0)
+}
 
 /// 8x8 bitmap font for ASCII 32..127 (96 glyphs).
 /// Each glyph is 8 bytes (one byte per row, MSB = leftmost pixel).
