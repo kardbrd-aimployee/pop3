@@ -31,8 +31,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- ObjectPool with create/destroy/get and person iteration (TDD)
-- [ ] 01-02-PLAN.md -- Cell-based spatial grid with per-cell doubly-linked object lists (TDD)
+- [x] 01-01-PLAN.md -- ObjectPool with create/destroy/get and person iteration (TDD)
+- [x] 01-02-PLAN.md -- Cell-based spatial grid with per-cell doubly-linked object lists (TDD)
 - [ ] 01-03-PLAN.md -- UnitCoordinator migration to pool-backed storage
 
 ### Phase 2: Economy and Combat
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Object System | 0/3 | Not started | - |
+| 1. Core Object System | 2/3 | In progress | - |
 | 2. Economy and Combat | 0/3 | Not started | - |
 | 3. Spells, Effects, and Interface | 0/3 | Not started | - |
 | 4. AI and Campaign | 0/3 | Not started | - |

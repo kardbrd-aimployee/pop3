@@ -11,8 +11,8 @@ Requirements for playable single-player campaign (25 levels).
 
 - [ ] **OBJ-01**: Unified object storage supporting all 11 model types with stable handles, at least 1101 capacity (modern Rust-idiomatic approach, not faithful replica of original binary's allocation system)
 - [ ] **OBJ-02**: Object lifecycle (create, destroy, reinitialize) with correct game logic behavior (observable equivalence, not allocation-order faithfulness)
-- [ ] **OBJ-03**: Cell-based spatial grid (128x128, 16 bytes/cell) with per-cell object linked lists
-- [ ] **OBJ-04**: Object position updates that maintain cell linkage (Object_SetPosition)
+- [x] **OBJ-03**: Cell-based spatial grid (128x128, 16 bytes/cell) with per-cell object linked lists
+- [x] **OBJ-04**: Object position updates that maintain cell linkage (Object_SetPosition)
 - [ ] **OBJ-05**: UnitCoordinator migration to borrow from unified pool instead of owning Vec<Unit>
 
 ### Building System
@@ -183,8 +183,8 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | OBJ-01 | Phase 1 | Pending |
 | OBJ-02 | Phase 1 | Pending |
-| OBJ-03 | Phase 1 | Pending |
-| OBJ-04 | Phase 1 | Pending |
+| OBJ-03 | Phase 1 | Complete (01-02) |
+| OBJ-04 | Phase 1 | Complete (01-02) |
 | OBJ-05 | Phase 1 | Pending |
 | BLDG-01 | Phase 2 | Pending |
 | BLDG-02 | Phase 2 | Pending |
