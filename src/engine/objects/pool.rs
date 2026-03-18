@@ -135,6 +135,26 @@ impl ObjectPool {
         self.active_count
     }
 
+    /// Reset the pool: all slots become Free, free list is re-linked, active count = 0.
+    pub fn clear(&mut self) {
+        for i in 0..MAX_OBJECTS {
+            let next = if i + 1 < MAX_OBJECTS { Some((i + 1) as u16) } else { None };
+            self.slots[i] = PoolSlot::Free { next_free: next };
+        }
+        self.free_head = Some(0);
+        self.active_count = 0;
+    }
+
+    /// Access the raw slot storage (needed by CellGrid operations).
+    pub fn slots(&self) -> &[PoolSlot] {
+        &self.slots
+    }
+
+    /// Mutable access to the raw slot storage (needed by CellGrid operations).
+    pub fn slots_mut(&mut self) -> &mut [PoolSlot] {
+        &mut self.slots
+    }
+
     /// Iterate over all Person objects, yielding (handle, header, person_data).
     pub fn persons(&self) -> impl Iterator<Item = (ObjectHandle, &ObjectHeader, &PersonData)> {
         self.slots.iter().enumerate().filter_map(|(i, slot)| {

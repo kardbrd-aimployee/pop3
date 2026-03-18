@@ -95,6 +95,13 @@ impl CellGrid {
         self.insert_object(handle, new_cell, slots);
     }
 
+    /// Reset all cells to empty.
+    pub fn clear(&mut self) {
+        for head in self.heads.iter_mut() {
+            *head = None;
+        }
+    }
+
     /// Get the head object handle for a cell.
     pub fn cell_head(&self, cell_idx: usize) -> Option<u16> {
         self.heads[cell_idx]

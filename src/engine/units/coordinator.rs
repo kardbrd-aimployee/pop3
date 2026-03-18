@@ -12,6 +12,7 @@ use crate::engine::movement::{
     atan2,
 };
 use crate::data::units::{ModelType, UnitRaw};
+use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid};
 use super::unit::Unit;
 use super::person_state::{
     PersonState, person_type_defaults, enter_state, tick_state, TickResult,
@@ -27,6 +28,11 @@ pub struct UnitCoordinator {
     pub units: Vec<Unit>,
     pub selection: SelectionState,
     pub drag: DragState,
+
+    // Object pool and spatial grid (source of truth for allocation)
+    pool: ObjectPool,
+    cell_grid: CellGrid,
+    person_handles: Vec<ObjectHandle>,
 
     // Movement infrastructure
     region_map: RegionMap,
@@ -50,6 +56,9 @@ impl UnitCoordinator {
             units: Vec::new(),
             selection: SelectionState::new(),
             drag: DragState::None,
+            pool: ObjectPool::new(),
+            cell_grid: CellGrid::new(),
+            person_handles: Vec::new(),
             region_map: RegionMap::new(),
             segment_pool: SegmentPool::new(),
             failure_cache: FailureCache::new(),
@@ -66,6 +75,11 @@ impl UnitCoordinator {
         self.units.clear();
         self.selection.clear();
         self.landscape_size = landscape_size as f32;
+
+        // Reset pool and cell grid
+        self.pool.clear();
+        self.cell_grid.clear();
+        self.person_handles.clear();
 
         // Reset movement infrastructure
         self.segment_pool = SegmentPool::new();
@@ -93,7 +107,32 @@ impl UnitCoordinator {
             movement.speed = defaults.speed;
 
             let home = movement.position;
+            let pos = movement.position;
             let (cx, cy) = world_to_render_pos(&movement.position, self.landscape_size);
+
+            // Allocate in the object pool (source of truth for allocation)
+            if let Some(handle) = self.pool.create(ModelType::Person, raw.subtype, raw.tribe_index(), pos) {
+                if let Some(obj) = self.pool.get_mut(handle) {
+                    obj.header.health = defaults.max_health;
+                    obj.header.max_health = defaults.max_health;
+                    obj.header.angle = (raw.angle() & 0x7FF) as u16;
+                    if let crate::engine::objects::GameObjectData::Person(ref mut pd) = obj.data {
+                        pd.movement = movement.clone();
+                        pd.cell_x = cx;
+                        pd.cell_y = cy;
+                        pd.state = PersonState::Idle;
+                        pd.prev_state = PersonState::Idle;
+                        pd.alive = true;
+                        pd.home_pos = home;
+                    }
+                }
+                // Insert into spatial grid
+                let cell_idx = CellGrid::cell_index_from_world(&pos);
+                self.cell_grid.insert_object(handle, cell_idx, self.pool.slots_mut());
+                self.person_handles.push(handle);
+            }
+
+            // Also populate the Vec<Unit> compatibility shim
             self.units.push(Unit {
                 id: self.units.len(),
                 model_type: ModelType::Person,
@@ -454,6 +493,55 @@ impl UnitCoordinator {
                 }
             }
         }
+    }
+
+    /// Rebuild the Vec<Unit> compatibility shim from pool persons.
+    /// Called at end of tick() so rendering consumers see current state.
+    fn sync_units_from_pool(&mut self) {
+        self.units.clear();
+        for (handle, header, person) in self.pool.persons() {
+            self.units.push(Unit {
+                id: handle as usize,
+                model_type: header.model_type,
+                subtype: header.subtype,
+                tribe_index: header.tribe,
+                movement: person.movement.clone(),
+                cell_x: person.cell_x,
+                cell_y: person.cell_y,
+                state: person.state,
+                prev_state: person.prev_state,
+                state_timer: person.state_timer,
+                state_counter: person.state_counter,
+                health: header.health,
+                max_health: header.max_health,
+                target_unit: person.target_unit.map(|h| h as usize),
+                attacker_unit: person.attacker_unit.map(|h| h as usize),
+                alive: person.alive,
+                home_pos: person.home_pos,
+                behavior_flags: person.behavior_flags,
+                wander_duration: person.wander_duration,
+                wander_range: person.wander_range,
+                linked_obj_id: person.linked_obj_id.map(|h| h as usize),
+                bloodlust: person.bloodlust,
+                shielded: person.shielded,
+                anim: person.anim,
+            });
+        }
+    }
+
+    /// Access the object pool.
+    pub fn pool(&self) -> &ObjectPool {
+        &self.pool
+    }
+
+    /// Mutable access to the object pool.
+    pub fn pool_mut(&mut self) -> &mut ObjectPool {
+        &mut self.pool
+    }
+
+    /// Access the cell grid.
+    pub fn cell_grid(&self) -> &CellGrid {
+        &self.cell_grid
     }
 
     pub fn region_map(&self) -> &RegionMap {
