@@ -9,3 +9,4 @@ pub mod psfb;
 pub mod units;
 pub mod animation;
 pub mod strings;
+pub mod font;
