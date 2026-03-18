@@ -21,10 +21,10 @@ Requirements for playable single-player campaign (25 levels).
 - [x] **BLDG-02**: Building construction with progress animation and wood consumption
 - [x] **BLDG-03**: Building placement UI with ghost preview and terrain validation
 - [x] **BLDG-04**: Occupant system (6 slots per building, enter/exit, capacity checks)
-- [ ] **BLDG-05**: Population growth from huts (spawning braves at HUT_SPROG_TIME rates)
-- [ ] **BLDG-06**: Training conversion (brave to warrior/spy/preacher/super warrior) with wood/mana costs
+- [x] **BLDG-05**: Population growth from huts (spawning braves at HUT_SPROG_TIME rates)
+- [x] **BLDG-06**: Training conversion (brave to warrior/spy/preacher/super warrior) with wood/mana costs
 - [ ] **BLDG-07**: Building damage and destruction with debris and chain damage
-- [ ] **BLDG-08**: Building combat (6 fighter slots, attack types, occupant fighting)
+- [x] **BLDG-08**: Building combat (6 fighter slots, attack types, occupant fighting)
 
 ### Economy
 
@@ -190,10 +190,10 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | BLDG-02 | Phase 2 | Complete (02-01) |
 | BLDG-03 | Phase 2 | Complete |
 | BLDG-04 | Phase 2 | Complete (02-01) |
-| BLDG-05 | Phase 2 | Pending |
-| BLDG-06 | Phase 2 | Pending |
+| BLDG-05 | Phase 2 | Complete |
+| BLDG-06 | Phase 2 | Complete |
 | BLDG-07 | Phase 2 | Pending |
-| BLDG-08 | Phase 2 | Pending |
+| BLDG-08 | Phase 2 | Complete |
 | ECON-01 | Phase 2 | Complete |
 | ECON-02 | Phase 2 | Complete |
 | ECON-03 | Phase 2 | Complete |
