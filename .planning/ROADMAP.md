@@ -45,12 +45,16 @@ Plans:
   3. Player can send a brave into a training building and it converts to warrior/spy/preacher/super warrior after the correct timer with mana/wood costs deducted
   4. Units engage in melee combat with correct damage formulas, drum towers fire projectiles, knockback physics work, and dead units are cleaned up properly
   5. Terrain can be raised/lowered with the full cascade (normals, walkability, water, pathfinding, mesh) updating correctly
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md -- Building data foundation: BuildingData, state machine, occupants, pool integration
+- [ ] 02-02-PLAN.md -- Terrain modification with height change and cascade pipeline
+- [ ] 02-03-PLAN.md -- Economy module: mana generation, population capacity, wood costs
+- [ ] 02-04-PLAN.md -- Person state extensions: 8 new states (building, training, wood, combat)
+- [ ] 02-05-PLAN.md -- Building behaviors: spawning, training, placement, damage, combat
+- [ ] 02-06-PLAN.md -- Combat subsystem: projectiles, knockback, damage, death, drum towers
+- [ ] 02-07-PLAN.md -- Integration: wire subsystems into game loop, wood gathering, FrameState
 
 ### Phase 3: Spells, Effects, and Interface
 **Goal**: The shaman can cast 12 spells with mana costs and cooldowns, spell impacts produce visual effects, and the player has a complete HUD showing all game state
@@ -94,6 +98,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Object System | 3/3 | Complete    | 2026-03-18 |
-| 2. Economy and Combat | 0/3 | Not started | - |
+| 2. Economy and Combat | 0/7 | Not started | - |
 | 3. Spells, Effects, and Interface | 0/3 | Not started | - |
 | 4. AI and Campaign | 0/3 | Not started | - |
