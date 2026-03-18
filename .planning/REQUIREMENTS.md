@@ -233,7 +233,7 @@ Deferred to post-campaign. Tracked but not in current roadmap.
 | FX-02 | Phase 3 | Pending |
 | FX-03 | Phase 3 | Pending |
 | FX-04 | Phase 3 | Pending |
-| FX-05 | Phase 3 | Pending |
+| FX-05 | Phase 3 | Complete |
 | HUD-01 | Phase 3 | Pending |
 | HUD-02 | Phase 3 | Complete |
 | HUD-03 | Phase 3 | Complete |
