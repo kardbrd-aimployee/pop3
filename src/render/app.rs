@@ -376,7 +376,7 @@ impl GameEngine {
         let pvm = self.unit_pvm();
         let (right, up) = self.billboard_axes();
         let mut best: Option<(usize, f32)> = None;
-        for unit in &self.unit_coordinator.units {
+        for unit in self.unit_coordinator.units() {
             if let Some(rect) = self.unit_screen_rect(unit, &pvm, &right, &up) {
                 if rect.contains(mouse.x, mouse.y) {
                     let (cx, cy) = rect.center();
@@ -400,7 +400,7 @@ impl GameEngine {
         let pvm = self.unit_pvm();
         let (right, up) = self.billboard_axes();
         let mut ids = Vec::new();
-        for unit in &self.unit_coordinator.units {
+        for unit in self.unit_coordinator.units() {
             if let Some(rect) = self.unit_screen_rect(unit, &pvm, &right, &up) {
                 if rect.overlaps(&drag_rect) {
                     ids.push(unit.id);
@@ -411,7 +411,7 @@ impl GameEngine {
     }
 
     fn build_hud_state(&self) -> HudState {
-        let dots: Vec<MinimapDot> = self.unit_coordinator.units.iter()
+        let dots: Vec<MinimapDot> = self.unit_coordinator.units().iter()
             .filter(|u| u.alive)
             .map(|u| MinimapDot {
                 cell_x: (u.cell_x as u8).min(127),
@@ -456,7 +456,7 @@ impl GameEngine {
                     (PERSON_SUBTYPE_SHAMAN, "Shaman"),
                 ];
                 unit_types.iter().map(|(subtype, name)| {
-                    let count = self.unit_coordinator.units.iter()
+                    let count = self.unit_coordinator.units().iter()
                         .filter(|u| u.alive && u.subtype == *subtype && u.tribe_index == 0)
                         .count();
                     PanelEntry {
@@ -467,7 +467,7 @@ impl GameEngine {
             }
         };
         let mut tribe_counts = [0u32; 4];
-        for u in &self.unit_coordinator.units {
+        for u in self.unit_coordinator.units() {
             if u.alive && (u.tribe_index as usize) < 4 {
                 tribe_counts[u.tribe_index as usize] += 1;
             }
@@ -1129,7 +1129,7 @@ impl App {
         // Parse dump command: log all unit screen positions
         if cmd.trim() == "dump_units" {
             let pvm = self.engine.unit_pvm();
-            for unit in &self.engine.unit_coordinator.units {
+            for unit in self.engine.unit_coordinator.units() {
                 if let Some((sx, sy)) = self.engine.unit_screen_pos(unit, &pvm) {
                     log::info!("[dump] unit {} tribe={} cell=({:.2}, {:.2}) screen=({:.0}, {:.0})",
                         unit.id, unit.tribe_index, unit.cell_x, unit.cell_y, sx, sy);
@@ -1252,7 +1252,7 @@ impl App {
         for ur in &mut self.unit_renders {
             ur.cells.clear();
         }
-        for unit in &self.engine.unit_coordinator.units {
+        for unit in self.engine.unit_coordinator.units() {
             if !unit.alive { continue; }
             if let Some(ur) = self.unit_renders.iter_mut().find(|u| u.subtype == unit.subtype) {
                 ur.cells.push(UnitRenderData {
@@ -1407,7 +1407,7 @@ impl App {
         if let Some(ref gpu) = self.gpu {
             let cs = if self.engine.curvature_enabled { self.engine.curvature_scale } else { 0.0 };
             self.model_unit_markers = build_unit_markers(
-                &gpu.device, &self.engine.unit_coordinator.units, &self.engine.landscape_mesh, cs,
+                &gpu.device, self.engine.unit_coordinator.units(), &self.engine.landscape_mesh, cs,
                 self.engine.camera.angle_x, self.engine.camera.angle_z,
             );
             self.model_selection_outlines = build_selection_outlines(
@@ -3125,7 +3125,7 @@ impl ApplicationHandler for App {
                                     cx, cy, target.x, target.z, selected);
                                 if selected > 0 {
                                     let uid = self.engine.unit_coordinator.selection.selected[0];
-                                    if let Some(u) = self.engine.unit_coordinator.units.get(uid) {
+                                    if let Some(u) = self.engine.unit_coordinator.units().get(uid) {
                                         let walkable = self.engine.unit_coordinator.region_map()
                                             .is_walkable(target.to_tile());
                                         log::info!("[move-order] unit {} at world=({}, {}) cell=({:.1}, {:.1}) target_walkable={}",

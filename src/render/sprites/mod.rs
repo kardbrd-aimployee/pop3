@@ -537,7 +537,7 @@ pub fn build_selection_outlines(
     let color = Vector3::new(0.0, 1.0, 0.0);
 
     for &unit_id in &coordinator.selection.selected {
-        let unit = match coordinator.units.get(unit_id) {
+        let unit = match coordinator.units().get(unit_id) {
             Some(u) => u,
             None => continue,
         };

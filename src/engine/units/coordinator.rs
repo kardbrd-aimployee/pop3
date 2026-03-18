@@ -25,7 +25,7 @@ use super::selection::{SelectionState, DragState};
 use super::coords::{world_to_render_pos, toroidal_delta, cell_to_world, cell_to_tile};
 
 pub struct UnitCoordinator {
-    pub units: Vec<Unit>,
+    units: Vec<Unit>,
     pub selection: SelectionState,
     pub drag: DragState,
 
@@ -529,6 +529,11 @@ impl UnitCoordinator {
         }
     }
 
+    /// Read-only access to the units Vec (compatibility shim).
+    pub fn units(&self) -> &[Unit] {
+        &self.units
+    }
+
     /// Access the object pool.
     pub fn pool(&self) -> &ObjectPool {
         &self.pool
@@ -570,7 +575,7 @@ mod tests {
         // UnitRaw is repr(C, packed) — we can't easily construct one in tests
         // without unsafe. Test via the coordinator's public interface instead.
         let coord = UnitCoordinator::new();
-        assert!(coord.units.is_empty());
+        assert!(coord.units().is_empty());
         assert_eq!(coord.landscape_size, 128.0);
     }
 
