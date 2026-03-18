@@ -9,6 +9,78 @@ use crate::data::units::{ModelType, building_obj_index, scenery_obj_index};
 
 use crate::render::sprites::LevelObject;
 
+/// Build a single-building mesh for ghost preview at a specific cell position.
+/// Returns a ModelEnvelop with exactly one model entry, or None if the building
+/// type/tribe combination doesn't map to a valid Object3D.
+pub fn build_ghost_building_mesh(
+    device: &wgpu::Device,
+    building_type: u8,
+    tribe_index: u8,
+    cell_x: f32,
+    cell_y: f32,
+    building_bank: &[Option<Object3D>],
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+) -> Option<ModelEnvelop<TexModel>> {
+    let idx = building_obj_index(building_type, tribe_index)?;
+    let obj3d = building_bank.get(idx)?.as_ref()?;
+
+    let local_model = mk_pop_object(obj3d);
+    let step = landscape.step();
+    let w = landscape.width() as f32;
+    let shift = landscape.get_shift_vector();
+    let center = (w - 1.0) * step / 2.0;
+    let scale = step * (obj3d.coord_scale() / 300.0);
+
+    let vis_x = ((cell_x - shift.x as f32) % w + w) % w;
+    let vis_y = ((cell_y - shift.y as f32) % w + w) % w;
+    let gx = vis_x * step;
+    let gy = vis_y * step;
+
+    // No rotation for ghost preview (angle = 0)
+    let cos_a = (-(std::f32::consts::FRAC_PI_2) as f32).cos();
+    let sin_a = (-(std::f32::consts::FRAC_PI_2) as f32).sin();
+
+    let mut combined: TexModel = MeshModel::new();
+    let base_idx = combined.vertices.len() as u16;
+    for v in &local_model.vertices {
+        let rx = v.coord.x * cos_a - v.coord.z * sin_a;
+        let rz = v.coord.x * sin_a + v.coord.z * cos_a;
+
+        let vx_gpu = gx + rx * scale;
+        let vy_gpu = gy + rz * scale;
+
+        // Per-vertex curvature (matching landscape shader)
+        let vdx = vx_gpu - center;
+        let vdy = vy_gpu - center;
+        let vertex_curvature = (vdx * vdx + vdy * vdy) * curvature_scale;
+
+        // Per-vertex terrain height sampling
+        let vert_cell_x = vis_x + rx * scale / step;
+        let vert_cell_y = vis_y + rz * scale / step;
+        let abs_cell_x = ((vert_cell_x % w + w) % w) + shift.x as f32;
+        let abs_cell_y = ((vert_cell_y % w + w) % w) + shift.y as f32;
+        let vertex_gz = landscape.interpolate_height_at(abs_cell_x, abs_cell_y);
+        let vertex_z = vertex_gz - vertex_curvature + v.coord.y * scale;
+
+        combined.push_vertex(TexVertex {
+            coord: Vector3::new(vx_gpu, vy_gpu, vertex_z),
+            uv: v.uv,
+            tex_id: v.tex_id,
+        });
+    }
+    for &idx16 in &local_model.indices {
+        combined.indices.push(base_idx + idx16);
+    }
+
+    if combined.vertices.is_empty() {
+        return None;
+    }
+
+    let m = vec![(RenderType::Triangles, combined)];
+    Some(ModelEnvelop::<TexModel>::new(device, m))
+}
+
 pub fn build_building_meshes(
     device: &wgpu::Device, objects: &[LevelObject],
     building_bank: &[Option<Object3D>], scenery_bank: &[Option<Object3D>],

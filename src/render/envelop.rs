@@ -151,6 +151,30 @@ impl<M: GpuModel> ModelEnvelop<M> {
         }
     }
 
+    /// Draw a single model by index. Caller is responsible for setting bind groups.
+    pub fn draw_single<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, index: usize) {
+        if let Some(e) = self.models.get(index) {
+            if e.model.vertex_count() == 0 && e.model.index_count() == 0 { return; }
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(self.vertex_offsets[index]..));
+            if e.model.is_indexed() {
+                if let Some(ref idx_buf) = self.index_buffer {
+                    render_pass.set_index_buffer(
+                        idx_buf.slice(self.index_offsets[index]..),
+                        M::index_format(),
+                    );
+                    render_pass.draw_indexed(0..e.model.index_count(), 0, 0..1);
+                }
+            } else {
+                render_pass.draw(0..e.model.vertex_count(), 0..1);
+            }
+        }
+    }
+
+    /// Number of models in the envelop.
+    pub fn len(&self) -> usize {
+        self.models.len()
+    }
+
     pub fn get(&mut self, index: usize) -> Option<&mut EModel<M>> {
         if index >= self.models.len() {
             return None;
