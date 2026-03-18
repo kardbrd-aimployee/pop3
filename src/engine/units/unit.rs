@@ -45,4 +45,11 @@ pub struct Unit {
 
     // Animation state (offsets +0x33..+0x3a in original binary)
     pub anim: AnimationState,
+
+    // Building association — which building this person is entering/inside/exiting
+    pub building_handle: Option<u16>,
+    // Wood being carried (for Gathering/CarryingWood states)
+    pub wood_carried: u16,
+    // Guard position — where this unit should hold (for Guard state)
+    pub guard_position: Option<WorldCoord>,
 }

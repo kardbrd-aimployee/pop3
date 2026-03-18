@@ -90,6 +90,9 @@ mod tests {
             bloodlust: false,
             shielded: false,
             anim: super::super::animation::AnimationState::default(),
+            building_handle: None,
+            wood_carried: 0,
+            guard_position: None,
         }
     }
 

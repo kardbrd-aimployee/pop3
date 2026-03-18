@@ -15,7 +15,7 @@ use crate::data::units::{ModelType, UnitRaw};
 use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid};
 use super::unit::Unit;
 use super::person_state::{
-    PersonState, person_type_defaults, enter_state, tick_state, TickResult,
+    PersonState, person_type_defaults, enter_state, tick_state, TickResult, DeferredAction,
     calculate_melee_damage, apply_damage,
     CombatPhase, SWING_READY_TICKS,
     COMBAT_DETECT_RANGE, COMBAT_MELEE_RANGE,
@@ -158,6 +158,9 @@ impl UnitCoordinator {
                 bloodlust: false,
                 shielded: false,
                 anim: AnimationState::default(),
+                building_handle: None,
+                wood_carried: 0,
+                guard_position: None,
             });
             // Initialize idle state with a random timer (matches Person_Init calling Person_SetState)
             let idx = self.units.len() - 1;
@@ -207,10 +210,11 @@ impl UnitCoordinator {
             if !unit.alive { continue; }
 
             // Run state machine tick
-            let result = tick_state(unit, &mut self.rng);
+            let (result, _deferred) = tick_state(unit, &mut self.rng);
             if let TickResult::Transition(new_state) = result {
                 enter_state(unit, new_state, &mut self.rng);
             }
+            // TODO: Process deferred actions (building occupancy, wood deposit, etc.)
 
             // Select animation every tick (matches decomp — walk→idle override needs movement check)
             select_animation(&mut unit.anim, unit.state, unit.subtype, &self.anim_frame_counts, unit.movement.is_moving());
@@ -525,6 +529,9 @@ impl UnitCoordinator {
                 bloodlust: person.bloodlust,
                 shielded: person.shielded,
                 anim: person.anim,
+                building_handle: person.building_handle,
+                wood_carried: person.wood_carried,
+                guard_position: person.guard_position,
             });
         }
     }

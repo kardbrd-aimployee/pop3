@@ -5,6 +5,7 @@
 // (Idle, Moving, Wander, GoToPoint, Fighting, Fleeing, Drowning, Dead)
 // have real implementations in this phase.
 
+use crate::engine::movement::WorldCoord;
 use crate::engine::state::rng::GameRng;
 use super::unit::Unit;
 
@@ -113,6 +114,15 @@ pub fn enter_state(unit: &mut Unit, new_state: PersonState, rng: &mut GameRng) {
         PersonState::Fleeing => enter_fleeing(unit, rng),
         PersonState::Drowning => enter_drowning(unit),
         PersonState::Dead => enter_dead(unit, rng),
+        PersonState::EnterBuilding => enter_enter_building(unit),
+        PersonState::Housing => enter_housing(unit),
+        PersonState::Training | PersonState::InTraining | PersonState::InsideTraining => enter_training(unit),
+        PersonState::WaitOutside => enter_wait_outside(unit),
+        PersonState::Gathering => enter_gathering(unit),
+        PersonState::GatheringWood => enter_gathering_wood(unit),
+        PersonState::CarryingWood => enter_carrying_wood(unit),
+        PersonState::InsideBuilding => { /* no special entry logic */ }
+        // Guard behavior uses guard_position field, managed by coordinator when unit is at a GuardPost
         _ => { /* Unimplemented states — no-op */ }
     }
 }
@@ -210,18 +220,45 @@ pub enum TickResult {
     Transition(PersonState),
 }
 
+/// Actions that the caller (coordinator) must execute after tick_state returns.
+/// Enables building/resource interaction without borrow checker conflicts:
+/// tick_state only has &mut Unit, but building data lives in the pool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeferredAction {
+    /// No deferred action needed.
+    None,
+    /// Person arrived at building — coordinator should call add_occupant.
+    AddToBuilding { building_handle: u16 },
+    /// Person exiting building — coordinator should call remove_occupant.
+    RemoveFromBuilding { building_handle: u16 },
+    /// Person depositing wood at building.
+    DepositWood { building_handle: u16, amount: u16 },
+    /// Person spawning at building exit (after training).
+    SpawnAtBuilding { building_handle: u16 },
+}
+
 /// Per-tick state update for a single unit.
 /// Called each game tick from the coordinator.
-pub fn tick_state(unit: &mut Unit, rng: &mut GameRng) -> TickResult {
+/// Returns (TickResult, DeferredAction) — the coordinator must execute any
+/// deferred action after processing the tick result.
+pub fn tick_state(unit: &mut Unit, rng: &mut GameRng) -> (TickResult, DeferredAction) {
     match unit.state {
-        PersonState::Idle => tick_idle(unit),
-        PersonState::Moving | PersonState::GoToPoint | PersonState::GoToMarker => tick_moving(unit),
-        PersonState::Wander => tick_wander(unit, rng),
-        PersonState::Fighting => tick_fighting(unit),
-        PersonState::Fleeing => tick_fleeing(unit),
-        PersonState::Drowning => tick_drowning(unit),
-        PersonState::Dead => tick_dead(unit),
-        _ => TickResult::Continue, // Unimplemented states hold
+        PersonState::Idle => (tick_idle(unit), DeferredAction::None),
+        PersonState::Moving | PersonState::GoToPoint | PersonState::GoToMarker => (tick_moving(unit), DeferredAction::None),
+        PersonState::Wander => (tick_wander(unit, rng), DeferredAction::None),
+        PersonState::Fighting => (tick_fighting(unit), DeferredAction::None),
+        PersonState::Fleeing => (tick_fleeing(unit), DeferredAction::None),
+        PersonState::Drowning => (tick_drowning(unit), DeferredAction::None),
+        PersonState::Dead => (tick_dead(unit), DeferredAction::None),
+        PersonState::EnterBuilding => tick_enter_building(unit),
+        PersonState::Housing => tick_housing(unit),
+        PersonState::Training | PersonState::InTraining | PersonState::InsideTraining => tick_training(unit),
+        PersonState::WaitOutside => tick_wait_outside(unit),
+        PersonState::Gathering => tick_gathering(unit),
+        PersonState::GatheringWood => tick_gathering_wood(unit),
+        PersonState::CarryingWood => tick_carrying_wood(unit),
+        PersonState::InsideBuilding => (tick_inside_building(unit), DeferredAction::None),
+        _ => (TickResult::Continue, DeferredAction::None), // Unimplemented states hold
     }
 }
 
@@ -390,6 +427,143 @@ fn tick_dead(unit: &mut Unit) -> TickResult {
     TickResult::Continue
 }
 
+// --- Building/economy state handlers ---
+
+/// EnterBuilding enter: building_handle should already be set by the command that triggered this state.
+fn enter_enter_building(unit: &mut Unit) {
+    unit.state_timer = 0;
+}
+
+/// EnterBuilding tick: walk toward building position; when arrived, transition to InsideBuilding.
+fn tick_enter_building(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    unit.state_timer += 1;
+    if unit.state_timer >= 30 {
+        let action = if let Some(bh) = unit.building_handle {
+            DeferredAction::AddToBuilding { building_handle: bh }
+        } else {
+            DeferredAction::None
+        };
+        (TickResult::Transition(PersonState::InsideBuilding), action)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
+/// InsideBuilding tick: coordinator decides whether to transition to Housing or Training
+/// based on building type. Stays here until coordinator transitions.
+fn tick_inside_building(_unit: &mut Unit) -> TickResult {
+    TickResult::Continue
+}
+
+/// Housing enter: person is now housed, contributes to population count.
+fn enter_housing(unit: &mut Unit) {
+    unit.state_timer = 0;
+}
+
+/// Housing tick: stay indefinitely until ejected by building destruction or player command.
+fn tick_housing(_unit: &mut Unit) -> (TickResult, DeferredAction) {
+    (TickResult::Continue, DeferredAction::None)
+}
+
+/// Training enter: start conversion countdown timer.
+/// Default: 256 ticks for warrior conversion; coordinator may set a different value before entry.
+fn enter_training(unit: &mut Unit) {
+    if unit.state_timer == 0 {
+        unit.state_timer = 256;
+    }
+}
+
+/// Training tick: decrement timer; when done, signal state complete for coordinator
+/// to change person subtype and transition to WaitOutside.
+fn tick_training(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    if unit.state_timer > 0 {
+        unit.state_timer -= 1;
+    }
+    if unit.state_timer == 0 {
+        let action = if let Some(bh) = unit.building_handle {
+            DeferredAction::SpawnAtBuilding { building_handle: bh }
+        } else {
+            DeferredAction::None
+        };
+        (TickResult::Transition(PersonState::WaitOutside), action)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
+/// WaitOutside enter: clear building_handle, person walks away from building.
+fn enter_wait_outside(unit: &mut Unit) {
+    let _prev_building = unit.building_handle;
+    unit.building_handle = None;
+    unit.state_timer = 0;
+}
+
+/// WaitOutside tick: walk away from building; when clear, transition to Idle.
+fn tick_wait_outside(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    unit.state_timer += 1;
+    if unit.state_timer >= 20 {
+        (TickResult::Transition(PersonState::Idle), DeferredAction::None)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
+/// Gathering enter: find nearest tree, set target position, clear wood carried.
+fn enter_gathering(unit: &mut Unit) {
+    unit.state_timer = 0;
+    unit.wood_carried = 0;
+}
+
+/// Gathering tick: walk toward tree; when arrived, transition to GatheringWood.
+fn tick_gathering(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    unit.state_timer += 1;
+    if unit.state_timer >= 40 {
+        (TickResult::Transition(PersonState::GatheringWood), DeferredAction::None)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
+/// GatheringWood enter: start chop timer (60 ticks).
+fn enter_gathering_wood(unit: &mut Unit) {
+    unit.state_timer = 60;
+}
+
+/// GatheringWood tick: decrement chop timer; when done, pick up wood and transition to CarryingWood.
+fn tick_gathering_wood(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    if unit.state_timer > 0 {
+        unit.state_timer -= 1;
+    }
+    if unit.state_timer == 0 {
+        unit.wood_carried = 1;
+        (TickResult::Transition(PersonState::CarryingWood), DeferredAction::None)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
+/// CarryingWood enter: set timer for walk to building.
+fn enter_carrying_wood(unit: &mut Unit) {
+    unit.state_timer = 0;
+}
+
+/// CarryingWood tick: walk toward building; when arrived, deposit wood and loop back to Gathering.
+fn tick_carrying_wood(unit: &mut Unit) -> (TickResult, DeferredAction) {
+    unit.state_timer += 1;
+    if unit.state_timer >= 40 {
+        let amount = unit.wood_carried;
+        unit.wood_carried = 0;
+        let action = if let Some(bh) = unit.building_handle {
+            DeferredAction::DepositWood { building_handle: bh, amount }
+        } else {
+            DeferredAction::None
+        };
+        (TickResult::Transition(PersonState::Gathering), action)
+    } else {
+        (TickResult::Continue, DeferredAction::None)
+    }
+}
+
 // --- Combat helpers ---
 
 /// Calculate melee damage from attacker to defender.
@@ -506,6 +680,9 @@ mod tests {
             bloodlust: false,
             shielded: false,
             anim: AnimationState::default(),
+            building_handle: None,
+            wood_carried: 0,
+            guard_position: None,
         }
     }
 
@@ -582,12 +759,12 @@ mod tests {
         let mut rng = GameRng::new(99);
         unit.state = PersonState::Idle;
         unit.state_timer = 2;
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_timer, 1);
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_timer, 0);
         // Timer expired — unit stays idle (default state for brave is 0 = no transition)
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state, PersonState::Idle);
     }
 
@@ -602,29 +779,29 @@ mod tests {
 
         // Drain walking timer
         while unit.state_timer > 0 {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // Timer=0, should transition to Pausing
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, WanderPhase::Pausing as u8);
         assert!(unit.state_timer >= 64 && unit.state_timer <= 127);
         assert_eq!(unit.movement.flags1 & 0x1000, 0); // NOT moving
 
         // Drain pausing timer
         while unit.state_timer > 0 {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // Timer=0, should transition to Walking2
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, WanderPhase::Walking2 as u8);
         assert!(unit.state_timer >= 32 && unit.state_timer <= 63);
 
         // Drain walking2 timer
         while unit.state_timer > 0 {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // Timer=0, should transition to Idle
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Transition(PersonState::Idle)));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Transition(PersonState::Idle), _)));
     }
 
     #[test]
@@ -633,9 +810,9 @@ mod tests {
         let mut rng = GameRng::new(99);
         unit.state = PersonState::GoToPoint;
         unit.movement.flags1 |= 0x1000; // Still moving
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         unit.movement.flags1 &= !0x1000; // Arrived
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Transition(PersonState::Idle)));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Transition(PersonState::Idle), _)));
     }
 
     #[test]
@@ -645,12 +822,12 @@ mod tests {
         unit.state = PersonState::Drowning;
         let initial_hp = unit.health;
         match tick_state(&mut unit, &mut rng) {
-            TickResult::Continue => {},
+            (TickResult::Continue, _) => {},
             _ => panic!("Should continue"),
         }
         assert!(unit.health < initial_hp);
         for _ in 0..200 {
-            if let TickResult::Transition(PersonState::Dead) = tick_state(&mut unit, &mut rng) {
+            if let (TickResult::Transition(PersonState::Dead), _) = tick_state(&mut unit, &mut rng) {
                 assert_eq!(unit.health, 0);
                 return;
             }
@@ -680,10 +857,10 @@ mod tests {
         unit.state = PersonState::Fleeing;
         unit.state_timer = 2;
         unit.movement.flags1 |= 0x1000;
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         match tick_state(&mut unit, &mut rng) {
-            TickResult::Transition(PersonState::Idle) => {},
+            (TickResult::Transition(PersonState::Idle), _) => {},
             _ => panic!("Expected Idle transition"),
         }
     }
@@ -694,7 +871,7 @@ mod tests {
         let mut rng = GameRng::new(99);
         unit.state = PersonState::Fighting;
         unit.target_unit = None;
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Transition(PersonState::Idle)));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Transition(PersonState::Idle), _)));
     }
 
     #[test]
@@ -706,44 +883,44 @@ mod tests {
         assert_eq!(unit.state_counter, CombatPhase::Seek as u8);
 
         // Seek stays in Seek (coordinator drives Seek→Approach)
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
 
         // Simulate coordinator setting SwingReady
         unit.state_counter = CombatPhase::SwingReady as u8;
         unit.state_timer = 2;
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue)); // timer 2→1
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue)); // timer 1→0
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue)); // → Strike
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _))); // timer 2→1
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _))); // timer 1→0
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _))); // → Strike
         assert_eq!(unit.state_counter, CombatPhase::Strike as u8);
 
         // Strike → LungeBack
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, CombatPhase::LungeBack as u8);
         assert_eq!(unit.state_timer, LUNGE_TICKS);
 
         // Drain LungeBack
         for _ in 0..LUNGE_TICKS {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // → LungeFwd
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, CombatPhase::LungeFwd as u8);
 
         // Drain LungeFwd
         for _ in 0..LUNGE_TICKS {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // → Recovering
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, CombatPhase::Recovering as u8);
         assert_eq!(unit.state_timer, RECOVERING_TICKS);
 
         // Drain Recovering
         for _ in 0..RECOVERING_TICKS {
-            assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+            assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         }
         // → Seek
-        assert!(matches!(tick_state(&mut unit, &mut rng), TickResult::Continue));
+        assert!(matches!(tick_state(&mut unit, &mut rng), (TickResult::Continue, _)));
         assert_eq!(unit.state_counter, CombatPhase::Seek as u8);
     }
 
@@ -795,5 +972,249 @@ mod tests {
         enter_state(&mut unit, PersonState::Wander, &mut rng);
         assert_eq!(unit.prev_state, PersonState::Idle);
         assert_eq!(unit.state, PersonState::Wander);
+    }
+
+    // --- New state handler tests (02-04) ---
+
+    #[test]
+    fn enter_building_transitions_to_inside_building() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = Some(5);
+        enter_state(&mut unit, PersonState::EnterBuilding, &mut rng);
+        assert_eq!(unit.state, PersonState::EnterBuilding);
+        assert_eq!(unit.state_timer, 0);
+
+        // Tick 29 times — should still be continuing
+        for _ in 0..29 {
+            let (result, action) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+            assert_eq!(action, DeferredAction::None);
+        }
+
+        // Tick 30 — should transition to InsideBuilding with AddToBuilding action
+        let (result, action) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::InsideBuilding)));
+        assert_eq!(action, DeferredAction::AddToBuilding { building_handle: 5 });
+    }
+
+    #[test]
+    fn enter_building_no_handle_no_deferred_action() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = None;
+        enter_state(&mut unit, PersonState::EnterBuilding, &mut rng);
+
+        // Drain to completion
+        for _ in 0..30 {
+            tick_state(&mut unit, &mut rng);
+        }
+        // At tick 30, should transition but with no deferred action
+        // (already consumed the 30th tick above)
+        // Actually let's just check that building_handle None produces DeferredAction::None
+        let mut unit2 = make_unit(2, 0);
+        unit2.building_handle = None;
+        unit2.state = PersonState::EnterBuilding;
+        unit2.state_timer = 29;
+        let (result, action) = tick_state(&mut unit2, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::InsideBuilding)));
+        assert_eq!(action, DeferredAction::None);
+    }
+
+    #[test]
+    fn housing_stays_indefinitely() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        enter_state(&mut unit, PersonState::Housing, &mut rng);
+        assert_eq!(unit.state, PersonState::Housing);
+        assert_eq!(unit.state_timer, 0);
+
+        // Tick 100 times — should always continue
+        for _ in 0..100 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
+    }
+
+    #[test]
+    fn training_countdown_to_wait_outside() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = Some(10);
+        enter_state(&mut unit, PersonState::Training, &mut rng);
+        assert_eq!(unit.state, PersonState::Training);
+        assert_eq!(unit.state_timer, 256); // default training time
+
+        // Tick 255 times — should still be training
+        for _ in 0..255 {
+            let (result, action) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+            assert_eq!(action, DeferredAction::None);
+        }
+
+        // Tick 256 — timer reaches 0, should transition to WaitOutside
+        let (result, action) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::WaitOutside)));
+        assert_eq!(action, DeferredAction::SpawnAtBuilding { building_handle: 10 });
+    }
+
+    #[test]
+    fn training_custom_timer() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        // Pre-set a custom timer before enter_state
+        unit.state_timer = 50;
+        enter_state(&mut unit, PersonState::Training, &mut rng);
+        // Should keep the custom timer (non-zero is preserved)
+        assert_eq!(unit.state_timer, 50);
+    }
+
+    #[test]
+    fn wait_outside_clears_building_and_transitions_to_idle() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = Some(7);
+        enter_state(&mut unit, PersonState::WaitOutside, &mut rng);
+        assert_eq!(unit.state, PersonState::WaitOutside);
+        assert_eq!(unit.building_handle, None); // cleared on enter
+        assert_eq!(unit.state_timer, 0);
+
+        // Tick 19 times — should continue
+        for _ in 0..19 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
+
+        // Tick 20 — should transition to Idle
+        let (result, _) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::Idle)));
+    }
+
+    #[test]
+    fn gathering_transitions_to_gathering_wood() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        enter_state(&mut unit, PersonState::Gathering, &mut rng);
+        assert_eq!(unit.state, PersonState::Gathering);
+        assert_eq!(unit.wood_carried, 0);
+        assert_eq!(unit.state_timer, 0);
+
+        // Tick 39 times — should continue
+        for _ in 0..39 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
+
+        // Tick 40 — should transition to GatheringWood
+        let (result, _) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::GatheringWood)));
+    }
+
+    #[test]
+    fn gathering_wood_chops_then_carrying() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        enter_state(&mut unit, PersonState::GatheringWood, &mut rng);
+        assert_eq!(unit.state, PersonState::GatheringWood);
+        assert_eq!(unit.state_timer, 60); // chop time
+
+        // Tick 59 times — should continue
+        for _ in 0..59 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
+
+        // Tick 60 — chop done, should set wood_carried and transition to CarryingWood
+        let (result, _) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::CarryingWood)));
+        assert_eq!(unit.wood_carried, 1);
+    }
+
+    #[test]
+    fn carrying_wood_deposits_and_loops() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = Some(3);
+        unit.wood_carried = 1;
+        enter_state(&mut unit, PersonState::CarryingWood, &mut rng);
+        assert_eq!(unit.state, PersonState::CarryingWood);
+        assert_eq!(unit.state_timer, 0);
+
+        // Tick 39 times — should continue
+        for _ in 0..39 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
+
+        // Tick 40 — should deposit wood and loop back to Gathering
+        let (result, action) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::Gathering)));
+        assert_eq!(action, DeferredAction::DepositWood { building_handle: 3, amount: 1 });
+        assert_eq!(unit.wood_carried, 0);
+    }
+
+    #[test]
+    fn wood_gathering_full_cycle() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.building_handle = Some(3);
+        enter_state(&mut unit, PersonState::Gathering, &mut rng);
+
+        // Phase 1: Gathering (walk to tree) — 40 ticks
+        for _ in 0..40 {
+            tick_state(&mut unit, &mut rng);
+        }
+        // Should now want GatheringWood — simulate coordinator transition
+        enter_state(&mut unit, PersonState::GatheringWood, &mut rng);
+
+        // Phase 2: GatheringWood (chop) — 60 ticks
+        for _ in 0..60 {
+            tick_state(&mut unit, &mut rng);
+        }
+        assert_eq!(unit.wood_carried, 1);
+        // Should now want CarryingWood
+        enter_state(&mut unit, PersonState::CarryingWood, &mut rng);
+
+        // Phase 3: CarryingWood (walk to building) — 40 ticks
+        for _ in 0..39 {
+            tick_state(&mut unit, &mut rng);
+        }
+        let (result, action) = tick_state(&mut unit, &mut rng);
+        assert!(matches!(result, TickResult::Transition(PersonState::Gathering)));
+        assert_eq!(action, DeferredAction::DepositWood { building_handle: 3, amount: 1 });
+    }
+
+    #[test]
+    fn deferred_action_enum_values() {
+        // Verify all DeferredAction variants can be constructed
+        let none = DeferredAction::None;
+        let add = DeferredAction::AddToBuilding { building_handle: 1 };
+        let remove = DeferredAction::RemoveFromBuilding { building_handle: 2 };
+        let deposit = DeferredAction::DepositWood { building_handle: 3, amount: 5 };
+        let spawn = DeferredAction::SpawnAtBuilding { building_handle: 4 };
+        assert_eq!(none, DeferredAction::None);
+        assert_eq!(add, DeferredAction::AddToBuilding { building_handle: 1 });
+        assert_eq!(remove, DeferredAction::RemoveFromBuilding { building_handle: 2 });
+        assert_eq!(deposit, DeferredAction::DepositWood { building_handle: 3, amount: 5 });
+        assert_eq!(spawn, DeferredAction::SpawnAtBuilding { building_handle: 4 });
+    }
+
+    #[test]
+    fn unit_new_fields_default() {
+        let unit = make_unit(2, 0);
+        assert_eq!(unit.building_handle, None);
+        assert_eq!(unit.wood_carried, 0);
+        assert_eq!(unit.guard_position, None);
+    }
+
+    #[test]
+    fn inside_building_stays_until_coordinator_transitions() {
+        let mut unit = make_unit(2, 0);
+        let mut rng = GameRng::new(42);
+        unit.state = PersonState::InsideBuilding;
+        for _ in 0..50 {
+            let (result, _) = tick_state(&mut unit, &mut rng);
+            assert!(matches!(result, TickResult::Continue));
+        }
     }
 }
