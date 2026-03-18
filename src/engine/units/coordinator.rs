@@ -558,18 +558,87 @@ impl UnitCoordinator {
         }
     }
 
-    /// Tick all buildings in the pool.
+    /// Tick all buildings in the pool. Processes spawn, convert, and combat actions.
     pub fn tick_buildings(&mut self) {
         let building_handles: Vec<ObjectHandle> = self.pool.buildings()
             .map(|(h, _, _)| h)
             .collect();
 
+        // Phase 1: tick each building, collect actions
+        let mut all_actions: Vec<(ObjectHandle, BuildingTickActions)> = Vec::new();
         for handle in building_handles {
             if let Some(obj) = self.pool.get_mut(handle) {
                 if let GameObjectData::Building(ref mut bd) = obj.data {
-                    buildings::tick::tick_building(bd, &mut obj.header, handle);
+                    let actions = buildings::tick::tick_building(bd, &mut obj.header, handle);
+                    all_actions.push((handle, actions));
                 }
             }
+        }
+
+        // Phase 2: process spawn actions
+        for (building_handle, actions) in &all_actions {
+            if actions.spawn == SpawnAction::SpawnBrave {
+                if let Some(obj) = self.pool.get(*building_handle) {
+                    let pos = obj.header.position;
+                    let tribe = obj.header.tribe;
+                    self.spawn_brave_near(pos, tribe);
+                }
+            }
+        }
+
+        // Phase 3: process convert actions
+        for (_building_handle, actions) in &all_actions {
+            if let ConvertAction::ConvertUnit { handle, new_subtype } = &actions.convert {
+                if let Some(obj) = self.pool.get_mut(*handle) {
+                    obj.header.subtype = *new_subtype;
+                }
+            }
+        }
+
+        // Phase 4: process building combat actions
+        for (_building_handle, actions) in &all_actions {
+            for combat_action in &actions.combat {
+                if let BuildingCombatAction::AttackTarget { target, damage, .. } = combat_action {
+                    if let Some(target_obj) = self.pool.get_mut(*target) {
+                        let dmg = (*damage).min(target_obj.header.health);
+                        target_obj.header.health -= dmg;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Spawn a brave person near a building position.
+    fn spawn_brave_near(&mut self, building_pos: WorldCoord, tribe: u8) {
+        // Offset spawn position slightly from building (one cell = 128 world units)
+        let spawn_pos = WorldCoord::new(
+            building_pos.x.wrapping_add(128),
+            building_pos.z.wrapping_add(64),
+        );
+        let subtype = 2; // Brave
+        let defaults = person_type_defaults(subtype);
+
+        if let Some(handle) = self.pool.create(ModelType::Person, subtype, tribe, spawn_pos) {
+            if let Some(obj) = self.pool.get_mut(handle) {
+                obj.header.health = defaults.max_health;
+                obj.header.max_health = defaults.max_health;
+                if let GameObjectData::Person(ref mut pd) = obj.data {
+                    pd.movement.position = spawn_pos;
+                    pd.movement.unit_type = subtype;
+                    pd.movement.speed = defaults.speed;
+                    pd.state = PersonState::Idle;
+                    pd.prev_state = PersonState::Idle;
+                    pd.alive = true;
+                    pd.home_pos = building_pos;
+                    let (cx, cy) = world_to_render_pos(&spawn_pos, self.landscape_size);
+                    pd.cell_x = cx;
+                    pd.cell_y = cy;
+                }
+            }
+            // Insert into spatial grid
+            let cell_idx = CellGrid::cell_index_from_world(&spawn_pos);
+            self.cell_grid.insert_object(handle, cell_idx, self.pool.slots_mut());
+            self.person_handles.push(handle);
         }
     }
 
