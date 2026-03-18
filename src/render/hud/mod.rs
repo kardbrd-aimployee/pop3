@@ -82,6 +82,7 @@ pub struct HudState {
     pub spell_cooldowns: Vec<SpellCooldown>,
     pub camera_viewport: MinimapViewport,
     pub selected_info: Option<SelectedEntityInfo>,
+    pub health_bars: Vec<HealthBarEntry>,
 }
 
 pub struct MinimapData {
@@ -122,6 +123,20 @@ pub struct SelectedEntityInfo {
     pub subtype: u8,
     pub tribe_index: u8,
     pub extra_lines: Vec<String>,
+}
+
+/// Health bar entry for world-projected health bars in the HUD overlay.
+pub struct HealthBarEntry {
+    pub screen_x: f32,         // screen-space center X
+    pub screen_y: f32,         // screen-space top Y (above entity)
+    pub health_fraction: f32,  // 0.0-1.0
+    pub bar_type: HealthBarType,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HealthBarType {
+    Unit,
+    Building,
 }
 
 /// Spell cooldown state for HUD rendering.
@@ -1501,5 +1516,25 @@ mod tests {
     #[test]
     fn subtype_unknown_fallback() {
         assert_eq!(unit_subtype_name(255), "Unknown");
+    }
+
+    #[test]
+    fn health_bar_entry_fraction() {
+        let hb = HealthBarEntry { screen_x: 100.0, screen_y: 50.0, health_fraction: 0.5, bar_type: HealthBarType::Unit };
+        assert_eq!(hb.health_fraction, 0.5);
+    }
+
+    #[test]
+    fn health_bar_type_copy() {
+        let t = HealthBarType::Unit;
+        let t2 = t; // Copy trait
+        assert!(matches!(t2, HealthBarType::Unit));
+    }
+
+    #[test]
+    fn health_bar_type_building() {
+        let t = HealthBarType::Building;
+        let t2 = t;
+        assert!(matches!(t2, HealthBarType::Building));
     }
 }

@@ -71,7 +71,7 @@ use crate::engine::{GameCommand, FrameState, translate_key};
 use crate::render::hud::{
     self, HudTab, HudState, HudRenderer,
     MinimapData, MinimapDot, MinimapViewport, PanelEntry, SelectedEntityInfo,
-    TribePopulation, SpellCooldown,
+    TribePopulation, SpellCooldown, HealthBarEntry, HealthBarType,
     HUD_TRIBE_COLORS, compute_mana_fraction,
 };
 
@@ -518,6 +518,29 @@ impl GameEngine {
             None
         };
 
+        // Health bars: project damaged units from world space to screen space
+        let health_bars = {
+            let pvm = self.unit_pvm();
+            let sw = self.screen.width as f32;
+            let sh = self.screen.height as f32;
+            let mut bars = Vec::new();
+            for unit in self.unit_coordinator.units().iter().filter(|u| u.alive && u.health < u.max_health) {
+                if let Some((sx, sy)) = self.unit_screen_pos(unit, &pvm) {
+                    // Offset upward so bar appears above the unit sprite
+                    let bar_y = sy - 8.0;
+                    if sx >= 0.0 && sx <= sw && bar_y >= 0.0 && bar_y <= sh {
+                        bars.push(HealthBarEntry {
+                            screen_x: sx,
+                            screen_y: bar_y,
+                            health_fraction: unit.health as f32 / unit.max_health.max(1) as f32,
+                            bar_type: HealthBarType::Unit,
+                        });
+                    }
+                }
+            }
+            bars
+        };
+
         let player_tribe = &self.game_world.tribes.tribes[0]; // tribe 0 = player
         HudState {
             active_tab: self.hud_tab,
@@ -533,6 +556,7 @@ impl GameEngine {
             spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
             camera_viewport,
             selected_info,
+            health_bars,
         }
     }
 
@@ -1900,6 +1924,23 @@ impl App {
             for line in &info.extra_lines {
                 hud.draw_text(line, layout.mm_pad, ey, layout.small_font, [0.8, 0.8, 0.8, 0.8]);
                 ey += layout.line_h;
+            }
+        }
+
+        // === World-Space Health Bars ===
+        {
+            let bar_w = 32.0 * layout.scale_x;
+            let bar_h = 3.0 * layout.scale_y;
+            for hb in &hud_state.health_bars {
+                let bx = hb.screen_x - bar_w / 2.0;
+                let by = hb.screen_y - bar_h;
+                // Background
+                hud.draw_rect(bx, by, bar_w, bar_h, [0.0, 0.0, 0.0, 0.6]);
+                // Fill (green->yellow->red based on fraction)
+                let color = if hb.health_fraction > 0.5 { [0.1, 0.8, 0.1, 0.9] }
+                            else if hb.health_fraction > 0.25 { [0.8, 0.8, 0.1, 0.9] }
+                            else { [0.8, 0.1, 0.1, 0.9] };
+                hud.draw_rect(bx, by, bar_w * hb.health_fraction, bar_h, color);
             }
         }
 
