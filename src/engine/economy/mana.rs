@@ -17,6 +17,30 @@ pub const MANA_F_HUT_LEVEL_3: u32 = 3;
 /// Maximum mana pool per tribe. Original: 0xF4240.
 pub const MAX_MANA: u32 = 1_000_000;
 
+/// Spell mana costs indexed by spell panel position (0-15).
+/// Values are placeholder estimates until extracted from constant.dat.
+/// Order matches the spell bar: Burn, Blast, Lightning, Whirlwind,
+/// Plague, Invisibility, Firestorm, Hypnotism,
+/// Ghost Army, Erosion, Swamp, Land Bridge,
+/// Angel of Death, Earthquake, Flatten, Volcano.
+pub const SPELL_MANA_COSTS: [u32; 16] = [
+    20_000,  80_000,  60_000,  40_000,
+    50_000,  30_000, 100_000,  40_000,
+    60_000,  30_000,  30_000,  40_000,
+   150_000,  50_000,  20_000, 120_000,
+];
+
+/// Compute spell charges (number of casts affordable) for all 16 spells.
+pub fn compute_spell_charges(current_mana: u32) -> [u8; 16] {
+    let mut charges = [0u8; 16];
+    for (i, &cost) in SPELL_MANA_COSTS.iter().enumerate() {
+        if cost > 0 {
+            charges[i] = (current_mana / cost).min(7) as u8;
+        }
+    }
+    charges
+}
+
 /// Returns mana generation rate for a person subtype (per tick).
 /// Subtypes: 1=Wild(0), 2=Brave, 3=Warrior, 4=Preacher, 5=Spy, 6=SuperWarrior, 7=Shaman
 pub fn mana_rate_for_person(subtype: u8) -> u32 {

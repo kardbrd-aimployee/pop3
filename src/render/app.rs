@@ -557,6 +557,7 @@ impl GameEngine {
             player_population: player_tribe.population,
             player_max_population: player_tribe.max_population,
             spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
+            spell_charges: crate::engine::economy::mana::compute_spell_charges(player_tribe.mana),
             camera_viewport,
             selected_info,
             health_bars,
@@ -910,7 +911,7 @@ impl App {
                 show_markers: false,
                 sprite_z_offset: 0.005,
                 sprite_scale: 0.65,
-                hud_tab: HudTab::Spells,
+                hud_tab: HudTab::Buildings,
                 hud_visible: false,
                 compass_visible: false,
                 walkability_visible: false,
@@ -1841,35 +1842,71 @@ impl App {
             hud.draw_rect(rx + rw - border, ry, border, rh, vp_color);      // right
         }
 
-        // === Tab Buttons ===
-        let tabs = [("Spells", HudTab::Spells), ("Build", HudTab::Buildings), ("Units", HudTab::Units)];
-        for (i, (label, tab_id)) in tabs.iter().enumerate() {
+        // === Tab Icons (sprites 7=Buildings, 8=Spells, 9=Units) ===
+        let tab_sprites = [(7, HudTab::Buildings), (8, HudTab::Spells), (9, HudTab::Units)];
+        let has_sprites = self.engine.hud_panel_sprite_count > 9;
+        for (i, (sprite_idx, tab_id)) in tab_sprites.iter().enumerate() {
             let tx = layout.mm_pad + i as f32 * layout.tab_w;
             let is_active = hud_state.active_tab == *tab_id;
-            let bg = if is_active { [0.25, 0.25, 0.4, 1.0] } else { [0.12, 0.12, 0.18, 1.0] };
+            let bg = if is_active { [0.35, 0.30, 0.20, 1.0] } else { [0.18, 0.15, 0.10, 1.0] };
             hud.draw_rect(tx, layout.tab_y, layout.tab_w - 1.0, layout.tab_h, bg);
-            let text_color = if is_active { [1.0, 1.0, 1.0, 1.0] } else { [0.6, 0.6, 0.6, 1.0] };
-            hud.draw_text(label, tx + 3.0, layout.tab_y + 3.0 * layout.scale_y, layout.small_font, text_color);
+            if has_sprites {
+                let si = hud.panel_sprite_index(*sprite_idx);
+                let icon_scale = layout.tab_h / 29.0; // normalize to tab height
+                let icon_x = tx + (layout.tab_w - 1.0 - 31.0 * icon_scale) / 2.0; // center
+                let icon_y = layout.tab_y + (layout.tab_h - 29.0 * icon_scale) / 2.0;
+                hud.draw_sprite(si, icon_x, icon_y, icon_scale, icon_scale);
+            } else {
+                // Fallback text if sprites not loaded
+                let labels = ["Build", "Spells", "Units"];
+                let text_color = if is_active { [1.0, 1.0, 1.0, 1.0] } else { [0.6, 0.6, 0.6, 1.0] };
+                hud.draw_text(labels[i], tx + 3.0, layout.tab_y + 3.0 * layout.scale_y, layout.small_font, text_color);
+            }
         }
 
-        // === Panel Content (from HudState data contract) ===
+        // === Panel Content ===
         match hud_state.active_tab {
             HudTab::Spells => {
-                for (i, entry) in hud_state.panel_entries.iter().enumerate() {
-                    let sy = layout.panel_y + i as f32 * layout.line_h;
-                    let entry_w = layout.sidebar_w - layout.mm_pad * 2.0;
-                    // Cooldown overlay: darken spell entry proportional to remaining cooldown
-                    let cooldown = hud_state.spell_cooldowns.iter().find(|c| c.spell_index == i as u8);
-                    if let Some(cd) = cooldown {
-                        if cd.cooldown_remaining > 0 {
-                            let cd_frac = cd.cooldown_remaining as f32 / cd.cooldown_total.max(1) as f32;
-                            hud.draw_rect(layout.mm_pad, sy, entry_w, layout.line_h, [0.0, 0.0, 0.0, 0.5 * cd_frac]);
-                        }
+                // 4x4 grid of spell icons (sprites 13-28)
+                let grid_cols = 4;
+                let grid_pad = layout.mm_pad;
+                let available_w = layout.sidebar_w - grid_pad * 2.0;
+                let cell_size = available_w / grid_cols as f32;
+                let icon_size = cell_size * 0.7; // 70% of cell for icon, rest for dots
+                let dot_size = 3.0 * layout.scale_x;
+
+                for i in 0..16usize {
+                    let col = i % grid_cols;
+                    let row = i / grid_cols;
+                    let cx = grid_pad + col as f32 * cell_size;
+                    let cy = layout.panel_y + row as f32 * cell_size;
+
+                    // Cell background
+                    let cell_bg = [0.22, 0.18, 0.12, 0.8];
+                    hud.draw_rect(cx + 1.0, cy + 1.0, cell_size - 2.0, cell_size - 2.0, cell_bg);
+
+                    // Spell icon sprite (indices 13-28 in plspanel.spr)
+                    if has_sprites && (13 + i) < self.engine.hud_panel_sprite_count {
+                        let si = hud.panel_sprite_index(13 + i);
+                        let icon_scale = icon_size / 16.0; // sprites are 16x16
+                        let ix = cx + (cell_size - 16.0 * icon_scale) / 2.0;
+                        let iy = cy + 2.0;
+                        hud.draw_sprite(si, ix, iy, icon_scale, icon_scale);
                     }
-                    hud.draw_text(&entry.label, layout.mm_pad, sy, layout.small_font, entry.color);
+
+                    // Charge dots below icon
+                    let charges = hud_state.spell_charges[i];
+                    let dots_y = cy + icon_size + 4.0;
+                    let total_dots_w = charges as f32 * (dot_size + 1.0);
+                    let dots_x = cx + (cell_size - total_dots_w) / 2.0;
+                    for d in 0..charges {
+                        let dx = dots_x + d as f32 * (dot_size + 1.0);
+                        hud.draw_rect(dx, dots_y, dot_size, dot_size, [0.3, 0.5, 1.0, 0.9]);
+                    }
                 }
             }
             _ => {
+                // Buildings and Units tabs: text list (same as before)
                 for (i, entry) in hud_state.panel_entries.iter().enumerate() {
                     let sy = layout.panel_y + i as f32 * layout.line_h;
                     hud.draw_text(&entry.label, layout.mm_pad, sy, layout.small_font, entry.color);
@@ -1884,20 +1921,21 @@ impl App {
         let info = format!("Level: {}  Frame: {}", hud_state.level_num, hud_state.frame_count);
         hud.draw_text(&info, vp_x, layout.screen_h - layout.font_scale - 4.0, layout.font_scale, [1.0, 1.0, 0.5, 0.7]);
 
-        // === Mana Bar (below minimap, using layout fields) ===
-        let mana_bar_w = layout.sidebar_w - layout.mm_pad * 2.0;
+        // === Vertical Mana Bar (left edge of sidebar, matching original) ===
         let mana_frac = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-        // Background
-        hud.draw_rect(layout.mm_pad, layout.mana_bar_y, mana_bar_w, layout.mana_bar_h, [0.1, 0.1, 0.2, 0.8]);
-        // Fill (blue)
-        hud.draw_rect(layout.mm_pad, layout.mana_bar_y, mana_bar_w * mana_frac, layout.mana_bar_h, [0.3, 0.5, 1.0, 0.9]);
-        // Label
-        let mana_text = format!("Mana: {}", hud_state.player_mana / 1000);
-        hud.draw_text(&mana_text, layout.mm_pad + 2.0, layout.mana_bar_y + 1.0, layout.small_font * 0.8, [1.0, 1.0, 1.0, 0.9]);
+        let mana_bar_x = 1.0;
+        let mana_bar_w = 4.0 * layout.scale_x;
+        let mana_bar_top = layout.mana_bar_y;
+        let mana_bar_full_h = layout.tab_y - mana_bar_top - 2.0; // spans from below minimap to above tabs
+        // Background (dark red)
+        hud.draw_rect(mana_bar_x, mana_bar_top, mana_bar_w, mana_bar_full_h, [0.15, 0.05, 0.05, 0.8]);
+        // Fill from bottom (red, grows upward)
+        let fill_h = mana_bar_full_h * mana_frac;
+        hud.draw_rect(mana_bar_x, mana_bar_top + mana_bar_full_h - fill_h, mana_bar_w, fill_h, [0.8, 0.15, 0.15, 0.9]);
 
-        // === Population Display ===
-        let pop_text = format!("Pop: {}/{}", hud_state.player_population, hud_state.player_max_population);
-        hud.draw_text(&pop_text, layout.mm_pad, layout.pop_y, layout.small_font, [0.7, 1.0, 0.7, 0.9]);
+        // === Population Display (compact, below minimap right of mana bar) ===
+        let pop_text = format!("{}/{}", hud_state.player_population, hud_state.player_max_population);
+        hud.draw_text(&pop_text, layout.mm_pad + mana_bar_w + 4.0, layout.mana_bar_y + 1.0, layout.small_font * 0.8, [0.7, 1.0, 0.7, 0.9]);
 
         // === Selection Info Panel ===
         if let Some(ref info) = hud_state.selected_info {

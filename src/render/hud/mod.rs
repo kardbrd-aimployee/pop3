@@ -34,8 +34,8 @@ pub struct SpriteRegion {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum HudTab {
-    Spells,
     Buildings,
+    Spells,
     Units,
 }
 
@@ -83,6 +83,7 @@ pub struct HudState {
     pub player_population: u32,
     pub player_max_population: u16,
     pub spell_cooldowns: Vec<SpellCooldown>,
+    pub spell_charges: [u8; 16],
     pub camera_viewport: MinimapViewport,
     pub selected_info: Option<SelectedEntityInfo>,
     pub health_bars: Vec<HealthBarEntry>,
@@ -492,8 +493,8 @@ pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Optio
     }
     let tab_idx = ((mouse_x - layout.mm_pad) / layout.tab_w) as usize;
     Some(match tab_idx {
-        0 => HudTab::Spells,
-        1 => HudTab::Buildings,
+        0 => HudTab::Buildings,
+        1 => HudTab::Spells,
         _ => HudTab::Units,
     })
 }
@@ -1312,11 +1313,11 @@ mod tests {
         let l = compute_hud_layout(640.0, 480.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 100.0);
+        assert_eq!(l.sidebar_w, 160.0);
         assert_eq!(l.scale_x, 1.0);
         assert_eq!(l.scale_y, 1.0);
         assert_eq!(l.mm_pad, 4.0);
-        assert_eq!(l.mm_size, 92.0); // 100 - 4*2
+        assert_eq!(l.mm_size, 152.0); // 160 - 4*2
     }
 
     #[test]
@@ -1327,11 +1328,11 @@ mod tests {
         let l = compute_hud_layout(1280.0, 960.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 200.0);
+        assert_eq!(l.sidebar_w, 320.0);
         assert_eq!(l.scale_x, 2.0);
         assert_eq!(l.scale_y, 2.0);
         assert_eq!(l.mm_pad, 8.0);
-        assert_eq!(l.mm_size, 184.0); // 200 - 8*2
+        assert_eq!(l.mm_size, 304.0); // 320 - 8*2
     }
 
     #[test]
@@ -1347,7 +1348,7 @@ mod tests {
     // -- detect_tab_click --
 
     #[test]
-    fn detect_tab_click_spells() {
+    fn detect_tab_click_buildings() {
         // Arrange
         let layout = compute_hud_layout(640.0, 480.0);
         // Click in the middle of the first tab
@@ -1358,11 +1359,11 @@ mod tests {
         let result = detect_tab_click(x, y, &layout);
 
         // Assert
-        assert_eq!(result, Some(HudTab::Spells));
+        assert_eq!(result, Some(HudTab::Buildings));
     }
 
     #[test]
-    fn detect_tab_click_buildings() {
+    fn detect_tab_click_spells() {
         // Arrange
         let layout = compute_hud_layout(640.0, 480.0);
         let x = layout.mm_pad + layout.tab_w * 1.5;
@@ -1372,7 +1373,7 @@ mod tests {
         let result = detect_tab_click(x, y, &layout);
 
         // Assert
-        assert_eq!(result, Some(HudTab::Buildings));
+        assert_eq!(result, Some(HudTab::Spells));
     }
 
     #[test]
