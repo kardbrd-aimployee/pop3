@@ -23,8 +23,8 @@ pub fn hut_capacity(level: u8) -> u16 {
 /// hut_counts: [level_1_count, level_2_count, level_3_count]
 pub fn calculate_housing_capacity(hut_counts: [u16; 3]) -> u16 {
     let raw = hut_counts[0] * MAX_POP_VALUE_HUT_1
-            + hut_counts[1] * MAX_POP_VALUE_HUT_2
-            + hut_counts[2] * MAX_POP_VALUE_HUT_3;
+        + hut_counts[1] * MAX_POP_VALUE_HUT_2
+        + hut_counts[2] * MAX_POP_VALUE_HUT_3;
     raw.min(MAX_POP_VALUE)
 }
 

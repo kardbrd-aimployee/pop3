@@ -77,9 +77,7 @@ pub fn find_nearest_building_position(
                 while let Some(handle) = current {
                     if let Some(obj) = pool.get(handle) {
                         if let GameObjectData::Building(ref bd) = obj.data {
-                            if obj.header.tribe == tribe
-                                && bd.state == BuildingState::Active
-                            {
+                            if obj.header.tribe == tribe && bd.state == BuildingState::Active {
                                 return Some(obj.header.position);
                             }
                         }

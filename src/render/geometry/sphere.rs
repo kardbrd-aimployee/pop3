@@ -8,7 +8,7 @@ pub fn gen_sphere<M: VertexModel<Vector3<f64>, u16>>(model: &mut M, ribs_h: u16,
     let mut last_z = f64::cos(0.0);
     let mut last_kk = 0.0;
     for j in 0..ribs_v {
-        let mk = k1 * ((j+1) as f64);
+        let mk = k1 * ((j + 1) as f64);
         let z = f64::cos(mk);
         let z1 = f64::sin(mk);
         let kk = z1;
@@ -21,7 +21,7 @@ pub fn gen_sphere<M: VertexModel<Vector3<f64>, u16>>(model: &mut M, ribs_h: u16,
         let mut e2: u16 = model.push_vertex(Vector3::new(last_x, last_y, z));
 
         for i in 0..ribs_h {
-            let m = k * ((i+1) as f64);
+            let m = k * ((i + 1) as f64);
             let x = kk * f64::cos(m);
             let y = kk * f64::sin(m);
             let x1 = last_kk * f64::cos(m);

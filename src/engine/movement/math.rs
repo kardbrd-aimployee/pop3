@@ -33,7 +33,11 @@ pub fn rotation_direction(target: i16, current: i16) -> i16 {
             diff -= ANGLE_FULL;
         }
     }
-    if diff >= 0 { 1 } else { -1 }
+    if diff >= 0 {
+        1
+    } else {
+        -1
+    }
 }
 
 /// Advances a 2D point by (sin(angle)*distance, cos(angle)*distance)
@@ -48,8 +52,12 @@ pub fn move_point_by_angle(coord: &mut WorldCoord, angle: u16, speed: i16) {
     }
     let idx = (angle & ANGLE_MASK) as usize;
     let dist = speed as i32;
-    coord.x = coord.x.wrapping_add(((SIN_TABLE[idx] as i64 * dist as i64) >> 16) as i16);
-    coord.z = coord.z.wrapping_add(((COS_TABLE[idx] as i64 * dist as i64) >> 16) as i16);
+    coord.x = coord
+        .x
+        .wrapping_add(((SIN_TABLE[idx] as i64 * dist as i64) >> 16) as i16);
+    coord.z = coord
+        .z
+        .wrapping_add(((COS_TABLE[idx] as i64 * dist as i64) >> 16) as i16);
 }
 
 /// 8-octant atan2 using 256-entry lookup table.
@@ -143,7 +151,9 @@ pub fn distance(p1: &WorldCoord, p2: &WorldCoord) -> i32 {
 /// Original: state at 0x885710
 /// state = state * 9377 + 0x24DF; state = ROR(state, 13)
 pub fn formation_rng_next(state: u32) -> u32 {
-    let s = state.wrapping_mul(RNG_MULTIPLIER).wrapping_add(RNG_INCREMENT);
+    let s = state
+        .wrapping_mul(RNG_MULTIPLIER)
+        .wrapping_add(RNG_INCREMENT);
     s.rotate_right(RNG_ROTATE_BITS)
 }
 
@@ -201,7 +211,7 @@ mod tests {
     fn move_point_north() {
         let mut p = WorldCoord::new(0, 0);
         move_point_by_angle(&mut p, 0, 256);
-        assert_eq!(p.x, 0);   // sin(0) * 256 = 0
+        assert_eq!(p.x, 0); // sin(0) * 256 = 0
         assert_eq!(p.z, 256); // cos(0) * 256 = 256
     }
 
@@ -210,7 +220,7 @@ mod tests {
         let mut p = WorldCoord::new(0, 0);
         move_point_by_angle(&mut p, 512, 256);
         assert_eq!(p.x, 256); // sin(90°) * 256 = 256
-        assert_eq!(p.z, 0);   // cos(90°) * 256 = 0
+        assert_eq!(p.z, 0); // cos(90°) * 256 = 0
     }
 
     #[test]
@@ -231,10 +241,7 @@ mod tests {
 
     #[test]
     fn distance_simple() {
-        assert_eq!(
-            distance(&WorldCoord::new(0, 0), &WorldCoord::new(3, 4)),
-            5
-        );
+        assert_eq!(distance(&WorldCoord::new(0, 0), &WorldCoord::new(3, 4)), 5);
     }
 
     #[test]

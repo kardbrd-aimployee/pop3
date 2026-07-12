@@ -32,7 +32,6 @@ pub struct TribeData {
     pub population: u32,
 
     // -- Economy fields --
-
     /// Current mana pool. Capped at economy::mana::MAX_MANA (1,000,000).
     pub mana: u32,
 
@@ -85,7 +84,8 @@ impl TribeArray {
 
     /// Count how many tribes are active and alive (not eliminated).
     pub fn alive_count(&self) -> usize {
-        self.tribes.iter()
+        self.tribes
+            .iter()
             .filter(|t| t.active && !t.is_eliminated())
             .count()
     }

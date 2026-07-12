@@ -124,7 +124,11 @@ mod tests {
         let font = FontData::from_8x8_bitmap(&FONT_8X8);
         for ch in 0..32u8 {
             let g = font.glyph(ch);
-            assert!(g.bitmap.iter().all(|&p| p == 0), "control char {} not blank", ch);
+            assert!(
+                g.bitmap.iter().all(|&p| p == 0),
+                "control char {} not blank",
+                ch
+            );
         }
     }
 

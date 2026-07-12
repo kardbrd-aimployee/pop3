@@ -24,10 +24,8 @@ pub const MAX_MANA: u32 = 1_000_000;
 /// Ghost Army, Erosion, Swamp, Land Bridge,
 /// Angel of Death, Earthquake, Flatten, Volcano.
 pub const SPELL_MANA_COSTS: [u32; 16] = [
-    20_000,  80_000,  60_000,  40_000,
-    50_000,  30_000, 100_000,  40_000,
-    60_000,  30_000,  30_000,  40_000,
-   150_000,  50_000,  20_000, 120_000,
+    20_000, 80_000, 60_000, 40_000, 50_000, 30_000, 100_000, 40_000, 60_000, 30_000, 30_000,
+    40_000, 150_000, 50_000, 20_000, 120_000,
 ];
 
 /// Compute spell charges (number of casts affordable) for all 16 spells.

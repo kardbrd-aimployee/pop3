@@ -13,10 +13,14 @@ pub fn apply_knockback(
     let dz = (target_pos.z - impact_pos.z) as i32;
     let dist_sq = (dx * dx + dz * dz) as f64;
 
-    if dist_sq < 1.0 { return; } // no knockback if on top
+    if dist_sq < 1.0 {
+        return;
+    } // no knockback if on top
 
     let dist = dist_sq.sqrt() as i32;
-    if dist == 0 { return; }
+    if dist == 0 {
+        return;
+    }
 
     // Velocity = force * direction
     let vx = ((dx * force as i32) / dist) as i16;
@@ -45,7 +49,11 @@ mod tests {
 
         apply_knockback(&target, &mut velocity, &impact, 50);
         // Target is to the right of impact, so knockback should push right (+x)
-        assert!(velocity.x > 0, "Knockback x should be positive, got {}", velocity.x);
+        assert!(
+            velocity.x > 0,
+            "Knockback x should be positive, got {}",
+            velocity.x
+        );
         assert_eq!(velocity.z, 0, "No z component expected for pure x offset");
     }
 
@@ -60,8 +68,12 @@ mod tests {
         assert!(velocity.x > 0);
         assert!(velocity.z > 0);
         // For a 45-degree angle, x and z should be similar
-        assert!((velocity.x - velocity.z).abs() <= 1,
-            "x={} z={} should be roughly equal", velocity.x, velocity.z);
+        assert!(
+            (velocity.x - velocity.z).abs() <= 1,
+            "x={} z={} should be roughly equal",
+            velocity.x,
+            velocity.z
+        );
     }
 
     #[test]

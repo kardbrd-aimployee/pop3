@@ -23,7 +23,8 @@ impl GameRng {
     /// Advance the RNG and return the new seed value.
     /// Original: inline at multiple call sites throughout the binary.
     pub fn next(&mut self) -> u32 {
-        self.seed = self.seed
+        self.seed = self
+            .seed
             .wrapping_mul(RNG_MULTIPLIER)
             .wrapping_add(RNG_INCREMENT);
         self.seed = self.seed.rotate_right(RNG_SHIFT_RIGHT);

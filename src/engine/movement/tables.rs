@@ -44,14 +44,9 @@ pub static ATAN_TABLE: LazyLock<[u16; 256]> = LazyLock::new(|| {
 /// Integer square root initial estimates, indexed by BSR (bit scan reverse) result.
 /// Binary location: 0x564034
 pub const SQRT_ESTIMATES: [u32; 32] = [
-    0x0001, 0x0002, 0x0002, 0x0004,
-    0x0005, 0x0008, 0x000B, 0x0010,
-    0x0016, 0x0020, 0x002D, 0x0040,
-    0x005A, 0x0080, 0x00B5, 0x0100,
-    0x016A, 0x0200, 0x02D4, 0x0400,
-    0x05A8, 0x0800, 0x0B50, 0x1000,
-    0x16A0, 0x2000, 0x2D41, 0x4000,
-    0x5A82, 0x8000, 0xB504, 0xFFFF,
+    0x0001, 0x0002, 0x0002, 0x0004, 0x0005, 0x0008, 0x000B, 0x0010, 0x0016, 0x0020, 0x002D, 0x0040,
+    0x005A, 0x0080, 0x00B5, 0x0100, 0x016A, 0x0200, 0x02D4, 0x0400, 0x05A8, 0x0800, 0x0B50, 0x1000,
+    0x16A0, 0x2000, 0x2D41, 0x4000, 0x5A82, 0x8000, 0xB504, 0xFFFF,
 ];
 
 #[cfg(test)]
@@ -60,18 +55,18 @@ mod tests {
 
     #[test]
     fn cos_table_cardinal_points() {
-        assert_eq!(COS_TABLE[0], 0x10000);      // cos(0°) = 1.0
-        assert_eq!(COS_TABLE[512], 0);           // cos(90°) = 0
-        assert_eq!(COS_TABLE[1024], -0x10000);   // cos(180°) = -1.0
-        assert_eq!(COS_TABLE[1536], 0);           // cos(270°) = 0
+        assert_eq!(COS_TABLE[0], 0x10000); // cos(0°) = 1.0
+        assert_eq!(COS_TABLE[512], 0); // cos(90°) = 0
+        assert_eq!(COS_TABLE[1024], -0x10000); // cos(180°) = -1.0
+        assert_eq!(COS_TABLE[1536], 0); // cos(270°) = 0
     }
 
     #[test]
     fn sin_table_cardinal_points() {
-        assert_eq!(SIN_TABLE[0], 0);              // sin(0°) = 0
-        assert_eq!(SIN_TABLE[512], 0x10000);      // sin(90°) = 1.0
-        assert_eq!(SIN_TABLE[1024], 0);            // sin(180°) = 0
-        assert_eq!(SIN_TABLE[1536], -0x10000);    // sin(270°) = -1.0
+        assert_eq!(SIN_TABLE[0], 0); // sin(0°) = 0
+        assert_eq!(SIN_TABLE[512], 0x10000); // sin(90°) = 1.0
+        assert_eq!(SIN_TABLE[1024], 0); // sin(180°) = 0
+        assert_eq!(SIN_TABLE[1536], -0x10000); // sin(270°) = -1.0
     }
 
     #[test]

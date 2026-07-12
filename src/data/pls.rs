@@ -1,4 +1,3 @@
-
 pub fn decode(data: &mut [u8]) {
     let mut m: u8 = 0;
     for v in &mut data.iter_mut() {
