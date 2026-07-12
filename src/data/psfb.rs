@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use crate::data::types::{BinDeserializer, Image, ImageStorage, ImageInfo, ImageStorageSource};
+use crate::data::types::{BinDeserializer, Image, ImageInfo, ImageStorage, ImageStorageSource};
 
 /******************************************************************************/
 
@@ -24,11 +24,9 @@ impl SpritePSFB {
         while height_index < height {
             let mut dest_index = 0;
             while data_in[source_index] != 0 {
-                let val: i8 = unsafe {
-                    std::mem::transmute::<u8, i8>(data_in[source_index])
-                };
+                let val = data_in[source_index] as i8;
                 if val <= 0 {
-                    dest_index += (-val) as usize;
+                    dest_index += (-i16::from(val)) as usize;
                 } else {
                     let val = val as usize;
                     let line = {
@@ -59,7 +57,10 @@ impl ImageInfo for SpritePSFB {
 }
 
 impl BinDeserializer for SpritePSFB {
-    fn from_reader<R: Read>(reader: &mut R) -> Option<Self> where Self: Sized {
+    fn from_reader<R: Read>(reader: &mut R) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut buf_u16 = [0u8; 2];
         reader.read_exact(&mut buf_u16).unwrap();
         let width = u16::from_le_bytes(buf_u16);
@@ -68,7 +69,12 @@ impl BinDeserializer for SpritePSFB {
         let mut buf_u32 = [0u8; 4];
         reader.read_exact(&mut buf_u32).unwrap();
         let offset = u32::from_le_bytes(buf_u32);
-        Some(Self{index: 0, offset: offset as usize, width, height})
+        Some(Self {
+            index: 0,
+            offset: offset as usize,
+            width,
+            height,
+        })
     }
 }
 
@@ -113,7 +119,11 @@ impl ContainerPSFB {
     pub fn get_image(&self, index: usize) -> Option<Image> {
         if let Some(s) = self.sprites.get(index) {
             let offset = s.offset - self.header_size;
-            let mut image = Image::new(s.width as usize, s.height as usize, vec![255u8; s.width as usize * s.height as usize]);
+            let mut image = Image::new(
+                s.width as usize,
+                s.height as usize,
+                vec![255u8; s.width as usize * s.height as usize],
+            );
             s.to_storage(&mut image, &self.data[offset..]);
             return Some(image);
         }
@@ -122,11 +132,15 @@ impl ContainerPSFB {
 }
 
 impl BinDeserializer for ContainerPSFB {
-    fn from_reader<R: Read>(reader: &mut R) -> Option<Self> where Self: Sized {
+    fn from_reader<R: Read>(reader: &mut R) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut buf = [0u8; 4];
         reader.read_exact(&mut buf).unwrap();
         let marker = u32::from_le_bytes(buf);
-        if marker != 0x42465350 { // note(): "PSFB" in hex
+        if marker != 0x42465350 {
+            // note(): "PSFB" in hex
             return None;
         }
         reader.read_exact(&mut buf).unwrap();
@@ -141,7 +155,33 @@ impl BinDeserializer for ContainerPSFB {
         }
         let mut data = Vec::new();
         reader.read_to_end(&mut data).unwrap();
-        Some(Self{header_size, sprites, data})
+        Some(Self {
+            header_size,
+            sprites,
+            data,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SpritePSFB;
+    use crate::data::types::Image;
+
+    #[test]
+    fn transparent_run_of_128_pixels_does_not_overflow() {
+        let sprite = SpritePSFB {
+            index: 0,
+            offset: 0,
+            width: 129,
+            height: 1,
+        };
+        let mut image = Image::alloc(129, 1);
+
+        sprite.to_storage(&mut image, &[0x80, 1, 42, 0]);
+
+        assert!(image.data[..128].iter().all(|pixel| *pixel == 0));
+        assert_eq!(image.data[128], 42);
     }
 }
 
