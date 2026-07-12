@@ -13,7 +13,11 @@ pub struct GpuContext {
 fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("depth_texture"),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -56,7 +60,9 @@ impl GpuContext {
             .expect("Failed to create device");
 
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps.formats.iter()
+        let surface_format = surface_caps
+            .formats
+            .iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
@@ -75,7 +81,14 @@ impl GpuContext {
 
         let depth_view = create_depth_texture(&device, size.width, size.height);
 
-        GpuContext { device, queue, surface, config, depth_view, size }
+        GpuContext {
+            device,
+            queue,
+            surface,
+            config,
+            depth_view,
+            size,
+        }
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {

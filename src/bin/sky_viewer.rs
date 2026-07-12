@@ -19,9 +19,9 @@ use winit::window::{Window, WindowAttributes};
 
 use clap::{Arg, Command};
 
+use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::context::GpuContext;
 use pop3::render::gpu::pipeline::create_pipeline;
-use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::texture::GpuTexture;
 
 /******************************************************************************/
@@ -29,10 +29,8 @@ use pop3::render::gpu::texture::GpuTexture;
 /******************************************************************************/
 
 const KEYS: &[&str] = &[
-    "0","1","2","3","4","5","6","7","8","9",
-    "a","b","c","d","e","f","g","h","i","j",
-    "k","l","m","n","o","p","q","r","s","t",
-    "u","v","w","x","y","z",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f", "g", "h", "i",
+    "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
 ];
 
 struct SkyVariant {
@@ -90,7 +88,7 @@ fn load_sky_rgba(variant: &SkyVariant) -> SkyImage {
         print!("  palette [0x{:02x}..0x{:02x}]: ", start, end);
         for i in start..end {
             let off = i * 4;
-            print!("#{:02x}{:02x}{:02x} ", pal[off], pal[off+1], pal[off+2]);
+            print!("#{:02x}{:02x}{:02x} ", pal[off], pal[off + 1], pal[off + 2]);
         }
         println!();
     }
@@ -102,13 +100,17 @@ fn load_sky_rgba(variant: &SkyVariant) -> SkyImage {
         let pal_idx = idx.wrapping_add(0x70) as usize;
         let off = pal_idx * 4;
         if off + 2 < pal.len() {
-            rgba[i * 4]     = pal[off];
+            rgba[i * 4] = pal[off];
             rgba[i * 4 + 1] = pal[off + 1];
             rgba[i * 4 + 2] = pal[off + 2];
             rgba[i * 4 + 3] = 255;
         }
     }
-    SkyImage { rgba, width: width as u32, height: height as u32 }
+    SkyImage {
+        rgba,
+        width: width as u32,
+        height: height as u32,
+    }
 }
 
 /******************************************************************************/
@@ -161,32 +163,39 @@ impl App {
             );
 
             // Rebuild bind group with new texture
-            state.bind_group = state.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("sky_bind_group"),
-                layout: &state.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: state.uniform_buffer.buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&state.sky_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&state.sampler),
-                    },
-                ],
-            });
+            state.bind_group = state
+                .gpu
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("sky_bind_group"),
+                    layout: &state.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: state.uniform_buffer.buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&state.sky_texture.view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&state.sampler),
+                        },
+                    ],
+                });
 
             state.yaw_offset = 0.0;
         }
 
         // Update window title
         if let Some(window) = &self.window {
-            window.set_title(&format!("Sky Viewer — sky0-{}.dat [{}/{}]",
-                variant.key, index + 1, self.variants.len()));
+            window.set_title(&format!(
+                "Sky Viewer — sky0-{}.dat [{}/{}]",
+                variant.key,
+                index + 1,
+                self.variants.len()
+            ));
         }
     }
 }
@@ -301,8 +310,11 @@ impl ApplicationHandler for App {
         );
 
         if let Some(window) = &self.window {
-            window.set_title(&format!("Sky Viewer — sky0-{}.dat [1/{}]",
-                self.variants[0].key, self.variants.len()));
+            window.set_title(&format!(
+                "Sky Viewer — sky0-{}.dat [1/{}]",
+                self.variants[0].key,
+                self.variants.len()
+            ));
         }
 
         self.state = Some(ViewerState {
@@ -317,7 +329,12 @@ impl ApplicationHandler for App {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _wid: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _wid: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -389,11 +406,16 @@ impl ViewerState {
             Ok(t) => t,
             Err(_) => return,
         };
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.gpu.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("sky_encoder") },
-        );
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("sky_encoder"),
+            });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -455,9 +477,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    println!("Found {} sky variants: {}",
+    println!(
+        "Found {} sky variants: {}",
         variants.len(),
-        variants.iter().map(|v| v.key.as_str()).collect::<Vec<_>>().join(", "));
+        variants
+            .iter()
+            .map(|v| v.key.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 
     let env = env_logger::Env::default()
         .filter_or("F_LOG_LEVEL", "info")

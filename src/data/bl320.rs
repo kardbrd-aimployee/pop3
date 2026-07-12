@@ -1,12 +1,19 @@
-use std::path::Path;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
-use crate::data::types::{ImageStorage, ImageStorageSource, AllocatorEqual, pal_image_allocator_1d_vertical};
+use crate::data::types::{
+    pal_image_allocator_1d_vertical, AllocatorEqual, ImageStorage, ImageStorageSource,
+};
 
 /******************************************************************************/
 
-fn read_textures_seq<R: Read, P: ImageStorageSource>(info: (usize, usize), reader: &mut R, p: &mut P, data: &mut [u8]) {
+fn read_textures_seq<R: Read, P: ImageStorageSource>(
+    info: (usize, usize),
+    reader: &mut R,
+    p: &mut P,
+    data: &mut [u8],
+) {
     while let Ok(()) = reader.read_exact(data) {
         if let Some(s) = p.get_storage(&info) {
             s.set_image(data);
@@ -14,7 +21,13 @@ fn read_textures_seq<R: Read, P: ImageStorageSource>(info: (usize, usize), reade
     }
 }
 
-pub fn read_textures<R: Read, P: ImageStorageSource, A: AllocatorEqual<P>>(allocator: &A, reader: &mut R, total_size: usize, width: usize, height: usize) -> P {
+pub fn read_textures<R: Read, P: ImageStorageSource, A: AllocatorEqual<P>>(
+    allocator: &A,
+    reader: &mut R,
+    total_size: usize,
+    width: usize,
+    height: usize,
+) -> P {
     let texture_size = width * height;
     let texture_num = ((total_size as f32) / (texture_size as f32)) as usize;
     let info = (width, height);
@@ -32,7 +45,12 @@ pub fn read_bl320<P: ImageStorageSource, A: AllocatorEqual<P>>(allocator: &A, pa
     read_textures(allocator, &mut file, file_size, width, height)
 }
 
-pub fn read_bl160<P: ImageStorageSource, A: AllocatorEqual<P>>(width: usize, height: usize, allocator: &A, path: &Path) -> P {
+pub fn read_bl160<P: ImageStorageSource, A: AllocatorEqual<P>>(
+    width: usize,
+    height: usize,
+    allocator: &A,
+    path: &Path,
+) -> P {
     let mut file = File::options().read(true).open(path).unwrap();
     let file_size = file.metadata().unwrap().len() as usize;
     read_textures(allocator, &mut file, file_size, width, height)

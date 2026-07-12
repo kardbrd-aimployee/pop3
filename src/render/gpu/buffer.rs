@@ -12,7 +12,10 @@ impl GpuBuffer {
             contents: data,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        GpuBuffer { buffer, size: data.len() as u64 }
+        GpuBuffer {
+            buffer,
+            size: data.len() as u64,
+        }
     }
 
     pub fn new_index(device: &wgpu::Device, data: &[u8], label: &str) -> Self {
@@ -21,7 +24,10 @@ impl GpuBuffer {
             contents: data,
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
         });
-        GpuBuffer { buffer, size: data.len() as u64 }
+        GpuBuffer {
+            buffer,
+            size: data.len() as u64,
+        }
     }
 
     pub fn new_uniform(device: &wgpu::Device, size: u64, label: &str) -> Self {
@@ -40,7 +46,10 @@ impl GpuBuffer {
             contents: data,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        GpuBuffer { buffer, size: data.len() as u64 }
+        GpuBuffer {
+            buffer,
+            size: data.len() as u64,
+        }
     }
 
     pub fn new_storage(device: &wgpu::Device, data: &[u8], label: &str) -> Self {
@@ -49,7 +58,10 @@ impl GpuBuffer {
             contents: data,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
-        GpuBuffer { buffer, size: data.len() as u64 }
+        GpuBuffer {
+            buffer,
+            size: data.len() as u64,
+        }
     }
 
     pub fn update(&self, queue: &wgpu::Queue, offset: u64, data: &[u8]) {

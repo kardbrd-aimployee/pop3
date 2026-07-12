@@ -1,14 +1,19 @@
-use std::path::Path;
 use std::fs::File;
 use std::io::Read;
 use std::marker::PhantomData;
+use std::path::Path;
 
 /******************************************************************************/
 
 pub trait BinDeserializer {
-    fn from_reader<R: Read>(reader: &mut R) -> Option<Self> where Self: Sized;
+    fn from_reader<R: Read>(reader: &mut R) -> Option<Self>
+    where
+        Self: Sized;
 
-    fn from_reader_vec<R: Read>(reader: &mut R) -> Vec<Self> where Self: Sized {
+    fn from_reader_vec<R: Read>(reader: &mut R) -> Vec<Self>
+    where
+        Self: Sized,
+    {
         let mut res = Vec::new();
         while let Some(obj) = Self::from_reader(reader) {
             res.push(obj);
@@ -16,34 +21,42 @@ pub trait BinDeserializer {
         res
     }
 
-    fn from_file_vec(path: &Path) -> Vec<Self> where Self: Sized {
+    fn from_file_vec(path: &Path) -> Vec<Self>
+    where
+        Self: Sized,
+    {
         let mut file = File::options().read(true).open(path).unwrap();
         Self::from_reader_vec(&mut file)
     }
 
-    fn from_file(path: &Path) -> Option<Self> where Self: Sized {
+    fn from_file(path: &Path) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut file = File::options().read(true).open(path).unwrap();
         Self::from_reader(&mut file)
     }
 }
 
-pub fn from_reader<T, const S: usize, R: Read>(reader: &mut R) -> Option<T> where T: Copy {
+pub fn from_reader<T, const S: usize, R: Read>(reader: &mut R) -> Option<T>
+where
+    T: Copy,
+{
     let mut data = [0u8; S];
     if let Ok(()) = reader.read_exact(&mut data) {
-        return Some(unsafe {
-            *(data.as_ptr() as *const T)
-        });
+        return Some(unsafe { *(data.as_ptr() as *const T) });
     }
     None
 }
 
-pub fn from_reader_vec<T, const S: usize, R: Read>(reader: &mut R) -> Vec<T> where T: Copy {
+pub fn from_reader_vec<T, const S: usize, R: Read>(reader: &mut R) -> Vec<T>
+where
+    T: Copy,
+{
     let mut items = Vec::new();
     let mut data = [0u8; S];
     while let Ok(()) = reader.read_exact(&mut data) {
-        items.push(unsafe {
-            *(data.as_ptr() as *const T)
-        });
+        items.push(unsafe { *(data.as_ptr() as *const T) });
     }
     items
 }
@@ -60,7 +73,10 @@ pub trait ImagePos {
     fn pos_y(&self) -> isize;
 }
 
-impl<'a, T> ImageInfo for &'a T where T: ImageInfo {
+impl<'a, T> ImageInfo for &'a T
+where
+    T: ImageInfo,
+{
     fn width(&self) -> usize {
         (*self).width()
     }
@@ -70,7 +86,10 @@ impl<'a, T> ImageInfo for &'a T where T: ImageInfo {
     }
 }
 
-impl<'a, T> ImageInfo for &'a mut T where T: ImageInfo {
+impl<'a, T> ImageInfo for &'a mut T
+where
+    T: ImageInfo,
+{
     #[allow(unconditional_recursion)]
     fn width(&self) -> usize {
         (*self).width()
@@ -82,14 +101,17 @@ impl<'a, T> ImageInfo for &'a mut T where T: ImageInfo {
     }
 }
 
-pub trait ImageStorage : ImageInfo {
+pub trait ImageStorage: ImageInfo {
     //x - width, y - height
     fn set_pixel(&mut self, x: usize, y: usize, val: u8);
     fn set_line(&mut self, x: usize, y: usize, data: &[u8]);
     fn set_image(&mut self, data: &[u8]);
 }
 
-impl<'a, T> ImageStorage for &'a mut T where T: ImageStorage {
+impl<'a, T> ImageStorage for &'a mut T
+where
+    T: ImageStorage,
+{
     fn set_pixel(&mut self, x: usize, y: usize, val: u8) {
         (*self).set_pixel(x, y, val)
     }
@@ -112,7 +134,11 @@ pub trait ImageStorageSource {
 }
 
 pub trait ImageComposer {
-    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(&mut self, storage: &mut ImageTile<S>, info: &I) -> bool;
+    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(
+        &mut self,
+        storage: &mut ImageTile<S>,
+        info: &I,
+    ) -> bool;
 }
 
 pub trait AllocatorEqual<T> {
@@ -120,7 +146,7 @@ pub trait AllocatorEqual<T> {
 }
 
 pub trait AllocatorIter<T> {
-    fn alloc_iter<'a, I: ImageInfo + 'a, R: Iterator<Item=&'a I>>(&'a self, iter: &mut R) -> T;
+    fn alloc_iter<'a, I: ImageInfo + 'a, R: Iterator<Item = &'a I>>(&'a self, iter: &mut R) -> T;
 }
 
 /******************************************************************************/
@@ -134,23 +160,48 @@ pub struct ImageArea {
 
 impl ImageArea {
     pub fn new(width: usize, height: usize, x: isize, y: isize) -> Self {
-        Self{width, height, x, y}
+        Self {
+            width,
+            height,
+            x,
+            y,
+        }
     }
 
     pub fn from_image<I: ImageInfo>(i: &I, x: isize, y: isize) -> Self {
-        Self{width: i.width(), height: i.height(), x, y}
+        Self {
+            width: i.width(),
+            height: i.height(),
+            x,
+            y,
+        }
     }
 
     pub fn from_pos<I: ImagePos>(i: &I, width: usize, height: usize) -> Self {
-        Self{width, height, x: i.pos_x(), y: i.pos_y()}
+        Self {
+            width,
+            height,
+            x: i.pos_x(),
+            y: i.pos_y(),
+        }
     }
 
     pub fn from_image_and_pos<I: ImageInfo, P: ImagePos>(i: &I, p: &P) -> Self {
-        Self{width: i.width(), height: i.height(), x: p.pos_x(), y: p.pos_y()}
+        Self {
+            width: i.width(),
+            height: i.height(),
+            x: p.pos_x(),
+            y: p.pos_y(),
+        }
     }
 
     pub fn from_image_pos<I: ImageInfo + ImagePos>(i: &I) -> Self {
-        Self{width: i.width(), height: i.height(), x: i.pos_x(), y: i.pos_y()}
+        Self {
+            width: i.width(),
+            height: i.height(),
+            x: i.pos_x(),
+            y: i.pos_y(),
+        }
     }
 }
 
@@ -183,7 +234,10 @@ pub struct ImageSourceComposed<C, S> {
 
 impl<C, S> ImageSourceComposed<C, S> {
     pub fn new(composer: C, image: S) -> Self {
-        Self{composer, tile: ImageTile::new(image)}
+        Self {
+            composer,
+            tile: ImageTile::new(image),
+        }
     }
 
     pub fn get_image(self) -> S {
@@ -191,7 +245,9 @@ impl<C, S> ImageSourceComposed<C, S> {
     }
 }
 
-impl<C: ImageComposer, M: ImageInfo + ImageStorage> ImageStorageSource for ImageSourceComposed<C, M> {
+impl<C: ImageComposer, M: ImageInfo + ImageStorage> ImageStorageSource
+    for ImageSourceComposed<C, M>
+{
     type StorageType = ImageTile<M>;
 
     fn get_storage<I: ImageInfo>(&mut self, info: &I) -> Option<&mut Self::StorageType> {
@@ -213,58 +269,96 @@ pub struct ImageAllocatorComposed<C, A, R> {
 
 impl<C, A, R> ImageAllocatorComposed<C, A, R> {
     pub fn new(composer: C, image: A) -> Self {
-        Self{composer, image, phantom: PhantomData}
+        Self {
+            composer,
+            image,
+            phantom: PhantomData,
+        }
     }
 }
 
 impl<C, A, R, I> AllocatorEqual<ImageSourceComposed<R, I>> for ImageAllocatorComposed<C, A, R>
-    where C: AllocatorEqual<R>, R: ImageComposer + ImageInfo, I: ImageStorage, A: ImageAllocator<I> {
+where
+    C: AllocatorEqual<R>,
+    R: ImageComposer + ImageInfo,
+    I: ImageStorage,
+    A: ImageAllocator<I>,
+{
     fn alloc_equal<U: ImageInfo>(&self, info: &U, num: usize) -> ImageSourceComposed<R, I> {
         let c = self.composer.alloc_equal(info, num);
         let image = self.image.alloc(&c);
-        let tile = ImageTile{image, start_x: 0, start_y: 0, tile_width: 0, tile_height: 0};
-        ImageSourceComposed{composer: c, tile}
+        let tile = ImageTile {
+            image,
+            start_x: 0,
+            start_y: 0,
+            tile_width: 0,
+            tile_height: 0,
+        };
+        ImageSourceComposed { composer: c, tile }
     }
 }
 
 impl<C, A, R, I> AllocatorIter<ImageSourceComposed<R, I>> for ImageAllocatorComposed<C, A, R>
-    where C: AllocatorIter<R>, R: ImageComposer + ImageInfo, I: ImageStorage, A: ImageAllocator<I> {
-    fn alloc_iter<'a, U: ImageInfo + 'a, T: Iterator<Item=&'a U>>(&'a self, iter: &mut T) -> ImageSourceComposed<R, I> {
+where
+    C: AllocatorIter<R>,
+    R: ImageComposer + ImageInfo,
+    I: ImageStorage,
+    A: ImageAllocator<I>,
+{
+    fn alloc_iter<'a, U: ImageInfo + 'a, T: Iterator<Item = &'a U>>(
+        &'a self,
+        iter: &mut T,
+    ) -> ImageSourceComposed<R, I> {
         let c = self.composer.alloc_iter(iter);
         let image = self.image.alloc(&c);
-        let tile = ImageTile{image, start_x: 0, start_y: 0, tile_width: 0, tile_height: 0};
-        ImageSourceComposed{composer: c, tile}
+        let tile = ImageTile {
+            image,
+            start_x: 0,
+            start_y: 0,
+            tile_width: 0,
+            tile_height: 0,
+        };
+        ImageSourceComposed { composer: c, tile }
     }
 }
 
 impl AllocatorEqual<ImageComposer1D<ComposeHorizontal>> for () {
-    fn alloc_equal<I: ImageInfo>(&self, info: &I, num: usize) -> ImageComposer1D<ComposeHorizontal> {
-        ImageComposer1D{total_width: info.width() * num
-             , total_height: info.height()
-             , tile_width: info.width()
-             , tile_height: info.height()
-             , pos_x: 0
-             , pos_y: 0
-             , phantom: PhantomData
+    fn alloc_equal<I: ImageInfo>(
+        &self,
+        info: &I,
+        num: usize,
+    ) -> ImageComposer1D<ComposeHorizontal> {
+        ImageComposer1D {
+            total_width: info.width() * num,
+            total_height: info.height(),
+            tile_width: info.width(),
+            tile_height: info.height(),
+            pos_x: 0,
+            pos_y: 0,
+            phantom: PhantomData,
         }
     }
 }
 
 impl AllocatorEqual<ImageComposer1D<ComposeVertical>> for () {
     fn alloc_equal<I: ImageInfo>(&self, info: &I, num: usize) -> ImageComposer1D<ComposeVertical> {
-        ImageComposer1D{total_width: info.width()
-             , total_height: info.height() * num
-             , tile_width: info.width()
-             , tile_height: info.height()
-             , pos_x: 0
-             , pos_y: 0
-             , phantom: PhantomData
+        ImageComposer1D {
+            total_width: info.width(),
+            total_height: info.height() * num,
+            tile_width: info.width(),
+            tile_height: info.height(),
+            pos_x: 0,
+            pos_y: 0,
+            phantom: PhantomData,
         }
     }
 }
 
 impl AllocatorIter<ImageComposer2D> for usize {
-    fn alloc_iter<'a, U: ImageInfo + 'a, T: Iterator<Item=&'a U>>(&'a self, iter: &mut T) -> ImageComposer2D {
+    fn alloc_iter<'a, U: ImageInfo + 'a, T: Iterator<Item = &'a U>>(
+        &'a self,
+        iter: &mut T,
+    ) -> ImageComposer2D {
         let max_width = *self;
         let mut cur_width = max_width;
         let mut max_height = 0;
@@ -279,23 +373,25 @@ impl AllocatorIter<ImageComposer2D> for usize {
             max_height = max_height.max(info.height());
         }
         total_height += max_height;
-        ImageComposer2D{total_width: max_width
-             , total_height
-             , pos_x: 0
-             , pos_y: 0
-             , max_height: 0}
+        ImageComposer2D {
+            total_width: max_width,
+            total_height,
+            pos_x: 0,
+            pos_y: 0,
+            max_height: 0,
+        }
     }
 }
 
 /******************************************************************************/
 
-pub fn image_allocator_1d_horizontal()
-    -> ImageAllocatorComposed<(), (), ImageComposer1D<ComposeHorizontal>> {
+pub fn image_allocator_1d_horizontal(
+) -> ImageAllocatorComposed<(), (), ImageComposer1D<ComposeHorizontal>> {
     ImageAllocatorComposed::new((), ())
 }
 
-pub fn image_allocator_1d_vertical()
-    -> ImageAllocatorComposed<(), (), ImageComposer1D<ComposeVertical>> {
+pub fn image_allocator_1d_vertical(
+) -> ImageAllocatorComposed<(), (), ImageComposer1D<ComposeVertical>> {
     ImageAllocatorComposed::new((), ())
 }
 
@@ -303,8 +399,9 @@ pub fn image_allocator_2d(width: usize) -> ImageAllocatorComposed<usize, (), Ima
     ImageAllocatorComposed::new(width, ())
 }
 
-pub fn pal_image_allocator_1d_vertical(pal: &[u8])
-    -> ImageAllocatorComposed<(), &[u8], ImageComposer1D<ComposeVertical>> {
+pub fn pal_image_allocator_1d_vertical(
+    pal: &[u8],
+) -> ImageAllocatorComposed<(), &[u8], ImageComposer1D<ComposeVertical>> {
     ImageAllocatorComposed::new((), pal)
 }
 
@@ -324,7 +421,11 @@ pub struct ImageComposer1D<D> {
 }
 
 impl ImageComposer for ImageComposer1D<ComposeHorizontal> {
-    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(&mut self, storage: &mut ImageTile<S>, info: &I) -> bool {
+    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(
+        &mut self,
+        storage: &mut ImageTile<S>,
+        info: &I,
+    ) -> bool {
         if (self.total_width - self.pos_x) < info.width() {
             return false;
         }
@@ -341,7 +442,11 @@ impl ImageComposer for ImageComposer1D<ComposeHorizontal> {
 }
 
 impl ImageComposer for ImageComposer1D<ComposeVertical> {
-    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(&mut self, storage: &mut ImageTile<S>, info: &I) -> bool {
+    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(
+        &mut self,
+        storage: &mut ImageTile<S>,
+        info: &I,
+    ) -> bool {
         if self.total_width < info.width() {
             return false;
         }
@@ -378,7 +483,11 @@ pub struct ImageComposer2D {
 }
 
 impl ImageComposer for ImageComposer2D {
-    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(&mut self, storage: &mut ImageTile<S>, info: &I) -> bool {
+    fn compose<I: ImageInfo, S: ImageInfo + ImageStorage>(
+        &mut self,
+        storage: &mut ImageTile<S>,
+        info: &I,
+    ) -> bool {
         if (self.pos_x + info.width()) > self.total_width {
             self.pos_x = 0;
             self.pos_y += self.max_height;
@@ -422,8 +531,15 @@ impl ImagePos for (isize, isize) {
 pub trait LayerComposer {
     type ComposerResult: ImageInfo;
 
-    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item=&'a I>>(&'a self, iter: &mut R) -> Self::ComposerResult;
-    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(&'a self, cr: &Self::ComposerResult, img: &I) -> (isize, isize);
+    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item = &'a I>>(
+        &'a self,
+        iter: &mut R,
+    ) -> Self::ComposerResult;
+    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(
+        &'a self,
+        cr: &Self::ComposerResult,
+        img: &I,
+    ) -> (isize, isize);
 }
 
 pub struct ULCentreComposer {
@@ -434,7 +550,10 @@ pub struct ULCentreComposer {
 impl LayerComposer for ULCentreComposer {
     type ComposerResult = ImageArea;
 
-    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item=&'a I>>(&'a self, iter: &mut R) -> Self::ComposerResult {
+    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item = &'a I>>(
+        &'a self,
+        iter: &mut R,
+    ) -> Self::ComposerResult {
         let mut left: isize = 0;
         let mut right: isize = 0;
         let mut up: isize = 0;
@@ -454,12 +573,16 @@ impl LayerComposer for ULCentreComposer {
         }
         let x = -left + self.horizontal as isize;
         let y = -up + self.vertical as isize;
-        let width = (right - left) as usize + self.horizontal*2;
-        let height = (down - up) as usize + self.vertical*2;
+        let width = (right - left) as usize + self.horizontal * 2;
+        let height = (down - up) as usize + self.vertical * 2;
         ImageArea::new(width, height, x, y)
     }
 
-    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(&'a self, cr: &Self::ComposerResult, img: &I) -> (isize, isize) {
+    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(
+        &'a self,
+        cr: &Self::ComposerResult,
+        img: &I,
+    ) -> (isize, isize) {
         (cr.x + img.pos_x(), cr.y + img.pos_y())
     }
 }
@@ -472,7 +595,10 @@ pub struct URCentreComposer {
 impl LayerComposer for URCentreComposer {
     type ComposerResult = ImageArea;
 
-    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item=&'a I>>(&'a self, iter: &mut R) -> Self::ComposerResult {
+    fn compose_layers<'a, I: ImagePos + ImageInfo + 'a, R: Iterator<Item = &'a I>>(
+        &'a self,
+        iter: &mut R,
+    ) -> Self::ComposerResult {
         let mut left: isize = 0;
         let mut right: isize = -100;
         let mut up: isize = 0;
@@ -493,13 +619,20 @@ impl LayerComposer for URCentreComposer {
         }
         let x = -left + self.horizontal as isize;
         let y = -up + self.vertical as isize;
-        let width = (right - left) as usize + self.horizontal*2;
-        let height = (down - up) as usize + self.vertical*2;
+        let width = (right - left) as usize + self.horizontal * 2;
+        let height = (down - up) as usize + self.vertical * 2;
         ImageArea::new(width, height, x, y)
     }
 
-    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(&'a self, cr: &Self::ComposerResult, img: &I) -> (isize, isize) {
-        (cr.x + img.pos_x() - img.width() as isize, cr.y + img.pos_y())
+    fn get_start<'a, I: ImagePos + ImageInfo + 'a>(
+        &'a self,
+        cr: &Self::ComposerResult,
+        img: &I,
+    ) -> (isize, isize) {
+        (
+            cr.x + img.pos_x() - img.width() as isize,
+            cr.y + img.pos_y(),
+        )
     }
 }
 
@@ -512,26 +645,34 @@ pub struct LayeredStorageSource<'a, II, IMM, C> {
 }
 
 impl<'a, II, M, M1, C> LayeredStorageSource<'a, II, ImageTile<&'a mut M1>, C>
-    where
-        M: ImagePos,
-        II: 'a + Iterator<Item=M>,
-        M1: 'a + ImageInfo + ImageStorage,
-        C: 'a + LayerComposer {
-
+where
+    M: ImagePos,
+    II: 'a + Iterator<Item = M>,
+    M1: 'a + ImageInfo + ImageStorage,
+    C: 'a + LayerComposer,
+{
     pub fn new<CS>(storage: &'a mut CS, area: ImageArea, imgs: II, composer: &'a C) -> Self
-        where
-            CS: ImageStorageSource<StorageType=M1> {
+    where
+        CS: ImageStorageSource<StorageType = M1>,
+    {
         let img = ImageTile::new(storage.get_storage(&area).unwrap());
-        Self{area, img_iter: imgs, img, last_cords: (0, 0), composer}
+        Self {
+            area,
+            img_iter: imgs,
+            img,
+            last_cords: (0, 0),
+            composer,
+        }
     }
 }
 
 impl<'a, II, M, M1, C> ImageStorageSource for LayeredStorageSource<'a, II, ImageTile<&'a mut M1>, C>
-    where
-        M: ImagePos,
-        II: 'a + Iterator<Item=M>,
-        M1: 'a + ImageInfo + ImageStorage,
-        C: 'a + LayerComposer<ComposerResult=ImageArea> {
+where
+    M: ImagePos,
+    II: 'a + Iterator<Item = M>,
+    M1: 'a + ImageInfo + ImageStorage,
+    C: 'a + LayerComposer<ComposerResult = ImageArea>,
+{
     type StorageType = ImageTile<&'a mut M1>;
 
     fn get_storage<I: ImageInfo>(&mut self, info: &I) -> Option<&mut Self::StorageType> {
@@ -559,7 +700,13 @@ pub struct ImageTile<I> {
 
 impl<I> ImageTile<I> {
     pub fn new(image: I) -> Self {
-        Self{image, start_x: 0, start_y: 0, tile_width: 0, tile_height: 0}
+        Self {
+            image,
+            start_x: 0,
+            start_y: 0,
+            tile_width: 0,
+            tile_height: 0,
+        }
     }
 
     fn get_image(self) -> I {
@@ -584,17 +731,19 @@ impl<I: ImageInfo + ImageStorage> ImageInfo for ImageTile<I> {
 
 impl<I: ImageInfo + ImageStorage> ImageStorage for ImageTile<I> {
     fn set_pixel(&mut self, x: usize, y: usize, val: u8) {
-        self.image.set_pixel(self.start_x + x, self.start_y + y, val);
+        self.image
+            .set_pixel(self.start_x + x, self.start_y + y, val);
     }
 
     fn set_line(&mut self, x: usize, y: usize, data: &[u8]) {
-        self.image.set_line(self.start_x + x, self.start_y + y, data);
+        self.image
+            .set_line(self.start_x + x, self.start_y + y, data);
     }
 
     fn set_image(&mut self, data: &[u8]) {
         for y in 0..self.tile_height {
             let offset = y * self.tile_width;
-            let slice = &data[offset..(offset+self.tile_width)];
+            let slice = &data[offset..(offset + self.tile_width)];
             self.set_line(0, y, slice);
         }
     }
@@ -609,18 +758,33 @@ pub trait ImageTileSource {
 }
 
 pub struct TiledComposer {
-    total_width: usize, // number of horizontal tiles
+    total_width: usize,  // number of horizontal tiles
     total_height: usize, // number of vertical tiles
     tile_width: usize,
     tile_height: usize,
 }
 
 impl TiledComposer {
-    pub fn new(total_width: usize, total_height: usize, tile_width: usize, tile_height: usize) -> Self {
-        Self{total_width, total_height, tile_width, tile_height}
+    pub fn new(
+        total_width: usize,
+        total_height: usize,
+        tile_width: usize,
+        tile_height: usize,
+    ) -> Self {
+        Self {
+            total_width,
+            total_height,
+            tile_width,
+            tile_height,
+        }
     }
 
-    pub fn set_tile<S: ImageInfo + ImageStorage>(&mut self, storage: &mut ImageTile<S>, x: usize, y: usize) -> bool {
+    pub fn set_tile<S: ImageInfo + ImageStorage>(
+        &mut self,
+        storage: &mut ImageTile<S>,
+        x: usize,
+        y: usize,
+    ) -> bool {
         if x >= self.total_width {
             return false;
         }
@@ -654,7 +818,7 @@ impl ImageStorageSource for Vec<Image> {
     fn get_storage<I: ImageInfo>(&mut self, info: &I) -> Option<&mut Self::StorageType> {
         let storage = Image::alloc(info.width(), info.height());
         self.push(storage);
-        let index = self.len()-1;
+        let index = self.len() - 1;
         self.get_mut(index)
     }
 }
@@ -679,11 +843,19 @@ pub struct Image {
 
 impl Image {
     pub fn new(width: usize, height: usize, data: Vec<u8>) -> Self {
-        Self{width, height, data}
+        Self {
+            width,
+            height,
+            data,
+        }
     }
 
     pub fn alloc(width: usize, height: usize) -> Self {
-        Self{width, height, data: vec![0u8; width * height]}
+        Self {
+            width,
+            height,
+            data: vec![0u8; width * height],
+        }
     }
 
     fn index(&self, x: usize, y: usize) -> usize {
@@ -710,7 +882,7 @@ impl ImageStorage for Image {
     fn set_line(&mut self, x: usize, y: usize, data: &[u8]) {
         let index = self.index(x, y);
         let to_copy = data.len().min(self.width - x);
-        self.data[index..(index+to_copy)].copy_from_slice(&data[0..to_copy]);
+        self.data[index..(index + to_copy)].copy_from_slice(&data[0..to_copy]);
     }
 
     fn set_image(&mut self, data: &[u8]) {
@@ -728,19 +900,29 @@ impl ImageAllocator<Image> for () {
 /******************************************************************************/
 
 pub struct PalImage<'a> {
-    pub pal: &'a[u8],
+    pub pal: &'a [u8],
     pub width: usize,
     pub height: usize,
     pub data: Vec<u8>,
 }
 
 impl<'a> PalImage<'a> {
-    pub fn new(pal: &'a[u8], width: usize, height: usize, data: Vec<u8>) -> Self {
-        Self{pal, width, height, data}
+    pub fn new(pal: &'a [u8], width: usize, height: usize, data: Vec<u8>) -> Self {
+        Self {
+            pal,
+            width,
+            height,
+            data,
+        }
     }
 
-    pub fn alloc(pal: &'a[u8], width: usize, height: usize) -> Self {
-        Self{pal, width, height, data: vec![0u8; width * height * 4]}
+    pub fn alloc(pal: &'a [u8], width: usize, height: usize) -> Self {
+        Self {
+            pal,
+            width,
+            height,
+            data: vec![0u8; width * height * 4],
+        }
     }
 
     fn index(&self, x: usize, y: usize) -> usize {
@@ -762,7 +944,7 @@ impl<'a> ImageStorage for PalImage<'a> {
     fn set_pixel(&mut self, x: usize, y: usize, val: u8) {
         let index = self.index(x, y);
         let pal_index = val as usize * 4;
-        self.data[index..(index+4)].copy_from_slice(&self.pal[pal_index..(pal_index+4)]);
+        self.data[index..(index + 4)].copy_from_slice(&self.pal[pal_index..(pal_index + 4)]);
     }
 
     fn set_line(&mut self, x: usize, y: usize, data: &[u8]) {
@@ -770,7 +952,8 @@ impl<'a> ImageStorage for PalImage<'a> {
         for (i, val) in data.iter().enumerate() {
             let data_index = index + i * 4;
             let pal_index = *val as usize * 4;
-            self.data[data_index..(data_index+4)].copy_from_slice(&self.pal[pal_index..(pal_index+4)]);
+            self.data[data_index..(data_index + 4)]
+                .copy_from_slice(&self.pal[pal_index..(pal_index + 4)]);
         }
     }
 
@@ -780,7 +963,7 @@ impl<'a> ImageStorage for PalImage<'a> {
     }
 }
 
-impl<'a> ImageAllocator<PalImage<'a>> for &'a[u8] {
+impl<'a> ImageAllocator<PalImage<'a>> for &'a [u8] {
     fn alloc<I: ImageInfo>(&self, info: &I) -> PalImage<'a> {
         PalImage::alloc(self, info.width(), info.height())
     }
@@ -788,7 +971,10 @@ impl<'a> ImageAllocator<PalImage<'a>> for &'a[u8] {
 
 /******************************************************************************/
 
-impl<M, F> ImageAllocator<M> for F where F: Fn(&dyn ImageInfo) -> M {
+impl<M, F> ImageAllocator<M> for F
+where
+    F: Fn(&dyn ImageInfo) -> M,
+{
     fn alloc<I: ImageInfo>(&self, info: &I) -> M {
         (self)(info)
     }

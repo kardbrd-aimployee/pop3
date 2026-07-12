@@ -1,8 +1,15 @@
-use super::{EffectPool, EffectId, EFFECT_ATTACHED};
 use super::types::effect_defaults;
+use super::{EffectId, EffectPool, EFFECT_ATTACHED};
 
 /// Spawn an effect at a world position with type-appropriate defaults.
-pub fn spawn_at(pool: &mut EffectPool, effect_type: u8, x: i32, y: i32, z: i32, owner: u8) -> Option<EffectId> {
+pub fn spawn_at(
+    pool: &mut EffectPool,
+    effect_type: u8,
+    x: i32,
+    y: i32,
+    z: i32,
+    owner: u8,
+) -> Option<EffectId> {
     let id = pool.spawn(effect_type, x, y, z, owner)?;
     let (max_frame, flags, scale, alpha) = effect_defaults(effect_type);
     if let Some(effect) = pool.get_mut(id) {
@@ -64,7 +71,14 @@ pub fn update_attached_positions(pool: &mut EffectPool, entities: &[EntityPositi
 /// Spawn a visual effect for a spell impact at the given world position.
 /// Called by the spell system (Phase 4) when a spell hits its target.
 /// Maps each spell type to its corresponding visual effect type.
-pub fn spawn_on_spell_impact(pool: &mut EffectPool, spell_type: u8, x: i32, y: i32, z: i32, caster_tribe: u8) {
+pub fn spawn_on_spell_impact(
+    pool: &mut EffectPool,
+    spell_type: u8,
+    x: i32,
+    y: i32,
+    z: i32,
+    caster_tribe: u8,
+) {
     let effect_type = match spell_type {
         0x01 => 0x01, // Burn -> BurnFlame
         0x02 => 0x02, // Blast -> BlastProjectile
@@ -201,7 +215,12 @@ mod tests {
         for spell_type in 0x01..=0x0C {
             let mut pool = EffectPool::new();
             spawn_on_spell_impact(&mut pool, spell_type, 0, 0, 0, 0);
-            assert_eq!(pool.active_count(), 1, "Spell type 0x{:02X} should spawn an effect", spell_type);
+            assert_eq!(
+                pool.active_count(),
+                1,
+                "Spell type 0x{:02X} should spawn an effect",
+                spell_type
+            );
         }
     }
 }

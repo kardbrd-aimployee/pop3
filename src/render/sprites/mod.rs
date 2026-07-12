@@ -1,31 +1,52 @@
-use cgmath::{Point3, Vector2, Vector3, Matrix4, InnerSpace};
+use cgmath::{InnerSpace, Matrix4, Point3, Vector2, Vector3};
 
-use crate::render::model::{VertexModel, MeshModel};
-use crate::render::tex_model::{TexModel, TexVertex};
 use crate::render::color_model::{ColorModel, ColorVertex};
 use crate::render::envelop::{ModelEnvelop, RenderType};
-use crate::render::terrain::LandscapeMesh;
 use crate::render::gpu::texture::GpuTexture;
+use crate::render::model::{MeshModel, VertexModel};
+use crate::render::terrain::LandscapeMesh;
+use crate::render::tex_model::{TexModel, TexVertex};
 
-use crate::data::level::LevelRes;
-use crate::data::units::{ModelType, object_3d_index};
 use crate::data::animation::{NUM_TRIBES, STORED_DIRECTIONS};
+use crate::data::level::LevelRes;
+use crate::data::units::{object_3d_index, ModelType};
 use crate::engine::state::constants::*;
 
-use crate::engine::units::{UnitCoordinator, Unit};
+use crate::engine::units::{Unit, UnitCoordinator};
 
 /******************************************************************************/
 
 pub fn obj_colors() -> Vec<Vector3<u8>> {
-    vec![ Vector3{x: 255, y: 0, z: 0}
-        , Vector3{x: 128, y: 0, z: 128}
-        , Vector3{x: 0, y: 255, z: 0}
-        , Vector3{x: 64, y: 64, z: 128}
-        , Vector3{x: 128, y: 0, z: 128}
-        , Vector3{x: 0, y: 255, z: 255}
-        , Vector3{x: 0, y: 0, z: 255}
-        , Vector3{x: 0, y: 64, z: 0}
-        , Vector3{x: 128, y: 64, z: 0}
+    vec![
+        Vector3 { x: 255, y: 0, z: 0 },
+        Vector3 {
+            x: 128,
+            y: 0,
+            z: 128,
+        },
+        Vector3 { x: 0, y: 255, z: 0 },
+        Vector3 {
+            x: 64,
+            y: 64,
+            z: 128,
+        },
+        Vector3 {
+            x: 128,
+            y: 0,
+            z: 128,
+        },
+        Vector3 {
+            x: 0,
+            y: 255,
+            z: 255,
+        },
+        Vector3 { x: 0, y: 0, z: 255 },
+        Vector3 { x: 0, y: 64, z: 0 },
+        Vector3 {
+            x: 128,
+            y: 64,
+            z: 0,
+        },
     ]
 }
 
@@ -89,11 +110,11 @@ pub fn sprite_direction_from_angle(camera_angle_z: i16, unit_facing_game: u16) -
 
 pub fn tribe_marker_color(tribe_index: u8) -> [f32; 3] {
     match tribe_index {
-        0 => [0.2, 0.4, 1.0],   // Blue
-        1 => [1.0, 0.2, 0.2],   // Red
-        2 => [1.0, 1.0, 0.2],   // Yellow
-        3 => [0.2, 1.0, 0.2],   // Green
-        _ => [0.9, 0.9, 0.9],   // Unowned (tribe 255 = no owner)
+        0 => [0.2, 0.4, 1.0], // Blue
+        1 => [1.0, 0.2, 0.2], // Red
+        2 => [1.0, 1.0, 0.2], // Yellow
+        3 => [0.2, 1.0, 0.2], // Green
+        _ => [0.9, 0.9, 0.9], // Unowned (tribe 255 = no owner)
     }
 }
 
@@ -101,31 +122,37 @@ pub fn object_marker_color(model_type: &ModelType, tribe_index: u8) -> [f32; 3] 
     match model_type {
         // Tribe-owned units: use tribe color
         ModelType::Person | ModelType::Building | ModelType::Creature | ModelType::Vehicle
-            if tribe_index < 4 => tribe_marker_color(tribe_index),
+            if tribe_index < 4 =>
+        {
+            tribe_marker_color(tribe_index)
+        }
         // Unowned persons (wildmen): brown
-        ModelType::Person   => [0.6, 0.4, 0.2],
+        ModelType::Person => [0.6, 0.4, 0.2],
         // Unowned buildings: dark orange
         ModelType::Building => [0.7, 0.5, 0.1],
         // Unowned creatures: magenta
         ModelType::Creature => [0.8, 0.2, 0.8],
         // Unowned vehicles: cyan
-        ModelType::Vehicle  => [0.2, 0.6, 0.8],
-        ModelType::Scenery  => [0.2, 0.5, 0.1],   // Dark green
-        ModelType::General  => [1.0, 0.5, 0.0],   // Orange
-        ModelType::Shape    => [0.5, 0.5, 0.5],   // Gray
+        ModelType::Vehicle => [0.2, 0.6, 0.8],
+        ModelType::Scenery => [0.2, 0.5, 0.1], // Dark green
+        ModelType::General => [1.0, 0.5, 0.0], // Orange
+        ModelType::Shape => [0.5, 0.5, 0.5],   // Gray
         _ => [1.0, 1.0, 1.0],
     }
 }
 
 /// Pack palette from RGBA u8 slices into packed u32 for storage buffer.
 pub fn pack_palette_rgba(palette: &[u8]) -> Vec<u32> {
-    palette.chunks(4).map(|c| {
-        let r = c.get(0).copied().unwrap_or(0) as u32;
-        let g = c.get(1).copied().unwrap_or(0) as u32;
-        let b = c.get(2).copied().unwrap_or(0) as u32;
-        let a = c.get(3).copied().unwrap_or(0) as u32;
-        r | (g << 8) | (b << 16) | (a << 24)
-    }).collect()
+    palette
+        .chunks(4)
+        .map(|c| {
+            let r = c.get(0).copied().unwrap_or(0) as u32;
+            let g = c.get(1).copied().unwrap_or(0) as u32;
+            let b = c.get(2).copied().unwrap_or(0) as u32;
+            let a = c.get(3).copied().unwrap_or(0) as u32;
+            r | (g << 8) | (b << 16) | (a << 24)
+        })
+        .collect()
 }
 
 /// Convert RGB byte data to RGBA byte data (adding alpha=255).
@@ -148,18 +175,27 @@ pub fn rgb_to_rgba(rgb: &[u8]) -> Vec<u8> {
 /// Returns a Vec of (subtype, cells) where cells is Vec<(cell_x, cell_y, tribe_index)>.
 pub fn extract_all_unit_cells(level_res: &LevelRes) -> Vec<(u8, Vec<(f32, f32, u8)>)> {
     let n = level_res.landscape.land_size() as f32;
-    let mut by_subtype: std::collections::HashMap<u8, Vec<(f32, f32, u8)>> = std::collections::HashMap::new();
+    let mut by_subtype: std::collections::HashMap<u8, Vec<(f32, f32, u8)>> =
+        std::collections::HashMap::new();
 
     for unit in &level_res.units {
         let tribe = unit.tribe_index() as usize;
         // Person model, subtypes Brave..Shaman, valid tribes
-        if unit.model == 1 && unit.subtype >= PERSON_SUBTYPE_BRAVE && unit.subtype <= PERSON_SUBTYPE_SHAMAN && tribe < 4 {
-            if unit.loc_x() == 0 && unit.loc_y() == 0 { continue; }
+        if unit.model == 1
+            && unit.subtype >= PERSON_SUBTYPE_BRAVE
+            && unit.subtype <= PERSON_SUBTYPE_SHAMAN
+            && tribe < 4
+        {
+            if unit.loc_x() == 0 && unit.loc_y() == 0 {
+                continue;
+            }
             let bevy_x = ((unit.loc_x() >> 8) / 2) as f32 + 0.5;
             let bevy_z = ((unit.loc_y() >> 8) / 2) as f32 + 0.5;
             let cell_x = bevy_z;
             let cell_y = (n - 1.0) - bevy_x;
-            by_subtype.entry(unit.subtype).or_default()
+            by_subtype
+                .entry(unit.subtype)
+                .or_default()
                 .push((cell_x, cell_y, unit.tribe_index()));
         }
     }
@@ -194,9 +230,15 @@ pub fn extract_level_objects(level_res: &LevelRes) -> Vec<LevelObject> {
         let bevy_z = ((unit.loc_y() >> 8) / 2) as f32 + 0.5;
         let cell_x = bevy_z;
         let cell_y = (n - 1.0) - bevy_x;
-        eprintln!("[extract] type={:?} subtype={} tribe={} angle={} loc=({},{})",
-            model_type, unit.subtype, unit.tribe_index(), unit.angle(),
-            unit.loc_x(), unit.loc_y());
+        eprintln!(
+            "[extract] type={:?} subtype={} tribe={} angle={} loc=({},{})",
+            model_type,
+            unit.subtype,
+            unit.tribe_index(),
+            unit.angle(),
+            unit.loc_x(),
+            unit.loc_y()
+        );
         objects.push(LevelObject {
             cell_x,
             cell_y,
@@ -230,13 +272,13 @@ pub struct UnitTypeRender {
     pub subtype: u8,
     pub cells: Vec<UnitRenderData>,
     #[allow(dead_code)]
-    pub texture: GpuTexture,  // kept alive for GPU bind group
+    pub texture: GpuTexture, // kept alive for GPU bind group
     pub bind_group: wgpu::BindGroup,
     pub model: Option<ModelEnvelop<TexModel>>,
 
     pub frame_width: u32,
     pub frame_height: u32,
-    pub frames_per_dir: u32,  // total columns in atlas
+    pub frames_per_dir: u32, // total columns in atlas
     /// Maps animation_id → (column_offset, frame_count) within the atlas.
     pub anim_offsets: Vec<(u16, u32, u32)>,
 }
@@ -247,12 +289,19 @@ pub struct UnitTypeRender {
 /// Build camera-facing billboard quads for unit sprites.
 /// Each unit gets a single quad (6 vertices) oriented to face the camera.
 /// `frames_per_dir` and `frame_w`/`frame_h` come from the unit type's atlas.
-pub fn build_spawn_model(device: &wgpu::Device, cells: &[UnitRenderData],
-                     landscape: &LandscapeMesh<128>, curvature_scale: f32,
-                     angle_x: i16, angle_z: i16,
-                     frame_w: u32, frame_h: u32, frames_per_dir: u32,
-                     anim_offsets: &[(u16, u32, u32)],
-                     sprite_z_offset: f32, sprite_scale: f32,
+pub fn build_spawn_model(
+    device: &wgpu::Device,
+    cells: &[UnitRenderData],
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+    angle_x: i16,
+    angle_z: i16,
+    frame_w: u32,
+    frame_h: u32,
+    frames_per_dir: u32,
+    anim_offsets: &[(u16, u32, u32)],
+    sprite_z_offset: f32,
+    sprite_scale: f32,
 ) -> ModelEnvelop<TexModel> {
     let mut model: TexModel = MeshModel::new();
     let step = landscape.step();
@@ -262,7 +311,11 @@ pub fn build_spawn_model(device: &wgpu::Device, cells: &[UnitRenderData],
 
     // Sprite sizing: use atlas aspect ratio
     let sprite_h = step * 0.6 * sprite_scale;
-    let aspect = if frame_h > 0 { frame_w as f32 / frame_h as f32 } else { 1.0 };
+    let aspect = if frame_h > 0 {
+        frame_w as f32 / frame_h as f32
+    } else {
+        1.0
+    };
     let half_w = sprite_h * aspect / 2.0;
 
     let center = (w - 1.0) * step / 2.0;
@@ -311,7 +364,8 @@ pub fn build_spawn_model(device: &wgpu::Device, cells: &[UnitRenderData],
         let (src_dir, mirrored) = get_source_direction(display_dir);
 
         // Per-unit frame UV offset, accounting for animation column offset
-        let (col_offset, anim_frames) = anim_offsets.iter()
+        let (col_offset, anim_frames) = anim_offsets
+            .iter()
             .find(|(id, _, _)| *id == unit_data.animation_id)
             .map(|(_, off, fc)| (*off, *fc))
             .unwrap_or((0, frames_per_dir));
@@ -337,25 +391,32 @@ pub fn build_spawn_model(device: &wgpu::Device, cells: &[UnitRenderData],
         let tr = br + up * sprite_h;
 
         let v = |p: Vector3<f32>, u: f32, v: f32| -> TexVertex {
-            TexVertex { coord: p, uv: Vector2::new(u, v), tex_id: tid }
+            TexVertex {
+                coord: p,
+                uv: Vector2::new(u, v),
+                tex_id: tid,
+            }
         };
 
         // Single camera-facing quad (2 triangles, 6 vertices)
-        model.push_vertex(v(bl, u_left,  v_bottom));
+        model.push_vertex(v(bl, u_left, v_bottom));
         model.push_vertex(v(br, u_right, v_bottom));
         model.push_vertex(v(tr, u_right, v_top));
-        model.push_vertex(v(bl, u_left,  v_bottom));
+        model.push_vertex(v(bl, u_left, v_bottom));
         model.push_vertex(v(tr, u_right, v_top));
-        model.push_vertex(v(tl, u_left,  v_top));
+        model.push_vertex(v(tl, u_left, v_top));
     }
     let m = vec![(RenderType::Triangles, model)];
     ModelEnvelop::<TexModel>::new(device, m)
 }
 
 pub fn build_object_markers(
-    device: &wgpu::Device, objects: &[LevelObject],
-    landscape: &LandscapeMesh<128>, curvature_scale: f32,
-    angle_x: i16, angle_z: i16,
+    device: &wgpu::Device,
+    objects: &[LevelObject],
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+    angle_x: i16,
+    angle_z: i16,
 ) -> ModelEnvelop<ColorModel> {
     let mut model: ColorModel = MeshModel::new();
     let step = landscape.step();
@@ -403,9 +464,9 @@ pub fn build_object_markers(
         let z_base = gz - curvature_offset + 0.0005;
 
         let (half_w, sprite_h) = match obj.model_type {
-            ModelType::Person   => (step * 0.15, step * 0.4),
-            ModelType::Scenery  => (step * 0.2, step * 0.25),
-            _                   => (step * 0.2, step * 0.3),
+            ModelType::Person => (step * 0.15, step * 0.4),
+            ModelType::Scenery => (step * 0.2, step * 0.25),
+            _ => (step * 0.2, step * 0.3),
         };
 
         let color_rgb = object_marker_color(&obj.model_type, obj.tribe_index);
@@ -430,23 +491,39 @@ pub fn build_object_markers(
         let (mut min_x, mut min_y, mut min_z) = (f32::MAX, f32::MAX, f32::MAX);
         let (mut max_x, mut max_y, mut max_z) = (f32::MIN, f32::MIN, f32::MIN);
         for v in &model.vertices {
-            min_x = min_x.min(v.coord.x); max_x = max_x.max(v.coord.x);
-            min_y = min_y.min(v.coord.y); max_y = max_y.max(v.coord.y);
-            min_z = min_z.min(v.coord.z); max_z = max_z.max(v.coord.z);
+            min_x = min_x.min(v.coord.x);
+            max_x = max_x.max(v.coord.x);
+            min_y = min_y.min(v.coord.y);
+            max_y = max_y.max(v.coord.y);
+            min_z = min_z.min(v.coord.z);
+            max_z = max_z.max(v.coord.z);
         }
-        eprintln!("[markers] bbox x=[{:.3}..{:.3}] y=[{:.3}..{:.3}] z=[{:.3}..{:.3}] verts={}",
-            min_x, max_x, min_y, max_y, min_z, max_z, model.vertices.len());
+        eprintln!(
+            "[markers] bbox x=[{:.3}..{:.3}] y=[{:.3}..{:.3}] z=[{:.3}..{:.3}] verts={}",
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            min_z,
+            max_z,
+            model.vertices.len()
+        );
     }
     let m = vec![(RenderType::Triangles, model)];
     ModelEnvelop::<ColorModel>::new(device, m)
 }
 
 pub fn build_unit_markers(
-    device: &wgpu::Device, units: &[Unit],
-    landscape: &LandscapeMesh<128>, curvature_scale: f32,
-    angle_x: i16, angle_z: i16,
+    device: &wgpu::Device,
+    units: &[Unit],
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+    angle_x: i16,
+    angle_z: i16,
 ) -> Option<ModelEnvelop<ColorModel>> {
-    if units.is_empty() { return None; }
+    if units.is_empty() {
+        return None;
+    }
     let mut model: ColorModel = MeshModel::new();
     let step = landscape.step();
 
@@ -507,11 +584,16 @@ pub fn build_unit_markers(
 /// Uses the same billboard geometry as `build_unit_markers` so the outline
 /// matches exactly what gets picked.
 pub fn build_selection_outlines(
-    device: &wgpu::Device, coordinator: &UnitCoordinator,
-    landscape: &LandscapeMesh<128>, curvature_scale: f32,
-    angle_x: i16, angle_z: i16,
+    device: &wgpu::Device,
+    coordinator: &UnitCoordinator,
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+    angle_x: i16,
+    angle_z: i16,
 ) -> Option<ModelEnvelop<ColorModel>> {
-    if coordinator.selection.selected.is_empty() { return None; }
+    if coordinator.selection.selected.is_empty() {
+        return None;
+    }
     let mut model: ColorModel = MeshModel::new();
     let step = landscape.step();
 

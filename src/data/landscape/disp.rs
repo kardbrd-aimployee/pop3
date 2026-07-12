@@ -33,7 +33,7 @@ pub fn texture_disp_full(params: &GlobeTextureParams) -> Vec<u8> {
         for j in 0..width {
             let offset_param = i * 0x100;
             let disp_val = params.disp0[offset_param + j];
-            texture[i*width + j] = disp_val as u8;
+            texture[i * width + j] = disp_val as u8;
         }
     }
     texture
@@ -47,7 +47,8 @@ pub fn texture_disp_quarter(params: &GlobeTextureParams) -> Vec<u8> {
         for j in 0..points {
             let index = i * width * 8 + j * 8;
             for v in 0..8 {
-                let disp_index: usize = ((i as usize & 0x7) << 8) + ((j as usize & 0x7) << 5) + ((v as usize) << 10);
+                let disp_index: usize =
+                    ((i as usize & 0x7) << 8) + ((j as usize & 0x7) << 5) + ((v as usize) << 10);
                 for h in 0..8 {
                     let disp_val = params.disp0[disp_index + h * 4];
                     texture[index + (v * width) + h] = disp_val as u8;
@@ -70,7 +71,12 @@ pub fn texture_bigf0(height: u16, params: &GlobeTextureParams) -> Image {
     img
 }
 
-pub fn texture_bigf0_disp(height: u16, disp_div: i8, disp_add: u8, params: &GlobeTextureParams) -> Vec<u8> {
+pub fn texture_bigf0_disp(
+    height: u16,
+    disp_div: i8,
+    disp_add: u8,
+    params: &GlobeTextureParams,
+) -> Vec<u8> {
     let width = 256;
     let mut texture = vec![0; width * width];
     for i in 0..width {
@@ -80,7 +86,7 @@ pub fn texture_bigf0_disp(height: u16, disp_div: i8, disp_add: u8, params: &Glob
             let disp_val = disp_val as i32 + disp_add as i32;
             //let disp_val = disp_val.clamp(0, 255);
             let height_param_x256: i32 = height as i32 * 256;
-            texture[i*width + j] = params.bigf0[(height_param_x256 + disp_val) as usize];
+            texture[i * width + j] = params.bigf0[(height_param_x256 + disp_val) as usize];
         }
     }
     texture

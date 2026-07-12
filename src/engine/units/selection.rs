@@ -1,7 +1,8 @@
 // Selection state and hit-testing for unit control.
 
-use cgmath::Point2;
 use super::unit::{Unit, UnitId};
+use crate::engine::objects::ObjectHandle;
+use cgmath::Point2;
 
 pub struct SelectionState {
     pub selected: Vec<UnitId>,
@@ -9,7 +10,9 @@ pub struct SelectionState {
 
 impl SelectionState {
     pub fn new() -> Self {
-        Self { selected: Vec::new() }
+        Self {
+            selected: Vec::new(),
+        }
     }
 
     pub fn clear(&mut self) {
@@ -34,13 +37,23 @@ impl SelectionState {
 pub enum DragState {
     None,
     /// Left button pressed — not yet dragging (waiting for threshold).
-    PendingDrag { start: Point2<f32> },
+    PendingDrag {
+        start: Point2<f32>,
+    },
     /// Actively dragging — rubber band visible.
-    Dragging { start: Point2<f32>, current: Point2<f32> },
+    Dragging {
+        start: Point2<f32>,
+        current: Point2<f32>,
+    },
 }
 
 /// Find the nearest unit to a cell-space position within `threshold` distance.
-pub fn find_unit_at_cell(units: &[Unit], cell_x: f32, cell_y: f32, threshold: f32) -> Option<UnitId> {
+pub fn find_unit_at_cell(
+    units: &[Unit],
+    cell_x: f32,
+    cell_y: f32,
+    threshold: f32,
+) -> Option<UnitId> {
     let threshold_sq = threshold * threshold;
     let mut best: Option<(UnitId, f32)> = None;
     for unit in units {
@@ -59,14 +72,15 @@ pub fn find_unit_at_cell(units: &[Unit], cell_x: f32, cell_y: f32, threshold: f3
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::movement::PersonMovement;
     use crate::data::units::ModelType;
+    use crate::engine::movement::PersonMovement;
 
     fn make_unit(id: usize, cx: f32, cy: f32) -> Unit {
         use super::super::person_state::PersonState;
         use crate::engine::movement::WorldCoord;
         Unit {
             id,
+            handle: ObjectHandle::new(id as u16, 1),
             model_type: ModelType::Person,
             subtype: 2,
             tribe_index: 0,

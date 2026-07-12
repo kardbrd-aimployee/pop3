@@ -1,9 +1,9 @@
-pub mod modify;
 pub mod cascade;
-pub mod water;
+pub mod modify;
 #[cfg(test)]
 mod tests;
+pub mod water;
 
-pub use modify::{modify_height, modify_height_area, flatten_area};
-pub use cascade::{terrain_cascade, CascadeRegion, CascadeResult, invalidate_segments_in_region};
-pub use water::{update_water_cells, is_water_cell, WATER_WALKABILITY_FLAG};
+pub use cascade::{invalidate_segments_in_region, terrain_cascade, CascadeRegion, CascadeResult};
+pub use modify::{flatten_area, modify_height, modify_height_area};
+pub use water::{is_water_cell, update_water_cells, WATER_WALKABILITY_FLAG};

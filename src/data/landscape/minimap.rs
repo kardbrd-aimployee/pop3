@@ -3,14 +3,21 @@ use crate::data::types::{Image, ImageStorage};
 
 /******************************************************************************/
 
-pub fn texture_minimap_storage<'a, S, I>(flag: bool, land_iter: &mut I, bigf0: &[u8], storage: &mut S)
-    where S: ImageStorage, I: Iterator<Item=LandPosPoint<'a>>{
+pub fn texture_minimap_storage<'a, S, I>(
+    flag: bool,
+    land_iter: &mut I,
+    bigf0: &[u8],
+    storage: &mut S,
+) where
+    S: ImageStorage,
+    I: Iterator<Item = LandPosPoint<'a>>,
+{
     let default_val = 0;
     for pos_point in land_iter {
         let land_pos = pos_point.pos;
         let val = if flag || ((land_pos.flags & 8) != 0) {
             if land_pos.c_1 == 0 {
-                bigf0[0x7840 + (land_pos.height as usize)*0x100]
+                bigf0[0x7840 + (land_pos.height as usize) * 0x100]
             } else {
                 let v = {
                     let v = land_pos.height + 0x8c;
@@ -21,7 +28,7 @@ pub fn texture_minimap_storage<'a, S, I>(flag: bool, land_iter: &mut I, bigf0: &
                     }
                 };
                 let index = {
-                    let index = v*0x100 + (land_pos.brightness as usize)*0x100;
+                    let index = v * 0x100 + (land_pos.brightness as usize) * 0x100;
                     if index >= bigf0.len() {
                         bigf0.len() - 1
                     } else {

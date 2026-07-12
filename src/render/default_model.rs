@@ -2,8 +2,8 @@ use std::vec::Vec;
 
 use cgmath::Vector3;
 
-use crate::render::model::{FromUsize, MeshModel};
 use crate::render::envelop::GpuModel;
+use crate::render::model::{FromUsize, MeshModel};
 
 /******************************************************************************/
 
@@ -34,11 +34,7 @@ impl GpuModel for DefaultModel {
     }
 
     fn vertex_data(&self) -> Vec<u8> {
-        let floats: Vec<f32> = self
-            .vertices
-            .iter()
-            .flat_map(|v| [v.x, v.y, v.z])
-            .collect();
+        let floats: Vec<f32> = self.vertices.iter().flat_map(|v| [v.x, v.y, v.z]).collect();
         bytemuck::cast_slice(&floats).to_vec()
     }
 

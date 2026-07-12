@@ -19,20 +19,24 @@
 //   Tier 4: Dual-arm wall-following pathfinder (Bug2 variant)
 
 pub mod constants;
-pub mod tables;
 pub mod math;
-pub mod types;
-pub mod region;
-pub mod segment;
-pub mod route;
-pub mod waypoint;
 pub mod pathfinder;
+pub mod region;
+pub mod route;
+pub mod segment;
+pub mod tables;
+pub mod types;
+pub mod waypoint;
 
 // Re-export primary API
-pub use types::{WorldCoord, TileCoord, Waypoint, PersonMovement, UsedTargetsCache};
+pub use math::{
+    angle_difference, atan2, distance, formation_rng_next, move_point_by_angle, rotation_direction,
+};
+pub use pathfinder::{
+    pathfind, pathfind_debug, PathNode, PathfindDebug, PathfindResult, VisitedBitmap,
+};
 pub use region::RegionMap;
-pub use segment::{SegmentPool, FailureCache};
-pub use route::{state_goto, route_table_lookup, adjust_target_for_walkability, RouteResult};
+pub use route::{adjust_target_for_walkability, route_table_lookup, state_goto, RouteResult};
+pub use segment::{FailureCache, SegmentPool};
+pub use types::{PersonMovement, TileCoord, UsedTargetsCache, Waypoint, WorldCoord};
 pub use waypoint::{process_route_movement, WaypointResult};
-pub use math::{move_point_by_angle, angle_difference, rotation_direction, distance, atan2, formation_rng_next};
-pub use pathfinder::{pathfind, pathfind_debug, PathfindResult, PathfindDebug, PathNode, VisitedBitmap};

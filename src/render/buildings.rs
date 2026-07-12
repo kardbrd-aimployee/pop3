@@ -1,11 +1,11 @@
 use cgmath::Vector3;
 
-use crate::render::model::{VertexModel, MeshModel};
-use crate::render::tex_model::{TexModel, TexVertex};
+use crate::data::objects::{mk_pop_object, Object3D, Shape};
+use crate::data::units::{building_obj_index, scenery_obj_index, ModelType};
 use crate::render::envelop::{ModelEnvelop, RenderType};
+use crate::render::model::{MeshModel, VertexModel};
 use crate::render::terrain::LandscapeMesh;
-use crate::data::objects::{Object3D, Shape, mk_pop_object};
-use crate::data::units::{ModelType, building_obj_index, scenery_obj_index};
+use crate::render::tex_model::{TexModel, TexVertex};
 
 use crate::render::sprites::LevelObject;
 
@@ -18,6 +18,7 @@ pub fn build_ghost_building_mesh(
     tribe_index: u8,
     cell_x: f32,
     cell_y: f32,
+    rotation: u8,
     building_bank: &[Option<Object3D>],
     landscape: &LandscapeMesh<128>,
     curvature_scale: f32,
@@ -37,9 +38,10 @@ pub fn build_ghost_building_mesh(
     let gx = vis_x * step;
     let gy = vis_y * step;
 
-    // No rotation for ghost preview (angle = 0)
-    let cos_a = (-(std::f32::consts::FRAC_PI_2) as f32).cos();
-    let sin_a = (-(std::f32::consts::FRAC_PI_2) as f32).sin();
+    let angle = (rotation & 3) as f32 * 512.0;
+    let angle_rad = -angle * std::f32::consts::TAU / 2048.0 - std::f32::consts::FRAC_PI_2;
+    let cos_a = angle_rad.cos();
+    let sin_a = angle_rad.sin();
 
     let mut combined: TexModel = MeshModel::new();
     let base_idx = combined.vertices.len() as u16;
@@ -82,9 +84,13 @@ pub fn build_ghost_building_mesh(
 }
 
 pub fn build_building_meshes(
-    device: &wgpu::Device, objects: &[LevelObject],
-    building_bank: &[Option<Object3D>], scenery_bank: &[Option<Object3D>],
-    _shapes: &[Shape], landscape: &LandscapeMesh<128>, curvature_scale: f32,
+    device: &wgpu::Device,
+    objects: &[LevelObject],
+    building_bank: &[Option<Object3D>],
+    scenery_bank: &[Option<Object3D>],
+    _shapes: &[Shape],
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
 ) -> ModelEnvelop<TexModel> {
     let mut combined: TexModel = MeshModel::new();
     let step = landscape.step();
@@ -96,24 +102,35 @@ pub fn build_building_meshes(
     for obj in objects {
         // Look up model index and select the right bank based on model type
         let (idx, bank): (Option<usize>, &[Option<Object3D>]) = match obj.model_type {
-            ModelType::Building => (building_obj_index(obj.subtype, obj.tribe_index), building_bank),
+            ModelType::Building => (
+                building_obj_index(obj.subtype, obj.tribe_index),
+                building_bank,
+            ),
             ModelType::Scenery => (scenery_obj_index(obj.subtype), scenery_bank),
             _ => (None, building_bank),
         };
         let idx = match idx {
             Some(i) => i,
             None => {
-                eprintln!("[3d-obj] UNMAPPED type={:?} subtype={} tribe={} cell=({:.1},{:.1}) angle={}",
-                    obj.model_type, obj.subtype, obj.tribe_index, obj.cell_x, obj.cell_y, obj.angle);
+                eprintln!(
+                    "[3d-obj] UNMAPPED type={:?} subtype={} tribe={} cell=({:.1},{:.1}) angle={}",
+                    obj.model_type, obj.subtype, obj.tribe_index, obj.cell_x, obj.cell_y, obj.angle
+                );
                 continue;
-            },
+            }
         };
         building_count += 1;
-        eprintln!("[3d-obj] type={:?} subtype={} tribe={} angle={} -> idx={}", obj.model_type, obj.subtype, obj.tribe_index, obj.angle, idx);
+        eprintln!(
+            "[3d-obj] type={:?} subtype={} tribe={} angle={} -> idx={}",
+            obj.model_type, obj.subtype, obj.tribe_index, obj.angle, idx
+        );
         let obj3d = match idx < bank.len() {
             true => match &bank[idx] {
                 Some(o) => o,
-                None => { eprintln!("  -> object at {} is None", idx); continue; },
+                None => {
+                    eprintln!("  -> object at {} is None", idx);
+                    continue;
+                }
             },
             false => continue,
         };
@@ -135,8 +152,8 @@ pub fn build_building_meshes(
         }
 
         // Rotate model vertices in the horizontal plane (model X/Z -> world X/Y)
-        let angle_rad = -(obj.angle as f32) * std::f32::consts::TAU / 2048.0
-            - std::f32::consts::FRAC_PI_2;
+        let angle_rad =
+            -(obj.angle as f32) * std::f32::consts::TAU / 2048.0 - std::f32::consts::FRAC_PI_2;
         let cos_a = angle_rad.cos();
         let sin_a = angle_rad.sin();
 
@@ -171,18 +188,29 @@ pub fn build_building_meshes(
             combined.indices.push(base_idx + idx16);
         }
     }
-    eprintln!("[buildings] total={} vertices={} indices={} step={:.4} center={:.4}",
-        building_count, combined.vertices.len(), combined.indices.len(), step, center);
+    eprintln!(
+        "[buildings] total={} vertices={} indices={} step={:.4} center={:.4}",
+        building_count,
+        combined.vertices.len(),
+        combined.indices.len(),
+        step,
+        center
+    );
     if !combined.vertices.is_empty() {
         let (mut min_x, mut min_y, mut min_z) = (f32::MAX, f32::MAX, f32::MAX);
         let (mut max_x, mut max_y, mut max_z) = (f32::MIN, f32::MIN, f32::MIN);
         for v in &combined.vertices {
-            min_x = min_x.min(v.coord.x); max_x = max_x.max(v.coord.x);
-            min_y = min_y.min(v.coord.y); max_y = max_y.max(v.coord.y);
-            min_z = min_z.min(v.coord.z); max_z = max_z.max(v.coord.z);
+            min_x = min_x.min(v.coord.x);
+            max_x = max_x.max(v.coord.x);
+            min_y = min_y.min(v.coord.y);
+            max_y = max_y.max(v.coord.y);
+            min_z = min_z.min(v.coord.z);
+            max_z = max_z.max(v.coord.z);
         }
-        eprintln!("[buildings] bbox x=[{:.3}..{:.3}] y=[{:.3}..{:.3}] z=[{:.3}..{:.3}]",
-            min_x, max_x, min_y, max_y, min_z, max_z);
+        eprintln!(
+            "[buildings] bbox x=[{:.3}..{:.3}] y=[{:.3}..{:.3}] z=[{:.3}..{:.3}]",
+            min_x, max_x, min_y, max_y, min_z, max_z
+        );
     }
     let m = vec![(RenderType::Triangles, combined)];
     ModelEnvelop::<TexModel>::new(device, m)

@@ -7,11 +7,17 @@ use crate::engine::movement::WorldCoord;
 
 pub const MAX_OBJECTS: usize = 1101;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolError {
+    Full,
+}
+
 /// Generational-arena-style fixed-capacity object store.
 /// Supports all 11 model types with stable u16 handles,
 /// O(1) create/destroy, and person-specific iteration.
 pub struct ObjectPool {
     slots: Box<[PoolSlot]>,
+    generations: Box<[u32]>,
     free_head: Option<u16>,
     active_count: u16,
 }
@@ -22,11 +28,16 @@ impl ObjectPool {
         // Stub for RED phase — returns empty pool that won't work correctly
         let mut slots: Vec<PoolSlot> = Vec::with_capacity(MAX_OBJECTS);
         for i in 0..MAX_OBJECTS {
-            let next = if i + 1 < MAX_OBJECTS { Some((i + 1) as u16) } else { None };
+            let next = if i + 1 < MAX_OBJECTS {
+                Some((i + 1) as u16)
+            } else {
+                None
+            };
             slots.push(PoolSlot::Free { next_free: next });
         }
         Self {
             slots: slots.into_boxed_slice(),
+            generations: vec![1; MAX_OBJECTS].into_boxed_slice(),
             free_head: Some(0),
             active_count: 0,
         }
@@ -39,8 +50,8 @@ impl ObjectPool {
         subtype: u8,
         tribe: u8,
         position: WorldCoord,
-    ) -> Option<ObjectHandle> {
-        let slot_idx = self.free_head?;
+    ) -> Result<ObjectHandle, PoolError> {
+        let slot_idx = self.free_head.ok_or(PoolError::Full)?;
         let idx = slot_idx as usize;
 
         // Advance free head
@@ -48,8 +59,9 @@ impl ObjectPool {
             PoolSlot::Free { next_free } => {
                 self.free_head = *next_free;
             }
-            PoolSlot::Occupied(_) => return None,
+            PoolSlot::Occupied(_) => return Err(PoolError::Full),
         }
+        let handle = ObjectHandle::new(slot_idx, self.generations[idx]);
 
         let header = ObjectHeader {
             model_type,
@@ -60,7 +72,7 @@ impl ObjectPool {
             flags1: 0,
             flags2: 0,
             flags3: 0,
-            object_index: slot_idx,
+            object_index: handle,
             angle: 0,
             position,
             velocity: WorldCoord::default(),
@@ -86,14 +98,17 @@ impl ObjectPool {
 
         self.slots[idx] = PoolSlot::Occupied(GameObject { header, data });
         self.active_count += 1;
-        Some(slot_idx)
+        Ok(handle)
     }
 
     /// Destroy the object at the given handle. Returns true if destroyed, false if
     /// the handle was invalid or already free.
     pub fn destroy(&mut self, handle: ObjectHandle) -> bool {
-        let idx = handle as usize;
+        let idx = handle.index();
         if idx >= MAX_OBJECTS {
+            return false;
+        }
+        if self.generations[idx] != handle.generation() {
             return false;
         }
         match &self.slots[idx] {
@@ -102,16 +117,22 @@ impl ObjectPool {
         }
 
         // Push onto free list (LIFO)
-        self.slots[idx] = PoolSlot::Free { next_free: self.free_head };
-        self.free_head = Some(handle);
+        self.slots[idx] = PoolSlot::Free {
+            next_free: self.free_head,
+        };
+        self.free_head = Some(handle.slot());
+        self.generations[idx] = next_generation(self.generations[idx]);
         self.active_count -= 1;
         true
     }
 
     /// Get a reference to the game object at the given handle.
     pub fn get(&self, handle: ObjectHandle) -> Option<&GameObject> {
-        let idx = handle as usize;
+        let idx = handle.index();
         if idx >= MAX_OBJECTS {
+            return None;
+        }
+        if self.generations[idx] != handle.generation() {
             return None;
         }
         match &self.slots[idx] {
@@ -122,8 +143,11 @@ impl ObjectPool {
 
     /// Get a mutable reference to the game object at the given handle.
     pub fn get_mut(&mut self, handle: ObjectHandle) -> Option<&mut GameObject> {
-        let idx = handle as usize;
+        let idx = handle.index();
         if idx >= MAX_OBJECTS {
+            return None;
+        }
+        if self.generations[idx] != handle.generation() {
             return None;
         }
         match &mut self.slots[idx] {
@@ -140,8 +164,13 @@ impl ObjectPool {
     /// Reset the pool: all slots become Free, free list is re-linked, active count = 0.
     pub fn clear(&mut self) {
         for i in 0..MAX_OBJECTS {
-            let next = if i + 1 < MAX_OBJECTS { Some((i + 1) as u16) } else { None };
+            let next = if i + 1 < MAX_OBJECTS {
+                Some((i + 1) as u16)
+            } else {
+                None
+            };
             self.slots[i] = PoolSlot::Free { next_free: next };
+            self.generations[i] = next_generation(self.generations[i]);
         }
         self.free_head = Some(0);
         self.active_count = 0;
@@ -162,7 +191,11 @@ impl ObjectPool {
         self.slots.iter().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Person(ref pd) = obj.data {
-                    return Some((i as ObjectHandle, &obj.header, pd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &obj.header,
+                        pd,
+                    ));
                 }
             }
             None
@@ -176,7 +209,11 @@ impl ObjectPool {
         self.slots.iter_mut().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Person(ref mut pd) = obj.data {
-                    return Some((i as ObjectHandle, &mut obj.header, pd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &mut obj.header,
+                        pd,
+                    ));
                 }
             }
             None
@@ -188,7 +225,11 @@ impl ObjectPool {
         self.slots.iter().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Shot(ref sd) = obj.data {
-                    return Some((i as ObjectHandle, &obj.header, sd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &obj.header,
+                        sd,
+                    ));
                 }
             }
             None
@@ -202,7 +243,11 @@ impl ObjectPool {
         self.slots.iter_mut().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Shot(ref mut sd) = obj.data {
-                    return Some((i as ObjectHandle, &mut obj.header, sd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &mut obj.header,
+                        sd,
+                    ));
                 }
             }
             None
@@ -214,7 +259,11 @@ impl ObjectPool {
         self.slots.iter().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Building(ref bd) = obj.data {
-                    return Some((i as ObjectHandle, &obj.header, bd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &obj.header,
+                        bd,
+                    ));
                 }
             }
             None
@@ -228,11 +277,24 @@ impl ObjectPool {
         self.slots.iter_mut().enumerate().filter_map(|(i, slot)| {
             if let PoolSlot::Occupied(obj) = slot {
                 if let GameObjectData::Building(ref mut bd) = obj.data {
-                    return Some((i as ObjectHandle, &mut obj.header, bd));
+                    return Some((
+                        ObjectHandle::new(i as u16, self.generations[i]),
+                        &mut obj.header,
+                        bd,
+                    ));
                 }
             }
             None
         })
+    }
+}
+
+fn next_generation(generation: u32) -> u32 {
+    let next = generation.wrapping_add(1);
+    if next == 0 {
+        1
+    } else {
+        next
     }
 }
 
@@ -263,24 +325,68 @@ mod tests {
     #[test]
     fn create_then_destroy_returns_none_on_get() {
         let mut pool = ObjectPool::new();
-        let handle = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
+        let handle = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
         assert!(pool.get(handle).is_some());
         assert!(pool.destroy(handle));
         assert!(pool.get(handle).is_none());
     }
 
     #[test]
+    fn stale_handle_is_rejected_after_slot_reuse() {
+        let mut pool = ObjectPool::new();
+        let stale = pool
+            .create(ModelType::Person, 2, 0, WorldCoord::default())
+            .unwrap();
+        assert!(pool.destroy(stale));
+        let current = pool
+            .create(ModelType::Person, 2, 0, WorldCoord::default())
+            .unwrap();
+        assert_eq!(stale.slot(), current.slot());
+        assert_ne!(stale.generation(), current.generation());
+        assert!(pool.get(stale).is_none());
+        assert!(!pool.destroy(stale));
+        assert!(pool.get(current).is_some());
+    }
+
+    #[test]
+    fn clear_invalidates_every_existing_handle() {
+        let mut pool = ObjectPool::new();
+        let old = pool
+            .create(ModelType::Building, 1, 0, WorldCoord::default())
+            .unwrap();
+        pool.clear();
+        assert!(pool.get(old).is_none());
+        let new = pool
+            .create(ModelType::Building, 1, 0, WorldCoord::default())
+            .unwrap();
+        assert_eq!(old.slot(), new.slot());
+        assert_ne!(old.generation(), new.generation());
+    }
+
+    #[test]
     fn destroy_reuses_slot_lifo() {
         let mut pool = ObjectPool::new();
-        let h1 = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
-        let h2 = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
+        let h1 = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
+        let h2 = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
         pool.destroy(h2);
         pool.destroy(h1);
         // LIFO: h1 was destroyed last, so it should be allocated first
-        let h3 = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
-        assert_eq!(h3, h1);
-        let h4 = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
-        assert_eq!(h4, h2);
+        let h3 = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
+        assert_eq!(h3.slot(), h1.slot());
+        assert_ne!(h3.generation(), h1.generation());
+        let h4 = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
+        assert_eq!(h4.slot(), h2.slot());
+        assert_ne!(h4.generation(), h2.generation());
     }
 
     #[test]
@@ -288,13 +394,17 @@ mod tests {
         let mut pool = ObjectPool::new();
         for i in 0..MAX_OBJECTS {
             assert!(
-                pool.create(ModelType::Person, 0, 0, WorldCoord::default()).is_some(),
+                pool.create(ModelType::Person, 0, 0, WorldCoord::default())
+                    .is_ok(),
                 "Failed to create object {}",
                 i
             );
         }
         // 1102nd should fail
-        assert!(pool.create(ModelType::Person, 0, 0, WorldCoord::default()).is_none());
+        assert_eq!(
+            pool.create(ModelType::Person, 0, 0, WorldCoord::default()),
+            Err(PoolError::Full)
+        );
     }
 
     #[test]
@@ -302,19 +412,27 @@ mod tests {
         let mut pool = ObjectPool::new();
         let mut handles = Vec::new();
         for _ in 0..MAX_OBJECTS {
-            handles.push(pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap());
+            handles.push(
+                pool.create(ModelType::Person, 0, 0, WorldCoord::default())
+                    .unwrap(),
+            );
         }
-        assert!(pool.create(ModelType::Person, 0, 0, WorldCoord::default()).is_none());
+        assert_eq!(
+            pool.create(ModelType::Person, 0, 0, WorldCoord::default()),
+            Err(PoolError::Full)
+        );
         pool.destroy(handles[500]);
-        assert!(pool.create(ModelType::Person, 0, 0, WorldCoord::default()).is_some());
+        assert!(pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .is_ok());
     }
 
     #[test]
     fn persons_iterator_filters_person_only() {
         let mut pool = ObjectPool::new();
-        pool.create(ModelType::Person, 0, 0, WorldCoord::default());
-        pool.create(ModelType::Building, 0, 0, WorldCoord::default());
-        pool.create(ModelType::Person, 0, 1, WorldCoord::default());
+        let _ = pool.create(ModelType::Person, 0, 0, WorldCoord::default());
+        let _ = pool.create(ModelType::Building, 0, 0, WorldCoord::default());
+        let _ = pool.create(ModelType::Person, 0, 1, WorldCoord::default());
         let persons: Vec<_> = pool.persons().collect();
         assert_eq!(persons.len(), 2);
         assert_eq!(persons[0].1.model_type, ModelType::Person);
@@ -324,7 +442,7 @@ mod tests {
     #[test]
     fn persons_mut_allows_mutation() {
         let mut pool = ObjectPool::new();
-        pool.create(ModelType::Person, 0, 0, WorldCoord::default());
+        let _ = pool.create(ModelType::Person, 0, 0, WorldCoord::default());
         for (_, header, pd) in pool.persons_mut() {
             header.health = 999;
             pd.bloodlust = true;
@@ -338,9 +456,13 @@ mod tests {
     fn active_count_tracks_correctly() {
         let mut pool = ObjectPool::new();
         assert_eq!(pool.active_count(), 0);
-        let h1 = pool.create(ModelType::Person, 0, 0, WorldCoord::default()).unwrap();
+        let h1 = pool
+            .create(ModelType::Person, 0, 0, WorldCoord::default())
+            .unwrap();
         assert_eq!(pool.active_count(), 1);
-        let h2 = pool.create(ModelType::Building, 0, 0, WorldCoord::default()).unwrap();
+        let h2 = pool
+            .create(ModelType::Building, 0, 0, WorldCoord::default())
+            .unwrap();
         assert_eq!(pool.active_count(), 2);
         pool.destroy(h1);
         assert_eq!(pool.active_count(), 1);
@@ -351,16 +473,18 @@ mod tests {
     #[test]
     fn get_invalid_handle_returns_none() {
         let pool = ObjectPool::new();
-        assert!(pool.get(0).is_none()); // slot 0 is free
-        assert!(pool.get(MAX_OBJECTS as u16).is_none()); // out of range
-        assert!(pool.get(u16::MAX).is_none()); // way out of range
+        assert!(pool.get(ObjectHandle::new(0, 1)).is_none());
+        assert!(pool.get(ObjectHandle::new(MAX_OBJECTS as u16, 1)).is_none());
+        assert!(pool.get(ObjectHandle::new(u16::MAX, 1)).is_none());
     }
 
     #[test]
     fn get_mut_invalid_handle_returns_none() {
         let mut pool = ObjectPool::new();
-        assert!(pool.get_mut(0).is_none());
-        assert!(pool.get_mut(MAX_OBJECTS as u16).is_none());
+        assert!(pool.get_mut(ObjectHandle::new(0, 1)).is_none());
+        assert!(pool
+            .get_mut(ObjectHandle::new(MAX_OBJECTS as u16, 1))
+            .is_none());
     }
 
     #[test]

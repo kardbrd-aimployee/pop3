@@ -57,17 +57,21 @@ pub fn set_building_target(building: &mut BuildingData, target: Option<ObjectHan
 mod tests {
     use super::*;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     fn make_combat_building() -> BuildingData {
         let mut b = BuildingData::default();
         b.state = BuildingState::Active;
         b.building_subtype = BuildingSubtype::DrumTower;
         b.behavior_flags = 0x08;
-        b.occupant_slots[0] = Some(10);
-        b.occupant_slots[1] = Some(20);
-        b.occupant_slots[2] = Some(30);
+        b.occupant_slots[0] = Some(h(10));
+        b.occupant_slots[1] = Some(h(20));
+        b.occupant_slots[2] = Some(h(30));
         b.occupant_count = 3;
         b.num_fighting = 2;
-        b.target_person = Some(99);
+        b.target_person = Some(h(99));
         b
     }
 
@@ -79,14 +83,14 @@ mod tests {
     #[test]
     fn combat_emits_attacks_per_fighter() {
         let mut b = make_combat_building();
-        let actions = tick_building_combat(&mut b, 1);
+        let actions = tick_building_combat(&mut b, h(1));
         // 2 fighters, slots 0 and 1
         assert_eq!(actions.len(), 2);
         assert_eq!(
             actions[0],
             BuildingCombatAction::AttackTarget {
                 attacker_slot: 0,
-                target: 99,
+                target: h(99),
                 damage: 100
             }
         );
@@ -94,7 +98,7 @@ mod tests {
             actions[1],
             BuildingCombatAction::AttackTarget {
                 attacker_slot: 1,
-                target: 99,
+                target: h(99),
                 damage: 100
             }
         );
@@ -104,7 +108,7 @@ mod tests {
     fn combat_no_actions_without_target() {
         let mut b = make_combat_building();
         b.target_person = None;
-        let actions = tick_building_combat(&mut b, 1);
+        let actions = tick_building_combat(&mut b, h(1));
         assert!(actions.is_empty());
     }
 
@@ -112,7 +116,7 @@ mod tests {
     fn combat_no_actions_zero_fighters() {
         let mut b = make_combat_building();
         b.num_fighting = 0;
-        let actions = tick_building_combat(&mut b, 1);
+        let actions = tick_building_combat(&mut b, h(1));
         assert!(actions.is_empty());
     }
 
@@ -120,7 +124,7 @@ mod tests {
     fn combat_no_actions_non_active() {
         let mut b = make_combat_building();
         b.state = BuildingState::Init;
-        let actions = tick_building_combat(&mut b, 1);
+        let actions = tick_building_combat(&mut b, h(1));
         assert!(actions.is_empty());
     }
 
@@ -143,8 +147,8 @@ mod tests {
     #[test]
     fn set_building_target_sets_and_clears() {
         let mut b = BuildingData::default();
-        set_building_target(&mut b, Some(42));
-        assert_eq!(b.target_person, Some(42));
+        set_building_target(&mut b, Some(h(42)));
+        assert_eq!(b.target_person, Some(h(42)));
         set_building_target(&mut b, None);
         assert_eq!(b.target_person, None);
     }
@@ -153,13 +157,13 @@ mod tests {
     fn combat_all_six_fighters() {
         let mut b = BuildingData::default();
         b.state = BuildingState::Active;
-        b.target_person = Some(50);
+        b.target_person = Some(h(50));
         for i in 0..6 {
-            b.occupant_slots[i] = Some((i + 1) as u16);
+            b.occupant_slots[i] = Some(h((i + 1) as u16));
         }
         b.occupant_count = 6;
         b.num_fighting = 6;
-        let actions = tick_building_combat(&mut b, 1);
+        let actions = tick_building_combat(&mut b, h(1));
         assert_eq!(actions.len(), 6);
     }
 }

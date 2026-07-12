@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek};
+use std::path::{Path, PathBuf};
 
 use crate::data::types::BinDeserializer;
-use crate::data::units::{UnitRaw, TribeConfigRaw};
+use crate::data::units::{ModelType, TribeConfigRaw, UnitRaw};
 
 /******************************************************************************/
 
@@ -96,7 +96,7 @@ pub struct Sunlight {
 
 impl Sunlight {
     pub fn new(v1: u8, v2: u8, v3: u8) -> Self {
-        Sunlight {v1, v2, v3}
+        Sunlight { v1, v2, v3 }
     }
 
     pub fn from_reader<R: Read>(reader: &mut R) -> Self {
@@ -109,6 +109,7 @@ impl Sunlight {
 /******************************************************************************/
 
 pub struct LevelRes {
+    pub level_number: u8,
     pub paths: LevelPaths,
     pub params: GlobeTextureParams,
     pub landscape: Landscape<128>,
@@ -149,6 +150,7 @@ impl LevelRes {
         let units = read_fixed_unit_slots(&mut file, LEVEL_UNIT_SLOTS);
         let params = GlobeTextureParams::from_level(&paths);
         LevelRes {
+            level_number: level_num,
             paths,
             params,
             landscape,
@@ -156,6 +158,68 @@ impl LevelRes {
             sunlight,
             units,
             obj_bank,
+        }
+    }
+}
+
+/// Slot identifier in the level file. It is deliberately distinct from a
+/// runtime object handle: loading a level may allocate the record into any
+/// pool slot and with any generation.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct LevelObjectIndex(pub u16);
+
+#[derive(Debug, Copy, Clone)]
+pub struct LevelObjectDefinition {
+    pub source: LevelObjectIndex,
+    pub model_type: ModelType,
+    pub subtype: u8,
+    pub tribe: u8,
+    pub position: [i16; 2],
+    pub angle: u16,
+}
+
+/// Renderer-independent input consumed by the simulation world constructor.
+pub struct LevelDefinition {
+    pub level_number: u8,
+    pub heights: Box<[[u16; 128]; 128]>,
+    pub sunlight: Sunlight,
+    pub tribes: Vec<TribeConfigRaw>,
+    pub objects: Vec<LevelObjectDefinition>,
+}
+
+impl From<LevelRes> for LevelDefinition {
+    fn from(level: LevelRes) -> Self {
+        Self::from_resource(&level)
+    }
+}
+
+impl LevelDefinition {
+    pub fn from_resource(level: &LevelRes) -> Self {
+        let objects = level
+            .units
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, raw)| {
+                let model_type = raw.model_type()?;
+                if raw.loc_x() == 0 && raw.loc_y() == 0 {
+                    return None;
+                }
+                Some(LevelObjectDefinition {
+                    source: LevelObjectIndex(slot as u16),
+                    model_type,
+                    subtype: raw.subtype,
+                    tribe: raw.tribe_index(),
+                    position: [raw.loc_x() as i16, raw.loc_y() as i16],
+                    angle: (raw.angle() & 0x7ff) as u16,
+                })
+            })
+            .collect();
+        Self {
+            level_number: level.level_number,
+            heights: Box::new(level.landscape.height),
+            sunlight: level.sunlight,
+            tribes: level.tribes.clone(),
+            objects,
         }
     }
 }
@@ -197,15 +261,21 @@ fn read_landscape_type_from_bytes(hdr_data: &[u8]) -> String {
     }
     let type_int = hdr_data[96];
     match type_int {
-        0 ..= 9 => {
+        0..=9 => {
             let v = 0x30 + type_int;
-            std::char::from_u32(v as u32).unwrap().to_string().to_lowercase()
-        },
+            std::char::from_u32(v as u32)
+                .unwrap()
+                .to_string()
+                .to_lowercase()
+        }
         i if i < 36 => {
             let v = 0x41 + (type_int - 10);
-            std::char::from_u32(v as u32).unwrap().to_string().to_lowercase()
-        },
-        _ => panic!("Wrong landscape type {type_int:?}")
+            std::char::from_u32(v as u32)
+                .unwrap()
+                .to_string()
+                .to_lowercase()
+        }
+        _ => panic!("Wrong landscape type {type_int:?}"),
     }
 }
 
@@ -243,9 +313,9 @@ fn read_disp(path: &Path) -> Vec<i8> {
     let mut disp = read_bin_i8(path);
     let width = 256;
     for i in 0..width {
-        for j in 0..(width/2 - 1) {
-            let n = i*width + j;
-            let n1 = i*width + (width-1) - j;
+        for j in 0..(width / 2 - 1) {
+            let n = i * width + j;
+            let n1 = i * width + (width - 1) - j;
             disp.swap(n, n1);
         }
     }
@@ -259,7 +329,14 @@ mod tests {
     use crate::data::units::UnitRaw;
     use std::io::Cursor;
 
-    fn unit_raw_bytes(subtype: u8, model: u8, tribe_index: u8, loc_x: u16, loc_y: u16, angle: u32) -> [u8; 55] {
+    fn unit_raw_bytes(
+        subtype: u8,
+        model: u8,
+        tribe_index: u8,
+        loc_x: u16,
+        loc_y: u16,
+        angle: u32,
+    ) -> [u8; 55] {
         let mut bytes = [0u8; 55];
         bytes[0] = subtype;
         bytes[1] = model;
@@ -303,21 +380,28 @@ pub fn read_pal(paths: &LevelPaths) -> Vec<u8> {
 pub fn build_sky_interp_table(pal: &[u8]) -> [u8; 256] {
     let mut table = [0x70u8; 256];
 
-    struct Entry { pal_idx: u8, lum: u32 }
+    struct Entry {
+        pal_idx: u8,
+        lum: u32,
+    }
     let mut entries: Vec<Entry> = Vec::with_capacity(13);
     for i in 1..=13u8 {
         let p = (0x70 + i) as usize * 4;
         let r = pal[p] as u32;
         let g = pal[p + 1] as u32;
         let b = pal[p + 2] as u32;
-        entries.push(Entry { pal_idx: 0x70 + i, lum: r * 66 + g * 129 + b * 25 });
+        entries.push(Entry {
+            pal_idx: 0x70 + i,
+            lum: r * 66 + g * 129 + b * 25,
+        });
     }
 
     // Sort by luminance (ascending) — game uses selection sort, result is identical
     entries.sort_by_key(|e| e.lum);
 
     // Normalized luminance: (raw_lum >> 8), clamped to 255
-    let norm_lums: Vec<u8> = entries.iter()
+    let norm_lums: Vec<u8> = entries
+        .iter()
         .map(|e| (e.lum >> 8).min(255) as u8)
         .collect();
 
@@ -396,7 +480,9 @@ pub struct Landscape<const N: usize> {
 
 impl<const N: usize> Landscape<N> {
     pub fn new() -> Self {
-        Self{height: [[0u16; N]; N]}
+        Self {
+            height: [[0u16; N]; N],
+        }
     }
 
     pub fn land_size(&self) -> usize {
@@ -406,8 +492,8 @@ impl<const N: usize> Landscape<N> {
     fn flip(&mut self) {
         let width = N;
         for i in 0..width {
-            for j in 0..(width/2 - 1) {
-                let n1 = (width-1) - j;
+            for j in 0..(width / 2 - 1) {
+                let n1 = (width - 1) - j;
                 let v = self.height[j][i];
                 self.height[j][i] = self.height[n1][i];
                 self.height[n1][i] = v;
@@ -419,10 +505,10 @@ impl<const N: usize> Landscape<N> {
         let mut s = Self::new();
         let mut buf = Vec::new();
         let _file_size = reader.read_to_end(&mut buf);
-        for (i, n) in (0..).zip(buf.chunks(2).take(N*N)) {
+        for (i, n) in (0..).zip(buf.chunks(2).take(N * N)) {
             if n.len() == 2 {
                 let val = u16::from_le_bytes([n[0], n[1]]);
-                s.height[i%N][i/N] = val;
+                s.height[i % N][i / N] = val;
             }
         }
         s.flip();
@@ -438,22 +524,24 @@ impl<const N: usize> Landscape<N> {
         if self.height[i][j] > 0 {
             return false;
         }
-        let i_u = (i+1) % N;
-        let j_u = (j+1) % N;
-        let i_d = if i == 0 { N-1 } else { i - 1 };
-        let j_d = if j == 0 { N-1 } else { j - 1 };
-        (self.height[i][j_d] > 0) ||
-               (self.height[i][j_u] > 0) ||
-               (self.height[i_d][j] > 0) ||
-               (self.height[i_u][j] > 0) ||
-               (self.height[i_u][j_d] > 0) ||
-               (self.height[i_u][j_u] > 0) ||
-               (self.height[i_d][j_d] > 0) ||
-               (self.height[i_d][j_u] > 0)
+        let i_u = (i + 1) % N;
+        let j_u = (j + 1) % N;
+        let i_d = if i == 0 { N - 1 } else { i - 1 };
+        let j_d = if j == 0 { N - 1 } else { j - 1 };
+        (self.height[i][j_d] > 0)
+            || (self.height[i][j_u] > 0)
+            || (self.height[i_d][j] > 0)
+            || (self.height[i_u][j] > 0)
+            || (self.height[i_u][j_d] > 0)
+            || (self.height[i_u][j_u] > 0)
+            || (self.height[i_d][j_d] > 0)
+            || (self.height[i_d][j_u] > 0)
     }
 
-    pub fn make_shores(&self) -> Self{
-        let mut output = Self{height: self.height};
+    pub fn make_shores(&self) -> Self {
+        let mut output = Self {
+            height: self.height,
+        };
         for i in 0..N {
             for j in 0..N {
                 if self.height[i][j] == 0 && self.is_land_adj(i, j) {
@@ -465,10 +553,10 @@ impl<const N: usize> Landscape<N> {
     }
 
     pub fn to_vec(&self) -> Vec<u32> {
-        let mut vec = vec![0u32; N*N];
+        let mut vec = vec![0u32; N * N];
         for i in 0..N {
             for j in 0..N {
-                vec[i*N + j] = self.height[i][j] as u32;
+                vec[i * N + j] = self.height[i][j] as u32;
             }
         }
         vec

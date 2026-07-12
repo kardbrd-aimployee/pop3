@@ -13,13 +13,17 @@ impl StringTable {
     /// Format: u32le count, then count x u32le offsets, then null-terminated ASCII strings.
     pub fn from_bytes(data: &[u8]) -> Self {
         if data.len() < 4 {
-            return Self { strings: Vec::new() };
+            return Self {
+                strings: Vec::new(),
+            };
         }
 
         let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
         let offsets_end = 4 + count * 4;
         if data.len() < offsets_end {
-            return Self { strings: Vec::new() };
+            return Self {
+                strings: Vec::new(),
+            };
         }
 
         let mut strings = Vec::with_capacity(count);
@@ -39,7 +43,10 @@ impl StringTable {
 
             // Read null-terminated string from offset
             let str_data = &data[offset..];
-            let end = str_data.iter().position(|&b| b == 0).unwrap_or(str_data.len());
+            let end = str_data
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(str_data.len());
             let s = String::from_utf8_lossy(&str_data[..end]).into_owned();
             strings.push(s);
         }
@@ -95,7 +102,7 @@ mod tests {
     fn multiple_strings_parse_with_correct_indexing() {
         // count=2, offsets=[12, 18], strings "Hello\0World!\0"
         let mut data = Vec::new();
-        data.extend_from_slice(&make_u32_le(2));  // count
+        data.extend_from_slice(&make_u32_le(2)); // count
         data.extend_from_slice(&make_u32_le(12)); // offset to "Hello"
         data.extend_from_slice(&make_u32_le(18)); // offset to "World!"
         data.extend_from_slice(b"Hello\0World!\0");

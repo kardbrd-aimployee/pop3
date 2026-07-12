@@ -1,14 +1,14 @@
-use std::path::Path;
-use std::io::Read;
 use core::mem::size_of;
 use core::slice::Iter;
+use std::io::Read;
+use std::path::Path;
 
 use cgmath::{Vector2, Vector3};
 
+use crate::data::level::ObjectPaths;
+use crate::data::types::{from_reader, BinDeserializer};
 use crate::render::model::{MeshModel, VertexModel};
 use crate::render::tex_model::{TexModel, TexVertex};
-use crate::data::types::{BinDeserializer, from_reader};
-use crate::data::level::ObjectPaths;
 
 /******************************************************************************/
 
@@ -32,7 +32,7 @@ pub struct ObjectRaw {
     f7: u16,
     f8: u16,
     f9: u16,
-    fp_idx: [i8; 4],  // SHAPES.DAT footprint index per rotation (0-3), at OBJS offset 0x2c
+    fp_idx: [i8; 4], // SHAPES.DAT footprint index per rotation (0-3), at OBJS offset 0x2c
     f11: u16,
     f12: u16,
     f13: u16,
@@ -40,7 +40,7 @@ pub struct ObjectRaw {
 
 impl BinDeserializer for ObjectRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<ObjectRaw, {size_of::<ObjectRaw>()}, R>(reader)
+        from_reader::<ObjectRaw, { size_of::<ObjectRaw>() }, R>(reader)
     }
 }
 
@@ -59,7 +59,7 @@ pub struct Shape {
 
 impl BinDeserializer for Shape {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<Self, {size_of::<Self>()}, R>(reader)
+        from_reader::<Self, { size_of::<Self>() }, R>(reader)
     }
 }
 
@@ -78,7 +78,10 @@ const SHAPE_ENTRY_COUNT: usize = 64;
 
 impl ShapeFootprints {
     pub fn empty() -> Self {
-        ShapeFootprints { shapes: Vec::new(), bitmap_data: Vec::new() }
+        ShapeFootprints {
+            shapes: Vec::new(),
+            bitmap_data: Vec::new(),
+        }
     }
 
     pub fn from_file(path: &Path) -> Self {
@@ -92,7 +95,10 @@ impl ShapeFootprints {
             }
         }
         let bitmap_data = data[entry_bytes..].to_vec();
-        ShapeFootprints { shapes, bitmap_data }
+        ShapeFootprints {
+            shapes,
+            bitmap_data,
+        }
     }
 
     pub fn shapes(&self) -> &[Shape] {
@@ -110,6 +116,21 @@ impl ShapeFootprints {
             false
         }
     }
+
+    pub fn occupied_offsets(&self, shape_idx: usize) -> Option<Vec<(i16, i16)>> {
+        let shape = self.shapes.get(shape_idx)?;
+        let origin_x = (shape.origin_x / 2) as i16;
+        let origin_z = (shape.origin_z / 2) as i16;
+        let mut result = Vec::new();
+        for dy in 0..shape.height as usize {
+            for dx in 0..shape.width as usize {
+                if self.is_cell_occupied(shape_idx, dx, dy) {
+                    result.push((dx as i16 - origin_x, dy as i16 - origin_z));
+                }
+            }
+        }
+        Some(result)
+    }
 }
 
 /******************************************************************************/
@@ -124,7 +145,7 @@ pub struct PointRaw {
 
 impl BinDeserializer for PointRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<Self, {size_of::<Self>()}, R>(reader)
+        from_reader::<Self, { size_of::<Self>() }, R>(reader)
     }
 }
 
@@ -161,7 +182,7 @@ pub struct FaceRaw {
 
 impl BinDeserializer for FaceRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<Self, {size_of::<Self>()}, R>(reader)
+        from_reader::<Self, { size_of::<Self>() }, R>(reader)
     }
 }
 
@@ -181,7 +202,13 @@ pub struct Vertex {
 
 impl Vertex {
     pub fn new() -> Self {
-        Vertex{x: 0.0, y: 0.0, z: 0.0, u: 0.0, v: 0.0}
+        Vertex {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            u: 0.0,
+            v: 0.0,
+        }
     }
 
     pub fn from_point(&mut self, point: &PointRaw, u: u32, v: u32) {
@@ -208,7 +235,11 @@ pub struct Face {
 
 impl Face {
     pub fn new(texture_index: i16, vertex_num: usize) -> Self {
-        Face{texture_index, vertex_num, vertex: [Vertex::default(); 4]}
+        Face {
+            texture_index,
+            vertex_num,
+            vertex: [Vertex::default(); 4],
+        }
     }
 }
 
@@ -223,17 +254,25 @@ pub struct Object3D {
 
 impl Object3D {
     pub fn create(object: &ObjectRaw, faces: &[FaceRaw], points: &[PointRaw]) -> Self {
-        let mut object_3d = Object3D{object: *object, faces: Vec::new(), points: Vec::new()};
+        let mut object_3d = Object3D {
+            object: *object,
+            faces: Vec::new(),
+            points: Vec::new(),
+        };
         for i in object.pnts_ptr..object.pnts_ptr_end {
-            object_3d.points.push(points[i as usize-1]);
+            object_3d.points.push(points[i as usize - 1]);
         }
         for i in object.facs_ptr..object.facs_ptr_end {
-            object_3d.faces.push(faces[i as usize-1]);
+            object_3d.faces.push(faces[i as usize - 1]);
         }
         object_3d
     }
 
-    pub fn create_objects(objects: &[ObjectRaw], faces: &[FaceRaw], points: &[PointRaw]) -> Vec<Self> {
+    pub fn create_objects(
+        objects: &[ObjectRaw],
+        faces: &[FaceRaw],
+        points: &[PointRaw],
+    ) -> Vec<Self> {
         let mut objects_3d = Vec::new();
         for object in objects {
             if object.facs_num > 0 {
@@ -253,14 +292,21 @@ impl Object3D {
 
     /// Like `create_objects` but preserves file indices: returns `None` for
     /// objects with no faces instead of dropping them.
-    pub fn create_objects_all(objects: &[ObjectRaw], faces: &[FaceRaw], points: &[PointRaw]) -> Vec<Option<Self>> {
-        objects.iter().map(|object| {
-            if object.facs_num > 0 {
-                Some(Self::create(object, faces, points))
-            } else {
-                None
-            }
-        }).collect()
+    pub fn create_objects_all(
+        objects: &[ObjectRaw],
+        faces: &[FaceRaw],
+        points: &[PointRaw],
+    ) -> Vec<Option<Self>> {
+        objects
+            .iter()
+            .map(|object| {
+                if object.facs_num > 0 {
+                    Some(Self::create(object, faces, points))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn from_file_all(base: &Path, bank_num: &str) -> Vec<Option<Self>> {
@@ -284,7 +330,10 @@ impl Object3D {
     }
 
     pub fn iter_face(&self) -> FaceIter<Iter<FaceRaw>> {
-        FaceIter{iter: self.faces.iter(), points: &self.points}
+        FaceIter {
+            iter: self.faces.iter(),
+            points: &self.points,
+        }
     }
 
     pub fn face_count(&self) -> usize {
@@ -305,17 +354,22 @@ impl Object3D {
     pub fn footprint_index(&self, rotation: usize) -> i8 {
         self.object.fp_idx[rotation & 3]
     }
-
 }
 
 /******************************************************************************/
 
-pub struct FaceIter<'a, I> where I: Iterator<Item = &'a FaceRaw> {
+pub struct FaceIter<'a, I>
+where
+    I: Iterator<Item = &'a FaceRaw>,
+{
     iter: I,
     points: &'a [PointRaw],
 }
 
-impl<'a, I> Iterator for FaceIter<'a, I> where I: Iterator<Item = &'a FaceRaw> {
+impl<'a, I> Iterator for FaceIter<'a, I>
+where
+    I: Iterator<Item = &'a FaceRaw>,
+{
     type Item = Face;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -323,14 +377,30 @@ impl<'a, I> Iterator for FaceIter<'a, I> where I: Iterator<Item = &'a FaceRaw> {
             Some(f) => {
                 let num_points = std::cmp::min(f.num_points as usize, 4);
                 let mut face_3d = Face::new(f.tex_index, num_points);
-                face_3d.vertex[0].from_point(&self.points[f.point_1 as usize], f.point_1_u, f.point_1_v);
-                face_3d.vertex[1].from_point(&self.points[f.point_2 as usize], f.point_2_u, f.point_2_v);
-                face_3d.vertex[2].from_point(&self.points[f.point_3 as usize], f.point_3_u, f.point_3_v);
+                face_3d.vertex[0].from_point(
+                    &self.points[f.point_1 as usize],
+                    f.point_1_u,
+                    f.point_1_v,
+                );
+                face_3d.vertex[1].from_point(
+                    &self.points[f.point_2 as usize],
+                    f.point_2_u,
+                    f.point_2_v,
+                );
+                face_3d.vertex[2].from_point(
+                    &self.points[f.point_3 as usize],
+                    f.point_3_u,
+                    f.point_3_v,
+                );
                 if num_points == 4 {
-                    face_3d.vertex[3].from_point(&self.points[f.point_4 as usize], f.point_4_u, f.point_4_v);
+                    face_3d.vertex[3].from_point(
+                        &self.points[f.point_4 as usize],
+                        f.point_4_u,
+                        f.point_4_v,
+                    );
                 }
                 Some(face_3d)
-            },
+            }
             None => None,
         }
     }
@@ -339,9 +409,11 @@ impl<'a, I> Iterator for FaceIter<'a, I> where I: Iterator<Item = &'a FaceRaw> {
 /******************************************************************************/
 
 pub fn mk_tex_vertex(tex_index: i16, v: &Vertex) -> TexVertex {
-    TexVertex{coord: Vector3::new(v.x, v.y, v.z)
-             , uv: Vector2::new(v.u, v.v)
-             , tex_id: tex_index}
+    TexVertex {
+        coord: Vector3::new(v.x, v.y, v.z),
+        uv: Vector2::new(v.u, v.v),
+        tex_id: tex_index,
+    }
 }
 
 pub fn mk_pop_object(object: &Object3D) -> TexModel {

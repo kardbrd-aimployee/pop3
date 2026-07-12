@@ -308,10 +308,7 @@ mod tests {
 
         // Fill all 8 slots
         for i in 0..FAILURE_CACHE_SIZE {
-            cache.record_failure(
-                TileCoord::new(i as u8, 0),
-                TileCoord::new(i as u8, 1),
-            );
+            cache.record_failure(TileCoord::new(i as u8, 0), TileCoord::new(i as u8, 1));
         }
 
         // Increment usage on first entry to protect it

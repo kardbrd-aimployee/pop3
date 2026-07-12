@@ -1,9 +1,9 @@
-use super::types::*;
-use super::state_machine::*;
-use super::spawning::{tick_spawn, SpawnAction};
-use super::training::{tick_convert, ConvertAction};
 use super::combat::{tick_building_combat, BuildingCombatAction};
-use crate::engine::objects::{ObjectHeader, ObjectHandle};
+use super::spawning::{tick_spawn, SpawnAction};
+use super::state_machine::*;
+use super::training::{tick_convert, ConvertAction};
+use super::types::*;
+use crate::engine::objects::{ObjectHandle, ObjectHeader};
 
 /// Aggregated actions emitted by a single building tick.
 #[derive(Debug)]
@@ -25,7 +25,11 @@ impl BuildingTickActions {
 
 /// Per-tick building update following original binary's BLD.7 pipeline order.
 /// Original: Building_Update called from Tick_UpdateObjects at 0x0042E5F0.
-pub fn tick_building(building: &mut BuildingData, header: &mut ObjectHeader, handle: ObjectHandle) -> BuildingTickActions {
+pub fn tick_building(
+    building: &mut BuildingData,
+    header: &mut ObjectHeader,
+    handle: ObjectHandle,
+) -> BuildingTickActions {
     // 1. Damage cooldown decrement
     if building.damage_cooldown > 0 {
         building.damage_cooldown -= 1;
@@ -71,11 +75,19 @@ fn tick_constructing(building: &mut BuildingData, _header: &mut ObjectHeader) {
     }
 }
 
-fn tick_active(building: &mut BuildingData, _header: &mut ObjectHeader, handle: ObjectHandle) -> BuildingTickActions {
+fn tick_active(
+    building: &mut BuildingData,
+    _header: &mut ObjectHeader,
+    handle: ObjectHandle,
+) -> BuildingTickActions {
     let spawn = tick_spawn(building);
     let convert = tick_convert(building);
     let combat = tick_building_combat(building, handle);
-    BuildingTickActions { spawn, convert, combat }
+    BuildingTickActions {
+        spawn,
+        convert,
+        combat,
+    }
 }
 
 fn tick_destroying(building: &mut BuildingData, _header: &mut ObjectHeader) {
@@ -115,6 +127,10 @@ mod tests {
     use crate::data::units::ModelType;
     use crate::engine::movement::WorldCoord;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     fn make_header() -> ObjectHeader {
         ObjectHeader {
             model_type: ModelType::Building,
@@ -125,7 +141,7 @@ mod tests {
             flags1: 0,
             flags2: 0,
             flags3: 0,
-            object_index: 0,
+            object_index: h(0),
             angle: 0,
             position: WorldCoord::default(),
             velocity: WorldCoord::default(),
@@ -136,7 +152,7 @@ mod tests {
         }
     }
 
-    const DUMMY_HANDLE: ObjectHandle = 0;
+    const DUMMY_HANDLE: ObjectHandle = h(0);
 
     #[test]
     fn tick_decrements_damage_cooldown() {
@@ -288,10 +304,10 @@ mod tests {
         b.state = BuildingState::Active;
         b.building_subtype = BuildingSubtype::DrumTower;
         b.behavior_flags = 0x08; // fighting flag
-        b.occupant_slots[0] = Some(10);
+        b.occupant_slots[0] = Some(h(10));
         b.occupant_count = 1;
         b.num_fighting = 1;
-        b.target_person = Some(99);
+        b.target_person = Some(h(99));
         let mut h = make_header();
         let actions = tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(actions.combat.len(), 1);

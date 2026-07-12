@@ -26,15 +26,15 @@ pub fn melee_damage(attacker_subtype: u8, attacker_health: u16, max_health: u16)
 /// Source: Unit Type Data Table at 0x0059FE44
 pub fn fight_damage_for_subtype(subtype: u8) -> u16 {
     match subtype {
-        1 => 64,   // Wild
-        2 => 200,  // Brave
-        3 => 400,  // Warrior
-        4 => 150,  // Religious/Preacher
-        5 => 200,  // Spy
-        6 => 500,  // Super Warrior
-        7 => 300,  // Shaman
-        8 => 600,  // Angel of Death
-        _ => 100,  // Fallback
+        1 => 64,  // Wild
+        2 => 200, // Brave
+        3 => 400, // Warrior
+        4 => 150, // Religious/Preacher
+        5 => 200, // Spy
+        6 => 500, // Super Warrior
+        7 => 300, // Shaman
+        8 => 600, // Angel of Death
+        _ => 100, // Fallback
     }
 }
 
@@ -43,6 +43,7 @@ mod tests {
     use super::*;
     use crate::data::units::ModelType;
     use crate::engine::movement::WorldCoord;
+    use crate::engine::objects::ObjectHandle;
 
     fn make_header(health: u16, max_health: u16) -> ObjectHeader {
         ObjectHeader {
@@ -54,7 +55,7 @@ mod tests {
             flags1: 0,
             flags2: 0,
             flags3: 0,
-            object_index: 0,
+            object_index: ObjectHandle::new(0, 1),
             angle: 0,
             position: WorldCoord::default(),
             velocity: WorldCoord::default(),
@@ -86,15 +87,15 @@ mod tests {
     #[test]
     fn melee_damage_all_subtypes() {
         // At full health, damage equals fight_damage
-        assert_eq!(melee_damage(1, 100, 100), 64);   // Wild
-        assert_eq!(melee_damage(2, 100, 100), 200);  // Brave
-        assert_eq!(melee_damage(3, 100, 100), 400);  // Warrior
-        assert_eq!(melee_damage(4, 100, 100), 150);  // Religious
-        assert_eq!(melee_damage(5, 100, 100), 200);  // Spy
-        assert_eq!(melee_damage(6, 100, 100), 500);  // Super Warrior
-        assert_eq!(melee_damage(7, 100, 100), 300);  // Shaman
-        assert_eq!(melee_damage(8, 100, 100), 600);  // Angel of Death
-        assert_eq!(melee_damage(0, 100, 100), 100);  // Fallback
+        assert_eq!(melee_damage(1, 100, 100), 64); // Wild
+        assert_eq!(melee_damage(2, 100, 100), 200); // Brave
+        assert_eq!(melee_damage(3, 100, 100), 400); // Warrior
+        assert_eq!(melee_damage(4, 100, 100), 150); // Religious
+        assert_eq!(melee_damage(5, 100, 100), 200); // Spy
+        assert_eq!(melee_damage(6, 100, 100), 500); // Super Warrior
+        assert_eq!(melee_damage(7, 100, 100), 300); // Shaman
+        assert_eq!(melee_damage(8, 100, 100), 600); // Angel of Death
+        assert_eq!(melee_damage(0, 100, 100), 100); // Fallback
     }
 
     #[test]
@@ -103,8 +104,10 @@ mod tests {
         for subtype in 1..=8u8 {
             let defaults = person_type_defaults(subtype);
             assert_eq!(
-                fight_damage_for_subtype(subtype), defaults.fight_damage,
-                "Mismatch for subtype {}", subtype
+                fight_damage_for_subtype(subtype),
+                defaults.fight_damage,
+                "Mismatch for subtype {}",
+                subtype
             );
         }
         // Fallback

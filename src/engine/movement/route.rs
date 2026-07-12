@@ -225,7 +225,12 @@ mod tests {
     use super::*;
 
     fn make_test_env() -> (RegionMap, SegmentPool, FailureCache, UsedTargetsCache) {
-        (RegionMap::new(), SegmentPool::new(), FailureCache::new(), UsedTargetsCache::new())
+        (
+            RegionMap::new(),
+            SegmentPool::new(),
+            FailureCache::new(),
+            UsedTargetsCache::new(),
+        )
     }
 
     #[test]

@@ -34,11 +34,7 @@ pub const DRUM_TOWER_SUBTYPE: u8 = 4;
 
 /// Check if a drum tower should fire at a target.
 /// Returns true if target is within range and is an enemy.
-pub fn should_drum_tower_fire(
-    tower_tribe: u8,
-    target_tribe: u8,
-    distance_sq: u64,
-) -> bool {
+pub fn should_drum_tower_fire(tower_tribe: u8, target_tribe: u8, distance_sq: u64) -> bool {
     tower_tribe != target_tribe
         && distance_sq <= (DRUM_TOWER_RANGE as u64 * DRUM_TOWER_RANGE as u64)
 }
@@ -47,18 +43,22 @@ pub fn should_drum_tower_fire(
 mod tests {
     use super::*;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     #[test]
     fn process_death_returns_correct_actions() {
-        let actions = process_death(42, 1, Some(2));
-        assert_eq!(actions.handle, 42);
+        let actions = process_death(h(42), 1, Some(2));
+        assert_eq!(actions.handle, h(42));
         assert_eq!(actions.tribe, 1);
         assert_eq!(actions.last_attacker_tribe, Some(2));
     }
 
     #[test]
     fn process_death_no_attacker() {
-        let actions = process_death(10, 0, None);
-        assert_eq!(actions.handle, 10);
+        let actions = process_death(h(10), 0, None);
+        assert_eq!(actions.handle, h(10));
         assert_eq!(actions.tribe, 0);
         assert!(actions.last_attacker_tribe.is_none());
     }

@@ -1,4 +1,6 @@
-use cgmath::{Point2, Point3, Vector3, Matrix4, perspective, Rad, Deg, SquareMatrix, PerspectiveFov, Angle};
+use cgmath::{
+    perspective, Angle, Deg, Matrix4, PerspectiveFov, Point2, Point3, Rad, SquareMatrix, Vector3,
+};
 
 pub struct Camera {
     pub angle_x: i16,
@@ -21,7 +23,16 @@ pub struct MVP {
 
 impl Camera {
     pub fn new() -> Self {
-        Self{angle_x: 0, angle_y: 0, angle_z: 0, pos: Vector3{x: 0.0, y: 0.0, z: 0.0}}
+        Self {
+            angle_x: 0,
+            angle_y: 0,
+            angle_z: 0,
+            pos: Vector3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        }
     }
 }
 
@@ -36,7 +47,13 @@ impl MVP {
         Self::with_zoom(screen, camera, 1.0, focus, 0.0)
     }
 
-    pub fn with_zoom(screen: &Screen, camera: &Camera, zoom: f32, focus: Vector3<f32>, min_z: f32) -> MVP {
+    pub fn with_zoom(
+        screen: &Screen,
+        camera: &Camera,
+        zoom: f32,
+        focus: Vector3<f32>,
+        min_z: f32,
+    ) -> MVP {
         let az = Rad::from(Deg(camera.angle_z as f32));
         let ax = Rad::from(Deg(camera.angle_x as f32));
         let radius = 1.5 / zoom;
@@ -61,12 +78,22 @@ impl MVP {
         };
 
         let eye = Vector3::new(eye_pos.x, eye_pos.y, eye_pos.z);
-        MVP { transform, view, projection, eye }
+        MVP {
+            transform,
+            view,
+            projection,
+            eye,
+        }
     }
 
     fn make_fov(screen: &Screen) -> PerspectiveFov<f32> {
         let aspect = screen.width as f32 / screen.height as f32;
-        PerspectiveFov{fovy: Rad(1.0), aspect, near: 1.0, far: 10000.0}
+        PerspectiveFov {
+            fovy: Rad(1.0),
+            aspect,
+            near: 1.0,
+            far: 10000.0,
+        }
     }
 }
 
@@ -79,7 +106,14 @@ impl MVP {
  * (0;0) (w;0)
  * (0;h) (w;h)
  */
-pub fn screen_to_scene_zoom(screen: &Screen, camera: &Camera, pos_screen: &Point2<f32>, zoom: f32, focus: Vector3<f32>, min_z: f32) -> (Vector3<f32>, Vector3<f32>) {
+pub fn screen_to_scene_zoom(
+    screen: &Screen,
+    camera: &Camera,
+    pos_screen: &Point2<f32>,
+    zoom: f32,
+    focus: Vector3<f32>,
+    min_z: f32,
+) -> (Vector3<f32>, Vector3<f32>) {
     let mvp = MVP::with_zoom(screen, camera, zoom, focus, min_z);
     let asp = screen.width as f32 / screen.height as f32;
     let x: f32 = {
@@ -88,7 +122,7 @@ pub fn screen_to_scene_zoom(screen: &Screen, camera: &Camera, pos_screen: &Point
     };
     let y: f32 = {
         let h = screen.height as f32;
-        2.0*(h / 2.0 - pos_screen.y as f32) / h
+        2.0 * (h / 2.0 - pos_screen.y as f32) / h
     };
 
     let vec_screen_s: Vector3<f32> = mvp.eye;
@@ -101,7 +135,11 @@ pub fn screen_to_scene_zoom(screen: &Screen, camera: &Camera, pos_screen: &Point
         let far_xmax = far_ymax * per_fov.aspect;
         let x_far = far_xmax * x_norm;
         let y_far = far_ymax * y_norm;
-        Vector3{x: x_far, y: y_far, z: -z}
+        Vector3 {
+            x: x_far,
+            y: y_far,
+            z: -z,
+        }
     };
     let v1 = {
         let mvp_m = mvp.transform;

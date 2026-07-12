@@ -16,7 +16,7 @@ pub const MANA_COST_SUPER_WARRIOR: u32 = 800;
 /// What unit type a training building produces.
 pub fn training_output_subtype(building_subtype: BuildingSubtype) -> Option<u8> {
     match building_subtype {
-        BuildingSubtype::WarriorTrain => Some(3),     // Warrior
+        BuildingSubtype::WarriorTrain => Some(3),      // Warrior
         BuildingSubtype::SpyTrain => Some(5),          // Spy
         BuildingSubtype::Temple => Some(4),            // Preacher (Religious)
         BuildingSubtype::SuperWarriorTrain => Some(6), // Super Warrior
@@ -47,7 +47,10 @@ pub fn training_mana_cost(target_subtype: u8) -> u32 {
 #[derive(Debug, PartialEq)]
 pub enum ConvertAction {
     None,
-    ConvertUnit { handle: ObjectHandle, new_subtype: u8 },
+    ConvertUnit {
+        handle: ObjectHandle,
+        new_subtype: u8,
+    },
 }
 
 /// Tick training building. Returns action when conversion completes.
@@ -91,12 +94,16 @@ pub fn start_training(building: &mut BuildingData) -> bool {
 mod tests {
     use super::*;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     fn make_active_trainer(subtype: BuildingSubtype) -> BuildingData {
         let mut b = BuildingData::default();
         b.state = BuildingState::Active;
         b.building_subtype = subtype;
         b.behavior_flags = 0x01; // training flag
-        b.occupant_slots[0] = Some(42); // an occupant to train
+        b.occupant_slots[0] = Some(h(42)); // an occupant to train
         b.occupant_count = 1;
         b
     }
@@ -143,7 +150,10 @@ mod tests {
 
     #[test]
     fn training_output_warrior_train() {
-        assert_eq!(training_output_subtype(BuildingSubtype::WarriorTrain), Some(3));
+        assert_eq!(
+            training_output_subtype(BuildingSubtype::WarriorTrain),
+            Some(3)
+        );
     }
 
     #[test]
@@ -158,7 +168,10 @@ mod tests {
 
     #[test]
     fn training_output_super_warrior_train() {
-        assert_eq!(training_output_subtype(BuildingSubtype::SuperWarriorTrain), Some(6));
+        assert_eq!(
+            training_output_subtype(BuildingSubtype::SuperWarriorTrain),
+            Some(6)
+        );
     }
 
     #[test]
@@ -184,7 +197,7 @@ mod tests {
         assert_eq!(
             action,
             ConvertAction::ConvertUnit {
-                handle: 42,
+                handle: h(42),
                 new_subtype: 3
             }
         );
@@ -198,7 +211,7 @@ mod tests {
         assert_eq!(
             action,
             ConvertAction::ConvertUnit {
-                handle: 42,
+                handle: h(42),
                 new_subtype: 5
             }
         );

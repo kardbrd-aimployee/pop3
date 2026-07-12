@@ -1,11 +1,10 @@
-use std::marker::PhantomData;
 use crate::data::level::Landscape;
+use std::marker::PhantomData;
 
 /******************************************************************************/
 
 #[derive(Clone)]
-pub struct LandPos
-{
+pub struct LandPos {
     pub flags: u32,
     pub height: u16,
     pub b_2: u16,
@@ -21,7 +20,19 @@ pub struct LandPos
 
 impl LandPos {
     fn default() -> LandPos {
-        LandPos{flags: 0, height: 0, b_2: 0, c: 0, c_1: 0, c_2: 0, c_3: 0, brightness: 0, ph: 0, ph_2: 0, land_adj: false}
+        LandPos {
+            flags: 0,
+            height: 0,
+            b_2: 0,
+            c: 0,
+            c_1: 0,
+            c_2: 0,
+            c_3: 0,
+            brightness: 0,
+            ph: 0,
+            ph_2: 0,
+            land_adj: false,
+        }
     }
 
     pub fn from_landscape<const N: usize>(landscape: &Landscape<N>) -> Vec<LandPos> {
@@ -31,10 +42,10 @@ impl LandPos {
         for i in 0..N {
             let p = i * N;
             for j in 0..N {
-                v[p+j].c_1 = 0;
-                v[p+j].brightness = 0x80;
-                v[p+j].height = landscape.height[i][j];
-                v[p+j].land_adj = landscape.is_land_adj(i, j);
+                v[p + j].c_1 = 0;
+                v[p + j].brightness = 0x80;
+                v[p + j].height = landscape.height[i][j];
+                v[p + j].land_adj = landscape.is_land_adj(i, j);
             }
         }
         v
@@ -49,12 +60,12 @@ impl LandPos {
             let p = i * N;
             for j in 0..N {
                 let ch: i32 = landscape.height[i][j] as i32;
-                let h1: i32 = landscape.height[(i+1)%N][j] as i32;
-                let h2: i32 = landscape.height[i][(j+1)%N] as i32;
+                let h1: i32 = landscape.height[(i + 1) % N][j] as i32;
+                let h2: i32 = landscape.height[i][(j + 1) % N] as i32;
                 let b = sunlight_var_3 + (h1 - ch) * sunlight_var_2 - (ch - h2) * sunlight_var_1;
-                let b = (b as f64) / (0x15e as f64) + (v[p+j].brightness as f64);
+                let b = (b as f64) / (0x15e as f64) + (v[p + j].brightness as f64);
                 let b = b.clamp(0.0, 255.0) as u8;
-                v[p+j].brightness = b;
+                v[p + j].brightness = b;
             }
         }
         v
@@ -76,7 +87,7 @@ pub type LandPosQ<'a> = (usize, usize, LandPosQuad<'a>);
 
 impl LandscapeFull {
     pub fn new(width: usize, data: Vec<LandPos>) -> Self {
-        Self{width, data}
+        Self { width, data }
     }
 
     pub fn iter(&self) -> LandPosIterator<LandPosPoint> {
@@ -97,7 +108,12 @@ pub struct LandPosIterator<'a, T> {
 
 impl<'a, T> LandPosIterator<'a, T> {
     pub fn new(landscape: &'a LandscapeFull) -> Self {
-        LandPosIterator{pos_width: 0, pos_height: 0, landscape, phantom: PhantomData}
+        LandPosIterator {
+            pos_width: 0,
+            pos_height: 0,
+            landscape,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -109,7 +125,11 @@ impl<'a> Iterator for LandPosIterator<'a, LandPosPoint<'a>> {
             return None;
         }
         let pos = &self.landscape.data[self.pos_height * self.landscape.width + self.pos_width];
-        let ret = Some(LandPosPoint{x: self.pos_width, y: self.pos_height, pos});
+        let ret = Some(LandPosPoint {
+            x: self.pos_width,
+            y: self.pos_height,
+            pos,
+        });
         self.pos_width += 1;
         if self.pos_width >= self.landscape.width {
             self.pos_width = 0;
@@ -134,11 +154,13 @@ impl<'a> Iterator for LandPosIterator<'a, LandPosQ<'a>> {
         let index_3 = ((i + 1) % width) * width + j;
         let index_4 = ((i + 1) % width) * width + ((j + 1) % width);
         // Set i+1 to align with texture in pop3
-        let pos = LandPosQuad {x: (j & 0x7) as u16, y: ((i+1) & 0x7) as u16
-            , p1: &self.landscape.data[index_1]
-            , p2: &self.landscape.data[index_2]
-            , p3: &self.landscape.data[index_3]
-            , p4: &self.landscape.data[index_4]
+        let pos = LandPosQuad {
+            x: (j & 0x7) as u16,
+            y: ((i + 1) & 0x7) as u16,
+            p1: &self.landscape.data[index_1],
+            p2: &self.landscape.data[index_2],
+            p3: &self.landscape.data[index_3],
+            p4: &self.landscape.data[index_4],
         };
         let ret = Some((self.pos_width, self.pos_height, pos));
         self.pos_width += 1;
@@ -174,7 +196,13 @@ impl<'a> LandTileQuad<'a> {
         let c1_inc = pos.c1_inc(n);
         let brightness_inc = pos.brightness_inc(n);
         let height_inc = pos.height_inc(n);
-        Self{width: n, pos, c1_inc, brightness_inc, height_inc}
+        Self {
+            width: n,
+            pos,
+            c1_inc,
+            brightness_inc,
+            height_inc,
+        }
     }
 
     pub fn coord_x(&self) -> usize {
@@ -235,11 +263,13 @@ impl<'a> LandPosQuad<'a> {
     }
 
     pub fn brightness_inc(&self, n: usize) -> LandInc {
-        LandInc::mk_land_inc8(self.p1.brightness
-                              , self.p2.brightness
-                              , self.p3.brightness
-                              , self.p4.brightness
-                              , n as f32)
+        LandInc::mk_land_inc8(
+            self.p1.brightness,
+            self.p2.brightness,
+            self.p3.brightness,
+            self.p4.brightness,
+            n as f32,
+        )
     }
 
     pub fn height_inc(&self, n: usize) -> LandInc {
@@ -275,7 +305,12 @@ impl LandInc {
         let inc_start = (p2 - p1) / n;
         let inc_horz = ((p4 - p3) / n - inc_start) / n;
 
-        Self { start, inc_vert, inc_start, inc_horz }
+        Self {
+            start,
+            inc_vert,
+            inc_start,
+            inc_horz,
+        }
     }
 
     pub fn mk_land_inc8(p1: u8, p2: u8, p3: u8, p4: u8, n: f32) -> Self {

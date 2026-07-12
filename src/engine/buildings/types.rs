@@ -43,6 +43,33 @@ pub enum BuildingSubtype {
     HeadQuarters = 18,
 }
 
+impl TryFrom<u8> for BuildingSubtype {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            1 => Self::SmallHut,
+            2 => Self::MediumHut,
+            3 => Self::LargeHut,
+            4 => Self::DrumTower,
+            5 => Self::Temple,
+            6 => Self::SpyTrain,
+            7 => Self::WarriorTrain,
+            8 => Self::SuperWarriorTrain,
+            9 => Self::Reconversion,
+            10 => Self::WallPiece,
+            11 => Self::Gateway,
+            13 => Self::BoatHut,
+            14 => Self::AirshipHut,
+            15 => Self::GuardPost,
+            16 => Self::Prison,
+            17 => Self::Vault,
+            18 => Self::HeadQuarters,
+            other => return Err(other),
+        })
+    }
+}
+
 /// Building-specific data, stored in GameObjectData::Building.
 /// Field layout matches the original struct at BLD.2.
 #[derive(Debug, Clone)]
@@ -62,6 +89,9 @@ pub struct BuildingData {
     pub shake_z: i16,
     pub num_fighting: u8,
     pub target_person: Option<ObjectHandle>,
+    /// Imported level huts are active housing but do not begin a synchronized
+    /// population cycle until broader economy initialization is implemented.
+    pub population_timer_enabled: bool,
 }
 
 impl Default for BuildingData {
@@ -82,6 +112,7 @@ impl Default for BuildingData {
             shake_z: 0,
             num_fighting: 0,
             target_person: None,
+            population_timer_enabled: true,
         }
     }
 }
@@ -90,18 +121,14 @@ impl Default for BuildingData {
 /// Flags from BLD.3/BLD.5: 0x20 = spawns braves (housing), 0x01 = trains units.
 pub fn building_behavior_flags(subtype: BuildingSubtype) -> u32 {
     match subtype {
-        BuildingSubtype::SmallHut
-        | BuildingSubtype::MediumHut
-        | BuildingSubtype::LargeHut => 0x20, // Housing: spawns braves
+        BuildingSubtype::SmallHut | BuildingSubtype::MediumHut | BuildingSubtype::LargeHut => 0x20, // Housing: spawns braves
         BuildingSubtype::SpyTrain
         | BuildingSubtype::WarriorTrain
         | BuildingSubtype::SuperWarriorTrain
         | BuildingSubtype::Reconversion => 0x01, // Training: converts units
-        BuildingSubtype::BoatHut
-        | BuildingSubtype::AirshipHut => 0x40, // Vehicle factory
+        BuildingSubtype::BoatHut | BuildingSubtype::AirshipHut => 0x40, // Vehicle factory
         BuildingSubtype::Temple => 0x0400, // Has conversion timer (spell recharge)
-        BuildingSubtype::DrumTower
-        | BuildingSubtype::GuardPost => 0x08, // Has occupant fighting
+        BuildingSubtype::DrumTower | BuildingSubtype::GuardPost => 0x08, // Has occupant fighting
         _ => 0,
     }
 }
@@ -201,7 +228,10 @@ mod tests {
     fn behavior_flags_training() {
         assert_eq!(building_behavior_flags(BuildingSubtype::SpyTrain), 0x01);
         assert_eq!(building_behavior_flags(BuildingSubtype::WarriorTrain), 0x01);
-        assert_eq!(building_behavior_flags(BuildingSubtype::SuperWarriorTrain), 0x01);
+        assert_eq!(
+            building_behavior_flags(BuildingSubtype::SuperWarriorTrain),
+            0x01
+        );
         assert_eq!(building_behavior_flags(BuildingSubtype::Reconversion), 0x01);
     }
 

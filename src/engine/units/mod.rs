@@ -3,14 +3,14 @@
 // Provides click-to-select, right-click-to-move, and drag-box multi-select
 // for person units, wired to the movement system's pathfinding.
 
-pub mod coords;
-pub mod unit;
-pub mod selection;
-pub mod person_state;
 pub mod animation;
 pub mod coordinator;
+pub mod coords;
+pub mod person_state;
+pub mod selection;
+pub mod unit;
 
-pub use unit::{Unit, UnitId};
-pub use selection::{SelectionState, DragState, find_unit_at_cell};
 pub use coordinator::UnitCoordinator;
-pub use coords::{world_to_cell, cell_to_world, gpu_to_cell};
+pub use coords::{cell_to_world, gpu_to_cell, world_to_cell};
+pub use selection::{find_unit_at_cell, DragState, SelectionState};
+pub use unit::{Unit, UnitId};

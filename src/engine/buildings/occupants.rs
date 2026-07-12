@@ -57,33 +57,37 @@ pub fn find_occupant_slot(building: &BuildingData, handle: ObjectHandle) -> Opti
 mod tests {
     use super::*;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     #[test]
     fn add_occupant_to_empty_building() {
         let mut b = BuildingData::default();
-        let result = add_occupant(&mut b, 42);
+        let result = add_occupant(&mut b, h(42));
         assert_eq!(result, Ok(0));
         assert_eq!(b.occupant_count, 1);
-        assert_eq!(b.occupant_slots[0], Some(42));
+        assert_eq!(b.occupant_slots[0], Some(h(42)));
     }
 
     #[test]
     fn add_occupant_fills_first_empty_slot() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 10).unwrap();
-        add_occupant(&mut b, 20).unwrap();
-        assert_eq!(b.occupant_slots[0], Some(10));
-        assert_eq!(b.occupant_slots[1], Some(20));
+        add_occupant(&mut b, h(10)).unwrap();
+        add_occupant(&mut b, h(20)).unwrap();
+        assert_eq!(b.occupant_slots[0], Some(h(10)));
+        assert_eq!(b.occupant_slots[1], Some(h(20)));
         assert_eq!(b.occupant_count, 2);
     }
 
     #[test]
     fn add_occupant_fills_gap() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 10).unwrap();
-        add_occupant(&mut b, 20).unwrap();
-        add_occupant(&mut b, 30).unwrap();
-        remove_occupant(&mut b, 20); // clears slot 1
-        let result = add_occupant(&mut b, 40);
+        add_occupant(&mut b, h(10)).unwrap();
+        add_occupant(&mut b, h(20)).unwrap();
+        add_occupant(&mut b, h(30)).unwrap();
+        remove_occupant(&mut b, h(20));
+        let result = add_occupant(&mut b, h(40));
         assert_eq!(result, Ok(1)); // reuses slot 1
         assert_eq!(b.occupant_count, 3);
     }
@@ -92,38 +96,38 @@ mod tests {
     fn add_occupant_fails_when_full() {
         let mut b = BuildingData::default();
         for i in 0..6u16 {
-            assert!(add_occupant(&mut b, i).is_ok());
+            assert!(add_occupant(&mut b, h(i)).is_ok());
         }
         assert!(is_full(&b));
-        assert_eq!(add_occupant(&mut b, 99), Err(()));
+        assert_eq!(add_occupant(&mut b, h(99)), Err(()));
     }
 
     #[test]
     fn remove_occupant_by_handle() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 42).unwrap();
-        add_occupant(&mut b, 99).unwrap();
-        assert!(remove_occupant(&mut b, 42));
+        add_occupant(&mut b, h(42)).unwrap();
+        add_occupant(&mut b, h(99)).unwrap();
+        assert!(remove_occupant(&mut b, h(42)));
         assert_eq!(b.occupant_count, 1);
         assert!(b.occupant_slots[0].is_none());
-        assert_eq!(b.occupant_slots[1], Some(99));
+        assert_eq!(b.occupant_slots[1], Some(h(99)));
     }
 
     #[test]
     fn remove_nonexistent_occupant_returns_false() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 42).unwrap();
-        assert!(!remove_occupant(&mut b, 99));
+        add_occupant(&mut b, h(42)).unwrap();
+        assert!(!remove_occupant(&mut b, h(99)));
         assert_eq!(b.occupant_count, 1);
     }
 
     #[test]
     fn eject_occupant_from_slot() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 42).unwrap();
-        add_occupant(&mut b, 99).unwrap();
+        add_occupant(&mut b, h(42)).unwrap();
+        add_occupant(&mut b, h(99)).unwrap();
         let ejected = eject_occupant(&mut b, 0);
-        assert_eq!(ejected, Some(42));
+        assert_eq!(ejected, Some(h(42)));
         assert_eq!(b.occupant_count, 1);
         assert!(b.occupant_slots[0].is_none());
     }
@@ -144,11 +148,11 @@ mod tests {
     #[test]
     fn find_occupant_slot_returns_index() {
         let mut b = BuildingData::default();
-        add_occupant(&mut b, 42).unwrap();
-        add_occupant(&mut b, 99).unwrap();
-        assert_eq!(find_occupant_slot(&b, 42), Some(0));
-        assert_eq!(find_occupant_slot(&b, 99), Some(1));
-        assert_eq!(find_occupant_slot(&b, 1), None);
+        add_occupant(&mut b, h(42)).unwrap();
+        add_occupant(&mut b, h(99)).unwrap();
+        assert_eq!(find_occupant_slot(&b, h(42)), Some(0));
+        assert_eq!(find_occupant_slot(&b, h(99)), Some(1));
+        assert_eq!(find_occupant_slot(&b, h(1)), None);
     }
 
     #[test]
@@ -156,7 +160,7 @@ mod tests {
         let mut b = BuildingData::default();
         assert!(!is_full(&b));
         for i in 0..6u16 {
-            add_occupant(&mut b, i).unwrap();
+            add_occupant(&mut b, h(i)).unwrap();
         }
         assert!(is_full(&b));
     }

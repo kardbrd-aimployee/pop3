@@ -1,10 +1,10 @@
-use std::path::Path;
+use core::mem::size_of;
 use std::fs::File;
 use std::io::Read;
-use core::mem::size_of;
+use std::path::Path;
 
-use crate::data::types::{BinDeserializer, from_reader, ImageInfo};
 use crate::data::constants::*;
+use crate::data::types::{from_reader, BinDeserializer, ImageInfo};
 
 /******************************************************************************/
 
@@ -20,7 +20,7 @@ pub struct VeleRaw {
 
 impl BinDeserializer for VeleRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<VeleRaw, {size_of::<VeleRaw>()}, R>(reader)
+        from_reader::<VeleRaw, { size_of::<VeleRaw>() }, R>(reader)
     }
 }
 
@@ -39,7 +39,7 @@ pub struct VfraRaw {
 
 impl BinDeserializer for VfraRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<VfraRaw, {size_of::<VfraRaw>()}, R>(reader)
+        from_reader::<VfraRaw, { size_of::<VfraRaw>() }, R>(reader)
     }
 }
 
@@ -55,7 +55,7 @@ pub struct VstartRaw {
 
 impl BinDeserializer for VstartRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
-        from_reader::<VstartRaw, {size_of::<VstartRaw>()}, R>(reader)
+        from_reader::<VstartRaw, { size_of::<VstartRaw>() }, R>(reader)
     }
 }
 
@@ -69,10 +69,11 @@ pub struct AnimationsData {
 }
 
 impl AnimationsData {
-
-    pub fn from_reader<R: Read>(reader_vele: &mut R
-                               , reader_vfra: &mut R
-                               , reader_vstart: &mut R) -> Self {
+    pub fn from_reader<R: Read>(
+        reader_vele: &mut R,
+        reader_vfra: &mut R,
+        reader_vstart: &mut R,
+    ) -> Self {
         AnimationsData {
             vele: VeleRaw::from_reader_vec(reader_vele),
             vfra: VfraRaw::from_reader_vec(reader_vfra),
@@ -81,9 +82,18 @@ impl AnimationsData {
     }
 
     pub fn from_path(path: &Path) -> Self {
-        let mut file_vele = File::options().read(true).open(path.join("VELE-0.ANI")).unwrap();
-        let mut file_vfra = File::options().read(true).open(path.join("VFRA-0.ANI")).unwrap();
-        let mut file_vstart = File::options().read(true).open(path.join("VSTART-0.ANI")).unwrap();
+        let mut file_vele = File::options()
+            .read(true)
+            .open(path.join("VELE-0.ANI"))
+            .unwrap();
+        let mut file_vfra = File::options()
+            .read(true)
+            .open(path.join("VFRA-0.ANI"))
+            .unwrap();
+        let mut file_vstart = File::options()
+            .read(true)
+            .open(path.join("VSTART-0.ANI"))
+            .unwrap();
         Self::from_reader(&mut file_vele, &mut file_vfra, &mut file_vstart)
     }
 }
@@ -101,90 +111,167 @@ pub const NUM_TRIBES: usize = 4;
 /// The sprite_type selects which body layers are composited (different per subtype).
 /// vstart_base is the starting VSTART sequence index for direction 0.
 pub const ANIM_SHAPE_TABLE: [(u16, u8); 161] = [
-    /*   0 */ (   8, 13), /*   1 */ (   0, 13), /*   2 */ (  16, 13), /*   3 */ (  32, 13),
-    /*   4 */ (  24, 13), /*   5 */ (   0, 13), /*   6 */ (   0, 13), /*   7 */ (   0, 13),
-    /*   8 */ (   0, 13), /*   9 */ (   0, 13), /*  10 */ (   0, 13), /*  11 */ (   0, 13),
-    /*  12 */ (   0, 13), /*  13 */ (   0, 13), /*  14 */ (   0, 13),
-    /*  15 brave idle  */ (  48, 14), /*  16 warr idle  */ (  48, 15),
-    /*  17 prea idle   */ (  48, 16), /*  18 spy idle   */ (  48, 17),
-    /*  19 fw idle     */ (  48, 18), /*  20 sham idle  */ ( 424, 14),
-    /*  21 brave walk  */ (  40, 14), /*  22 warr walk  */ (  40, 15),
-    /*  23 prea walk   */ (  40, 16), /*  24 spy walk   */ (  40, 17),
-    /*  25 fw walk     */ (  40, 18), /*  26 sham walk  */ ( 616, 13),
-    /*  27 brave die   */ (  88, 14), /*  28 warr die   */ (  88, 15),
-    /*  29 prea die    */ (  88, 16), /*  30 fw die     */ (  88, 17),
-    /*  31 spy die     */ (  88, 18),
-    /*  32 brave actn  */ (  64, 14), /*  33 warr actn  */ (  64, 15),
-    /*  34 prea actn   */ (  64, 16), /*  35 spy actn   */ (  64, 17),
-    /*  36 fw actn     */ (  64, 18), /*  37 sham actn  */ ( 744, 14),
-    /*  38 brave celeb */ (  96, 14), /*  39 warr celeb */ (  96, 15),
-    /*  40 prea celeb  */ (  96, 16), /*  41 spy celeb  */ (  96, 17),
-    /*  42 fw celeb    */ (  96, 18),
-    /*  43 brave spidl */ (  80, 14), /*  44 warr spidl */ (  80, 15),
-    /*  45 prea spidl  */ (  80, 16), /*  46 spy spidl  */ (  80, 17),
-    /*  47 fw spidl    */ (  80, 18),
-    /*  48 brave spwlk */ (  72, 14), /*  49 warr spwlk */ (  72, 15),
-    /*  50 prea spwlk  */ (  72, 16), /*  51 spy spwlk  */ (  72, 17),
-    /*  52 fw spwlk    */ (  72, 18),
-    /*  53 brave wrk1  */ ( 104, 14), /*  54 warr wrk1  */ ( 104, 15),
-    /*  55 prea wrk1   */ ( 104, 16), /*  56 spy wrk1   */ ( 104, 17),
-    /*  57 fw wrk1     */ ( 104, 18),
-    /*  58 brave wrk2  */ ( 112, 14), /*  59 warr wrk2  */ ( 112, 15),
-    /*  60 prea wrk2   */ ( 112, 16), /*  61 spy wrk2   */ ( 112, 17),
-    /*  62 fw wrk2     */ ( 112, 18),
-    /*  63 brave wrk3  */ ( 120, 14), /*  64 warr wrk3  */ ( 120, 15),
-    /*  65 prea wrk3   */ ( 120, 16), /*  66 spy wrk3   */ ( 120, 17),
-    /*  67 fw wrk3     */ ( 120, 18),
-    /*  68 brave wrk4  */ ( 128, 14), /*  69 warr wrk4  */ ( 128, 15),
-    /*  70 prea wrk4   */ ( 128, 16), /*  71 spy wrk4   */ ( 128, 17),
-    /*  72 fw wrk4     */ ( 128, 18),
-    /*  73 brave wrk5  */ ( 144, 14), /*  74 warr wrk5  */ ( 144, 15),
-    /*  75 prea wrk5   */ ( 144, 16), /*  76 spy wrk5   */ ( 144, 17),
-    /*  77 fw wrk5     */ ( 144, 18),
-    /*  78 brave vhcl  */ ( 152, 14), /*  79 warr vhcl  */ ( 152, 15),
-    /*  80 prea vhcl   */ ( 152, 16), /*  81 spy vhcl   */ ( 152, 17),
-    /*  82 fw vhcl     */ ( 152, 18),
-    /*  83 brave swim  */ ( 160, 14), /*  84 warr swim  */ ( 160, 15),
-    /*  85 prea swim   */ ( 160, 16), /*  86 spy swim   */ ( 160, 17),
-    /*  87 fw swim     */ ( 160, 18),
-    /*  88 brave carry */ ( 168, 14), /*  89 warr carry */ ( 168, 15),
-    /*  90 prea carry  */ ( 168, 16), /*  91 spy carry  */ ( 168, 17),
-    /*  92 fw carry    */ ( 168, 18),
-    /*  93 */ ( 0, 13),
-    /*  94 sham spec   */ ( 176, 19),
-    /*  95 */ ( 0, 13), /*  96 */ ( 0, 13), /*  97 */ ( 0, 13), /*  98 */ ( 0, 13), /*  99 */ ( 0, 13),
-    /* 100 brave spec  */ ( 136, 19), /* 101 fw spec    */ ( 136, 22),
-    /* 102 */ ( 0, 14), /* 103 */ ( 0, 14), /* 104 */ ( 0, 14), /* 105 */ ( 0, 14),
-    /* 106 sham wrk1   */ ( 456, 14), /* 107 sham vhcl  */ ( 488, 14),
-    /* 108 wild vhcl   */ ( 248, 13), /* 109 sham ??    */ ( 520, 14),
-    /* 110 brave ride  */ ( 296, 14), /* 111 warr ride  */ ( 296, 15),
-    /* 112 prea ride   */ ( 296, 16), /* 113 spy ride   */ ( 296, 17),
-    /* 114 fw ride     */ ( 296, 18),
-    /* 115 brave dig   */ ( 304, 14), /* 116 warr dig   */ ( 304, 15),
-    /* 117 prea dig    */ ( 304, 16), /* 118 spy dig    */ ( 304, 17),
-    /* 119 fw dig      */ ( 304, 18),
-    /* 120 brave bld   */ ( 320, 14), /* 121 warr bld   */ ( 320, 15),
-    /* 122 prea bld    */ ( 320, 16), /* 123 spy bld    */ ( 320, 17),
-    /* 124 fw bld      */ ( 320, 18),
-    /* 125 sham swim   */ ( 552, 14), /* 126 sham dig   */ ( 680, 14),
-    /* 127 sham carry  */ ( 352, 14), /* 128 sham bld   */ ( 360, 14),
-    /* 129 sham ride   */ ( 584, 14), /* 130 wild ride  */ ( 248, 13),
-    /* 131 brave sit1  */ ( 384, 14), /* 132 warr sit1  */ ( 384, 15),
-    /* 133 prea sit1   */ ( 384, 16), /* 134 spy sit1   */ ( 384, 17),
-    /* 135 fw sit1     */ ( 384, 18),
-    /* 136 brave sit2  */ ( 392, 14), /* 137 warr sit2  */ ( 392, 15),
-    /* 138 prea sit2   */ ( 392, 16), /* 139 spy sit2   */ ( 392, 17),
-    /* 140 fw sit2     */ ( 392, 18),
-    /* 141 brave sit3  */ ( 400, 14), /* 142 warr sit3  */ ( 400, 15),
-    /* 143 prea sit3   */ ( 400, 16), /* 144 spy sit3   */ ( 400, 17),
-    /* 145 fw sit3     */ ( 400, 18),
-    /* 146 brave sit4  */ ( 408, 14), /* 147 warr sit4  */ ( 408, 15),
-    /* 148 prea sit4   */ ( 408, 16), /* 149 spy sit4   */ ( 408, 17),
-    /* 150 fw sit4     */ ( 408, 18),
-    /* 151-155 unused  */ ( 0, 14), ( 0, 14), ( 0, 14), ( 0, 14), ( 0, 14),
-    /* 156 brave run   */ ( 416, 14), /* 157 warr run   */ ( 416, 15),
-    /* 158 prea run    */ ( 416, 16), /* 159 spy run    */ ( 416, 17),
-    /* 160 fw run      */ ( 416, 18),
+    /*   0 */ (8, 13),
+    /*   1 */ (0, 13),
+    /*   2 */ (16, 13),
+    /*   3 */ (32, 13),
+    /*   4 */ (24, 13),
+    /*   5 */ (0, 13),
+    /*   6 */ (0, 13),
+    /*   7 */ (0, 13),
+    /*   8 */ (0, 13),
+    /*   9 */ (0, 13),
+    /*  10 */ (0, 13),
+    /*  11 */ (0, 13),
+    /*  12 */ (0, 13),
+    /*  13 */ (0, 13),
+    /*  14 */ (0, 13),
+    /*  15 brave idle  */ (48, 14),
+    /*  16 warr idle  */ (48, 15),
+    /*  17 prea idle   */ (48, 16),
+    /*  18 spy idle   */ (48, 17),
+    /*  19 fw idle     */ (48, 18),
+    /*  20 sham idle  */ (424, 14),
+    /*  21 brave walk  */ (40, 14),
+    /*  22 warr walk  */ (40, 15),
+    /*  23 prea walk   */ (40, 16),
+    /*  24 spy walk   */ (40, 17),
+    /*  25 fw walk     */ (40, 18),
+    /*  26 sham walk  */ (616, 13),
+    /*  27 brave die   */ (88, 14),
+    /*  28 warr die   */ (88, 15),
+    /*  29 prea die    */ (88, 16),
+    /*  30 fw die     */ (88, 17),
+    /*  31 spy die     */ (88, 18),
+    /*  32 brave actn  */ (64, 14),
+    /*  33 warr actn  */ (64, 15),
+    /*  34 prea actn   */ (64, 16),
+    /*  35 spy actn   */ (64, 17),
+    /*  36 fw actn     */ (64, 18),
+    /*  37 sham actn  */ (744, 14),
+    /*  38 brave celeb */ (96, 14),
+    /*  39 warr celeb */ (96, 15),
+    /*  40 prea celeb  */ (96, 16),
+    /*  41 spy celeb  */ (96, 17),
+    /*  42 fw celeb    */ (96, 18),
+    /*  43 brave spidl */ (80, 14),
+    /*  44 warr spidl */ (80, 15),
+    /*  45 prea spidl  */ (80, 16),
+    /*  46 spy spidl  */ (80, 17),
+    /*  47 fw spidl    */ (80, 18),
+    /*  48 brave spwlk */ (72, 14),
+    /*  49 warr spwlk */ (72, 15),
+    /*  50 prea spwlk  */ (72, 16),
+    /*  51 spy spwlk  */ (72, 17),
+    /*  52 fw spwlk    */ (72, 18),
+    /*  53 brave wrk1  */ (104, 14),
+    /*  54 warr wrk1  */ (104, 15),
+    /*  55 prea wrk1   */ (104, 16),
+    /*  56 spy wrk1   */ (104, 17),
+    /*  57 fw wrk1     */ (104, 18),
+    /*  58 brave wrk2  */ (112, 14),
+    /*  59 warr wrk2  */ (112, 15),
+    /*  60 prea wrk2   */ (112, 16),
+    /*  61 spy wrk2   */ (112, 17),
+    /*  62 fw wrk2     */ (112, 18),
+    /*  63 brave wrk3  */ (120, 14),
+    /*  64 warr wrk3  */ (120, 15),
+    /*  65 prea wrk3   */ (120, 16),
+    /*  66 spy wrk3   */ (120, 17),
+    /*  67 fw wrk3     */ (120, 18),
+    /*  68 brave wrk4  */ (128, 14),
+    /*  69 warr wrk4  */ (128, 15),
+    /*  70 prea wrk4   */ (128, 16),
+    /*  71 spy wrk4   */ (128, 17),
+    /*  72 fw wrk4     */ (128, 18),
+    /*  73 brave wrk5  */ (144, 14),
+    /*  74 warr wrk5  */ (144, 15),
+    /*  75 prea wrk5   */ (144, 16),
+    /*  76 spy wrk5   */ (144, 17),
+    /*  77 fw wrk5     */ (144, 18),
+    /*  78 brave vhcl  */ (152, 14),
+    /*  79 warr vhcl  */ (152, 15),
+    /*  80 prea vhcl   */ (152, 16),
+    /*  81 spy vhcl   */ (152, 17),
+    /*  82 fw vhcl     */ (152, 18),
+    /*  83 brave swim  */ (160, 14),
+    /*  84 warr swim  */ (160, 15),
+    /*  85 prea swim   */ (160, 16),
+    /*  86 spy swim   */ (160, 17),
+    /*  87 fw swim     */ (160, 18),
+    /*  88 brave carry */ (168, 14),
+    /*  89 warr carry */ (168, 15),
+    /*  90 prea carry  */ (168, 16),
+    /*  91 spy carry  */ (168, 17),
+    /*  92 fw carry    */ (168, 18),
+    /*  93 */ (0, 13),
+    /*  94 sham spec   */ (176, 19),
+    /*  95 */ (0, 13),
+    /*  96 */ (0, 13),
+    /*  97 */ (0, 13),
+    /*  98 */ (0, 13),
+    /*  99 */ (0, 13),
+    /* 100 brave spec  */ (136, 19),
+    /* 101 fw spec    */ (136, 22),
+    /* 102 */ (0, 14),
+    /* 103 */ (0, 14),
+    /* 104 */ (0, 14),
+    /* 105 */ (0, 14),
+    /* 106 sham wrk1   */ (456, 14),
+    /* 107 sham vhcl  */ (488, 14),
+    /* 108 wild vhcl   */ (248, 13),
+    /* 109 sham ??    */ (520, 14),
+    /* 110 brave ride  */ (296, 14),
+    /* 111 warr ride  */ (296, 15),
+    /* 112 prea ride   */ (296, 16),
+    /* 113 spy ride   */ (296, 17),
+    /* 114 fw ride     */ (296, 18),
+    /* 115 brave dig   */ (304, 14),
+    /* 116 warr dig   */ (304, 15),
+    /* 117 prea dig    */ (304, 16),
+    /* 118 spy dig    */ (304, 17),
+    /* 119 fw dig      */ (304, 18),
+    /* 120 brave bld   */ (320, 14),
+    /* 121 warr bld   */ (320, 15),
+    /* 122 prea bld    */ (320, 16),
+    /* 123 spy bld    */ (320, 17),
+    /* 124 fw bld      */ (320, 18),
+    /* 125 sham swim   */ (552, 14),
+    /* 126 sham dig   */ (680, 14),
+    /* 127 sham carry  */ (352, 14),
+    /* 128 sham bld   */ (360, 14),
+    /* 129 sham ride   */ (584, 14),
+    /* 130 wild ride  */ (248, 13),
+    /* 131 brave sit1  */ (384, 14),
+    /* 132 warr sit1  */ (384, 15),
+    /* 133 prea sit1   */ (384, 16),
+    /* 134 spy sit1   */ (384, 17),
+    /* 135 fw sit1     */ (384, 18),
+    /* 136 brave sit2  */ (392, 14),
+    /* 137 warr sit2  */ (392, 15),
+    /* 138 prea sit2   */ (392, 16),
+    /* 139 spy sit2   */ (392, 17),
+    /* 140 fw sit2     */ (392, 18),
+    /* 141 brave sit3  */ (400, 14),
+    /* 142 warr sit3  */ (400, 15),
+    /* 143 prea sit3   */ (400, 16),
+    /* 144 spy sit3   */ (400, 17),
+    /* 145 fw sit3     */ (400, 18),
+    /* 146 brave sit4  */ (408, 14),
+    /* 147 warr sit4  */ (408, 15),
+    /* 148 prea sit4   */ (408, 16),
+    /* 149 spy sit4   */ (408, 17),
+    /* 150 fw sit4     */ (408, 18),
+    /* 151-155 unused  */ (0, 14),
+    (0, 14),
+    (0, 14),
+    (0, 14),
+    (0, 14),
+    /* 156 brave run   */ (416, 14),
+    /* 157 warr run   */ (416, 15),
+    /* 158 prea run    */ (416, 16),
+    /* 159 spy run    */ (416, 17),
+    /* 160 fw run      */ (416, 18),
 ];
 
 /// Resolve animation_id → (vstart_base, sprite_type) using the shape table.
@@ -200,22 +287,22 @@ pub fn anim_shape(anim_id: u16) -> (usize, u8) {
 /// Idle animation indices from g_PersonAnimationTable (RE'd from original binary)
 /// Format: (subtype, animation_index)
 pub const UNIT_IDLE_ANIMS: [(u8, usize); 6] = [
-    (PERSON_SUBTYPE_BRAVE,       15),
-    (PERSON_SUBTYPE_WARRIOR,     16),
-    (PERSON_SUBTYPE_PREACHER,    17),
-    (PERSON_SUBTYPE_SPY,         18),
+    (PERSON_SUBTYPE_BRAVE, 15),
+    (PERSON_SUBTYPE_WARRIOR, 16),
+    (PERSON_SUBTYPE_PREACHER, 17),
+    (PERSON_SUBTYPE_SPY, 18),
     (PERSON_SUBTYPE_FIREWARRIOR, 19),
-    (PERSON_SUBTYPE_SHAMAN,      20),
+    (PERSON_SUBTYPE_SHAMAN, 20),
 ];
 
 /// Combined idle + walk animation indices per subtype (non-shaman).
 /// Shamans use pre-rendered per-tribe sprites, not VELE compositing.
 /// Format: (subtype, &[animation_indices])
 pub const UNIT_MULTI_ANIMS: [(u8, &[usize]); 5] = [
-    (PERSON_SUBTYPE_BRAVE,       &[15, 21]),
-    (PERSON_SUBTYPE_WARRIOR,     &[16, 22]),
-    (PERSON_SUBTYPE_PREACHER,    &[17, 23]),
-    (PERSON_SUBTYPE_SPY,         &[18, 24]),
+    (PERSON_SUBTYPE_BRAVE, &[15, 21]),
+    (PERSON_SUBTYPE_WARRIOR, &[16, 22]),
+    (PERSON_SUBTYPE_PREACHER, &[17, 23]),
+    (PERSON_SUBTYPE_SPY, &[18, 24]),
     (PERSON_SUBTYPE_FIREWARRIOR, &[19, 25]),
 ];
 
@@ -287,7 +374,7 @@ impl AnimationElement {
         let mut vele_index = index as usize;
         while vele_index != 0 {
             let vele_sprite = &vele[vele_index];
-            sprites.push(AnimationElement{
+            sprites.push(AnimationElement {
                 sprite_index: (vele_sprite.sprite_index as usize / 6).saturating_sub(1),
                 coord_x: vele_sprite.coord_x,
                 coord_y: vele_sprite.coord_y,
@@ -306,7 +393,11 @@ impl AnimationElement {
 }
 
 impl AnimationFrame {
-    pub fn get_permutations(&self, with_tribe: bool, with_type: bool) -> Vec<Vec<AnimationElement>> {
+    pub fn get_permutations(
+        &self,
+        with_tribe: bool,
+        with_type: bool,
+    ) -> Vec<Vec<AnimationElement>> {
         let mut common_elems = Vec::new();
         let mut tribe_elems = Vec::new();
         let mut type_elems = Vec::new();
@@ -360,7 +451,7 @@ impl AnimationFrame {
         let mut vfra_index = index as usize;
         while vfra_index != 0 {
             let vfra_frame = &vfra[vfra_index];
-            frames.push(AnimationFrame{
+            frames.push(AnimationFrame {
                 index: vfra_index,
                 width: vfra_frame.width as usize,
                 height: vfra_frame.height as usize,
@@ -393,7 +484,7 @@ impl AnimationSequence {
         let mut res = Vec::<Self>::with_capacity(anim_data.vstart.len());
         for (index, vstart) in (0..).zip(&anim_data.vstart) {
             let frames = AnimationFrame::from_data(vstart.index, &anim_data.vfra, &anim_data.vele);
-            res.push(AnimationSequence{index, frames});
+            res.push(AnimationSequence { index, frames });
         }
         res
     }
@@ -439,14 +530,13 @@ pub fn should_render_element(
 }
 
 /// Discover available unit combos (layer_type, element_tribe) from an animation's elements.
-pub fn discover_unit_combos(
-    sequences: &[AnimationSequence],
-    base: usize,
-) -> Vec<(u16, u16)> {
+pub fn discover_unit_combos(sequences: &[AnimationSequence], base: usize) -> Vec<(u16, u16)> {
     let mut combos: Vec<(u16, u16)> = Vec::new();
     for dir in 0..STORED_DIRECTIONS {
         let seq_idx = base + dir;
-        if seq_idx >= sequences.len() { continue; }
+        if seq_idx >= sequences.len() {
+            continue;
+        }
         for frame in &sequences[seq_idx].frames {
             for elem in &frame.sprites {
                 if elem.is_type_specific() {
@@ -507,7 +597,9 @@ pub fn composite_frame(
                 let src_x = if h_flip { sw - 1 - x } else { x };
                 let src_y = if v_flip { sh - 1 - y } else { y };
                 let src = image.data[src_y * sw + src_x];
-                if src == 255 { continue; }
+                if src == 255 {
+                    continue;
+                }
 
                 let dst_x = ox + x as isize;
                 let dst_y = oy + y as isize;
@@ -542,7 +634,9 @@ pub fn compute_global_bbox(
     for seq in sequences {
         for frame in &seq.frames {
             for elem in &frame.sprites {
-                if elem.is_hidden() { continue; }
+                if elem.is_hidden() {
+                    continue;
+                }
                 if let Some(info) = container.get_info(elem.sprite_index) {
                     let ex = elem.coord_x as i32;
                     let ey = elem.coord_y as i32;
@@ -578,10 +672,14 @@ pub fn build_tribe_atlas(
     let mut max_frames = 0usize;
     for dir in 0..STORED_DIRECTIONS {
         let seq_idx = base + dir;
-        if seq_idx >= sequences.len() { continue; }
+        if seq_idx >= sequences.len() {
+            continue;
+        }
         max_frames = max_frames.max(sequences[seq_idx].frames.len());
     }
-    if max_frames == 0 { return None; }
+    if max_frames == 0 {
+        return None;
+    }
 
     // Resolve unit combo BEFORE bounding box so we can filter elements
     let unit_combo = match unit_combo_override {
@@ -605,14 +703,20 @@ pub fn build_tribe_atlas(
 
         for dir in 0..STORED_DIRECTIONS {
             let seq_idx = base + dir;
-            if seq_idx >= sequences.len() { continue; }
+            if seq_idx >= sequences.len() {
+                continue;
+            }
             for frame in &sequences[seq_idx].frames {
                 for elem in &frame.sprites {
-                    if elem.is_hidden() { continue; }
+                    if elem.is_hidden() {
+                        continue;
+                    }
                     if elem.is_type_specific() {
                         match unit_combo {
                             Some((layer, high)) => {
-                                if elem.uvar5 != layer || elem.tribe as u16 != high { continue; }
+                                if elem.uvar5 != layer || elem.tribe as u16 != high {
+                                    continue;
+                                }
                             }
                             None => continue,
                         }
@@ -637,17 +741,23 @@ pub fn build_tribe_atlas(
     let atlas_w = fw * max_frames as u32;
     let atlas_h = fh * total_rows;
 
-    if atlas_w == 0 || atlas_h == 0 { return None; }
+    if atlas_w == 0 || atlas_h == 0 {
+        return None;
+    }
 
     let mut rgba = vec![0u8; (atlas_w * atlas_h * 4) as usize];
 
     for tribe in 0..NUM_TRIBES {
         for dir in 0..STORED_DIRECTIONS {
             let seq_idx = base + dir;
-            if seq_idx >= sequences.len() { continue; }
+            if seq_idx >= sequences.len() {
+                continue;
+            }
 
             let dir_frames = &sequences[seq_idx].frames;
-            if dir_frames.is_empty() { continue; }
+            if dir_frames.is_empty() {
+                continue;
+            }
             for f in 0..max_frames {
                 let frame = &dir_frames[f % dir_frames.len()];
 
@@ -690,12 +800,27 @@ pub fn build_multi_anim_atlas(
     container: &ContainerPSFB,
     palette: &[[u8; 4]],
     anim_ids: &[usize],
-) -> Option<(u32, u32, Vec<u8>, u32, u32, u32, Vec<(usize, u32, u32)>, i32)> {
-    if anim_ids.is_empty() { return None; }
+) -> Option<(
+    u32,
+    u32,
+    Vec<u8>,
+    u32,
+    u32,
+    u32,
+    Vec<(usize, u32, u32)>,
+    i32,
+)> {
+    if anim_ids.is_empty() {
+        return None;
+    }
 
     // Resolve animation IDs to VSTART bases
-    let resolved: Vec<(usize, usize)> = anim_ids.iter()
-        .map(|&id| { let (vb, _) = anim_shape(id as u16); (id, vb) })
+    let resolved: Vec<(usize, usize)> = anim_ids
+        .iter()
+        .map(|&id| {
+            let (vb, _) = anim_shape(id as u16);
+            (id, vb)
+        })
         .collect();
 
     // Compute shared bounding box across all requested animations
@@ -707,11 +832,17 @@ pub fn build_multi_anim_atlas(
     for &(_, vstart_base) in &resolved {
         for dir in 0..STORED_DIRECTIONS {
             let seq_idx = vstart_base + dir;
-            if seq_idx >= sequences.len() { continue; }
+            if seq_idx >= sequences.len() {
+                continue;
+            }
             for frame in &sequences[seq_idx].frames {
                 for elem in &frame.sprites {
-                    if elem.is_hidden() { continue; }
-                    if elem.is_type_specific() { continue; } // skip for bbox
+                    if elem.is_hidden() {
+                        continue;
+                    }
+                    if elem.is_type_specific() {
+                        continue;
+                    } // skip for bbox
                     if let Some(info) = container.get_info(elem.sprite_index) {
                         let ex = elem.coord_x as i32;
                         let ey = elem.coord_y as i32;
@@ -733,23 +864,32 @@ pub fn build_multi_anim_atlas(
     let mut fh = 0u32;
 
     for &(anim_id, vstart_base) in &resolved {
-        if let Some((aw, ah, rgba, w, h, frames, _my)) =
-            build_tribe_atlas(sequences, container, palette, vstart_base, Some(None), Some(shared_bbox))
-        {
+        if let Some((aw, ah, rgba, w, h, frames, _my)) = build_tribe_atlas(
+            sequences,
+            container,
+            palette,
+            vstart_base,
+            Some(None),
+            Some(shared_bbox),
+        ) {
             fw = w;
             fh = h;
             sub_atlases.push((anim_id, aw, ah, rgba, frames));
         }
     }
 
-    if sub_atlases.is_empty() { return None; }
+    if sub_atlases.is_empty() {
+        return None;
+    }
 
     let total_rows = (NUM_TRIBES * STORED_DIRECTIONS) as u32;
     let total_columns: u32 = sub_atlases.iter().map(|(_, _, _, _, f)| *f).sum();
     let atlas_w = fw * total_columns;
     let atlas_h = fh * total_rows;
 
-    if atlas_w == 0 || atlas_h == 0 { return None; }
+    if atlas_w == 0 || atlas_h == 0 {
+        return None;
+    }
 
     let mut combined = vec![0u8; (atlas_w * atlas_h * 4) as usize];
     let mut col_offset = 0u32;
@@ -773,7 +913,16 @@ pub fn build_multi_anim_atlas(
         col_offset += frames;
     }
 
-    Some((atlas_w, atlas_h, combined, fw, fh, total_columns, offsets, bbox_max_y))
+    Some((
+        atlas_w,
+        atlas_h,
+        combined,
+        fw,
+        fh,
+        total_columns,
+        offsets,
+        bbox_max_y,
+    ))
 }
 
 /******************************************************************************/
@@ -783,8 +932,8 @@ pub fn build_multi_anim_atlas(
 /// Derived from VSTART→VFRA→VELE chain: tribe offset = frames_per_dir × 5 stored directions.
 pub const SHAMAN_ANIMS: [(u16, [u16; 4], usize); 2] = [
     // (anim_id, per-tribe starts, frames_per_dir)
-    (20, [6879, 6899, 6919, 6939], 4),  // idle: 4 unique frames × 5 dirs = 20 sprites/tribe
-    (26, [7578, 7618, 7658, 7698], 8),  // walk: 8 frames × 5 dirs = 40 sprites/tribe
+    (20, [6879, 6899, 6919, 6939], 4), // idle: 4 unique frames × 5 dirs = 20 sprites/tribe
+    (26, [7578, 7618, 7658, 7698], 8), // walk: 8 frames × 5 dirs = 40 sprites/tribe
 ];
 
 /// Build a sprite atlas from direct PSFB sprite indices (non-composited).
@@ -796,7 +945,9 @@ pub fn build_direct_sprite_atlas(
     tribe_sprite_starts: &[u16; 4],
     frames_per_dir: usize,
 ) -> Option<(u32, u32, Vec<u8>, u32, u32, u32, i32)> {
-    if frames_per_dir == 0 { return None; }
+    if frames_per_dir == 0 {
+        return None;
+    }
 
     // First pass: find max sprite dimensions across all tribes/directions/frames
     let mut max_w: u32 = 0;
@@ -813,7 +964,9 @@ pub fn build_direct_sprite_atlas(
             }
         }
     }
-    if max_w == 0 || max_h == 0 { return None; }
+    if max_w == 0 || max_h == 0 {
+        return None;
+    }
 
     let fw = max_w;
     let fh = max_h;
@@ -848,7 +1001,9 @@ pub fn build_direct_sprite_atlas(
                 for y in 0..sh {
                     for x in 0..sw {
                         let src = image.data[(y * sw + x) as usize];
-                        if src == 255 { continue; } // transparent
+                        if src == 255 {
+                            continue;
+                        } // transparent
                         let dst_x = cell_x + ox + x;
                         let dst_y = cell_y + oy + y;
                         let dst_off = ((dst_y * atlas_w + dst_x) * 4) as usize;
@@ -865,7 +1020,15 @@ pub fn build_direct_sprite_atlas(
 
     // For centered sprites, the below-foot padding is (fh - max_h) / 2
     let below_foot = ((fh - max_h) / 2) as i32;
-    Some((atlas_w, atlas_h, rgba, fw, fh, frames_per_dir as u32, below_foot))
+    Some((
+        atlas_w,
+        atlas_h,
+        rgba,
+        fw,
+        fh,
+        frames_per_dir as u32,
+        below_foot,
+    ))
 }
 
 /// Build a combined atlas for multiple direct-sprite animations.
@@ -877,8 +1040,19 @@ pub fn build_direct_multi_anim_atlas(
     container: &ContainerPSFB,
     palette: &[[u8; 4]],
     anims: &[(u16, [u16; 4], usize)],
-) -> Option<(u32, u32, Vec<u8>, u32, u32, u32, Vec<(usize, u32, u32)>, i32)> {
-    if anims.is_empty() { return None; }
+) -> Option<(
+    u32,
+    u32,
+    Vec<u8>,
+    u32,
+    u32,
+    u32,
+    Vec<(usize, u32, u32)>,
+    i32,
+)> {
+    if anims.is_empty() {
+        return None;
+    }
 
     // Compute shared max frame size across all animations
     let mut fw: u32 = 0;
@@ -897,7 +1071,9 @@ pub fn build_direct_multi_anim_atlas(
             }
         }
     }
-    if fw == 0 || fh == 0 { return None; }
+    if fw == 0 || fh == 0 {
+        return None;
+    }
 
     let total_cols: u32 = anims.iter().map(|(_, _, fpd)| *fpd as u32).sum();
     let total_rows = (NUM_TRIBES * STORED_DIRECTIONS) as u32;
@@ -932,7 +1108,9 @@ pub fn build_direct_multi_anim_atlas(
                     for y in 0..sh {
                         for x in 0..sw {
                             let src = image.data[(y * sw + x) as usize];
-                            if src == 255 { continue; }
+                            if src == 255 {
+                                continue;
+                            }
                             let dst_x = cell_x + ox + x;
                             let dst_y = cell_y + oy + y;
                             let dst_off = ((dst_y * atlas_w + dst_x) * 4) as usize;

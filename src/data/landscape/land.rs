@@ -1,6 +1,10 @@
+use crate::data::landscape::common::{
+    DispProvider, LandPosQ, LandPosQuad, LandTile, LandTileQuad, LandscapeFull,
+};
 use crate::data::level::GlobeTextureParams;
-use crate::data::types::{ImageInfo, ImageStorage, ImageTileSource, Image, TiledComposer, ImageSourceComposed};
-use crate::data::landscape::common::{LandTile, LandTileQuad, LandPosQuad, LandPosQ, LandscapeFull, DispProvider};
+use crate::data::types::{
+    Image, ImageInfo, ImageSourceComposed, ImageStorage, ImageTileSource, TiledComposer,
+};
 
 struct DispProvider32<'a> {
     x: usize,
@@ -10,7 +14,7 @@ struct DispProvider32<'a> {
 
 impl<'a> DispProvider32<'a> {
     pub fn new(disp: &'a [i8]) -> Self {
-        Self{x: 0, y: 0, disp}
+        Self { x: 0, y: 0, disp }
     }
 }
 
@@ -24,7 +28,7 @@ impl<'a> DispProvider for DispProvider32<'a> {
     fn val_adjacent(&self, i: usize, j: usize) -> f32 {
         let disp_val = self.val(i, j);
         let id = if j == 31 { 0 } else { 1 };
-        let disp_val_2 = self.val(i+id, j+1);
+        let disp_val_2 = self.val(i + id, j + 1);
         (disp_val_2 - disp_val) as f32
     }
 
@@ -34,11 +38,16 @@ impl<'a> DispProvider for DispProvider32<'a> {
     }
 }
 
-pub fn render_land_tile<T, D, I>(params: &GlobeTextureParams
-                                 , land_tile: &T
-                                 , disp: &D
-                                 , image_tile: &mut I)
-    where I: ImageInfo + ImageStorage, D: DispProvider, T: LandTile {
+pub fn render_land_tile<T, D, I>(
+    params: &GlobeTextureParams,
+    land_tile: &T,
+    disp: &D,
+    image_tile: &mut I,
+) where
+    I: ImageInfo + ImageStorage,
+    D: DispProvider,
+    T: LandTile,
+{
     let w = land_tile.tile_width();
     let h = land_tile.tile_height();
 
@@ -55,7 +64,8 @@ pub fn render_land_tile<T, D, I>(params: &GlobeTextureParams
             let c1: usize = c1.max(0.0) as usize;
 
             let disp_val = disp.val(i, j);
-            let static_component: i32 = params.static_landscape_array[height as usize] as i32 * (disp_val as i32);
+            let static_component: i32 =
+                params.static_landscape_array[height as usize] as i32 * (disp_val as i32);
             let static_component = unsafe {
                 let k = std::mem::transmute::<i32, u32>(static_component) & 0xfffffc03;
                 std::mem::transmute::<u32, i32>(k) >> 2
@@ -72,11 +82,16 @@ pub fn render_land_tile<T, D, I>(params: &GlobeTextureParams
     }
 }
 
-pub fn render_landscape<'a, I, D, P>(land_iter: &mut I
-                                     , params: &GlobeTextureParams
-                                     , disp_provider: &'a mut D
-                                     , tile_source: &'a mut P)
-where I: Iterator<Item=LandPosQ<'a>>, D: DispProvider, P: ImageTileSource {
+pub fn render_landscape<'a, I, D, P>(
+    land_iter: &mut I,
+    params: &GlobeTextureParams,
+    disp_provider: &'a mut D,
+    tile_source: &'a mut P,
+) where
+    I: Iterator<Item = LandPosQ<'a>>,
+    D: DispProvider,
+    P: ImageTileSource,
+{
     for pos in land_iter {
         disp_provider.update(&params.disp0, &pos.2);
         let image_tile = tile_source.next_tile(pos.0, pos.1);
@@ -85,17 +100,18 @@ where I: Iterator<Item=LandPosQ<'a>>, D: DispProvider, P: ImageTileSource {
     }
 }
 
-pub fn texture_land_provider<'a, P>(land: &LandscapeFull
-                                    , params: &GlobeTextureParams
-                                    , tile_source: &'a mut P)
-where P: ImageTileSource {
+pub fn texture_land_provider<'a, P>(
+    land: &LandscapeFull,
+    params: &GlobeTextureParams,
+    tile_source: &'a mut P,
+) where
+    P: ImageTileSource,
+{
     let mut disp = DispProvider32::new(&params.disp0);
     render_landscape(&mut land.iter_quad(), params, &mut disp, tile_source);
 }
 
-pub fn texture_land(width: usize
-                    , land: &LandscapeFull
-                    , params: &GlobeTextureParams) -> Image {
+pub fn texture_land(width: usize, land: &LandscapeFull, params: &GlobeTextureParams) -> Image {
     let mut tile_source = {
         let n = 32;
         let image = Image::alloc(width * n, width * n);

@@ -1,8 +1,8 @@
 // HUD data types, layout computation, rendering helpers, and GPU renderer.
 
+use crate::data::psfb::ContainerPSFB;
 use crate::render::gpu::buffer::GpuBuffer;
 use crate::render::gpu::texture::GpuTexture;
-use crate::data::psfb::ContainerPSFB;
 // FontData provides the multi-size glyph API (8x8, 16x16, 24x24 via integer scaling).
 // Currently draw_text_sized() delegates to the atlas-based draw_text() which already
 // supports arbitrary pixel sizes. FontData will be used directly when loading the
@@ -113,9 +113,9 @@ pub struct TribePopulation {
 
 /// Minimap viewport rectangle data for camera position overlay.
 pub struct MinimapViewport {
-    pub cam_cell_x: f32,       // camera center in cell coords (0-127)
+    pub cam_cell_x: f32, // camera center in cell coords (0-127)
     pub cam_cell_y: f32,
-    pub view_width_cells: f32,  // visible area width in cells
+    pub view_width_cells: f32, // visible area width in cells
     pub view_height_cells: f32,
 }
 
@@ -131,9 +131,9 @@ pub struct SelectedEntityInfo {
 
 /// Health bar entry for world-projected health bars in the HUD overlay.
 pub struct HealthBarEntry {
-    pub screen_x: f32,         // screen-space center X
-    pub screen_y: f32,         // screen-space top Y (above entity)
-    pub health_fraction: f32,  // 0.0-1.0
+    pub screen_x: f32,        // screen-space center X
+    pub screen_y: f32,        // screen-space top Y (above entity)
+    pub health_fraction: f32, // 0.0-1.0
     pub bar_type: HealthBarType,
 }
 
@@ -146,7 +146,7 @@ pub enum HealthBarType {
 /// Spell cooldown state for HUD rendering.
 /// Phase 4 will populate from SpellSystem cooldown timers.
 pub struct SpellCooldown {
-    pub spell_index: u8,        // 0-15 matching spell panel order
+    pub spell_index: u8,         // 0-15 matching spell panel order
     pub cooldown_remaining: u32, // ticks remaining (0 = ready)
     pub cooldown_total: u32,     // total cooldown duration
 }
@@ -164,18 +164,18 @@ pub const FONT_ATLAS_H: u32 = FONT_ROWS * FONT_GLYPH_H; // 48
 
 /// Tribe colors for minimap dots (RGB, 0-255).
 pub const MINIMAP_TRIBE_COLORS: [[u8; 3]; 4] = [
-    [80, 130, 255],  // Blue
-    [255, 60, 60],   // Red
-    [255, 255, 60],  // Yellow
-    [60, 255, 60],   // Green
+    [80, 130, 255], // Blue
+    [255, 60, 60],  // Red
+    [255, 255, 60], // Yellow
+    [60, 255, 60],  // Green
 ];
 
 /// Tribe colors for HUD text overlay (RGBA, 0.0-1.0).
 pub const HUD_TRIBE_COLORS: [[f32; 4]; 4] = [
-    [0.3, 0.5, 1.0, 0.9],  // Blue
-    [1.0, 0.3, 0.3, 0.9],  // Red
-    [1.0, 1.0, 0.3, 0.9],  // Yellow
-    [0.3, 1.0, 0.3, 0.9],  // Green
+    [0.3, 0.5, 1.0, 0.9], // Blue
+    [1.0, 0.3, 0.3, 0.9], // Red
+    [1.0, 1.0, 0.3, 0.9], // Yellow
+    [0.3, 1.0, 0.3, 0.9], // Green
 ];
 
 // ---------------------------------------------------------------------------
@@ -184,12 +184,20 @@ pub const HUD_TRIBE_COLORS: [[f32; 4]; 4] = [
 
 /// Compute mana bar fill fraction, clamped to [0.0, 1.0].
 pub fn compute_mana_fraction(mana: u32, max_mana: u32) -> f32 {
-    if max_mana == 0 { return 0.0; }
+    if max_mana == 0 {
+        return 0.0;
+    }
     (mana as f32 / max_mana as f32).min(1.0)
 }
 
 /// Convert a minimap pixel click to cell coordinates (0-127).
-pub fn minimap_click_to_cell(click_x: f32, click_y: f32, mm_x: f32, mm_y: f32, mm_size: f32) -> (f32, f32) {
+pub fn minimap_click_to_cell(
+    click_x: f32,
+    click_y: f32,
+    mm_x: f32,
+    mm_y: f32,
+    mm_size: f32,
+) -> (f32, f32) {
     let cell_x = ((click_x - mm_x) / mm_size * 128.0).clamp(0.0, 127.0);
     let cell_y = ((click_y - mm_y) / mm_size * 128.0).clamp(0.0, 127.0);
     (cell_x, cell_y)
@@ -198,9 +206,13 @@ pub fn minimap_click_to_cell(click_x: f32, click_y: f32, mm_x: f32, mm_y: f32, m
 /// Compute shortest toroidal delta on a 128-cell wrapping map.
 pub fn toroidal_delta(from: f32, to: f32) -> f32 {
     let raw = to - from;
-    if raw > 64.0 { raw - 128.0 }
-    else if raw < -64.0 { raw + 128.0 }
-    else { raw }
+    if raw > 64.0 {
+        raw - 128.0
+    } else if raw < -64.0 {
+        raw + 128.0
+    } else {
+        raw
+    }
 }
 
 /// Map unit subtype id to display name.
@@ -221,102 +233,102 @@ pub fn unit_subtype_name(subtype: u8) -> &'static str {
 /// Each glyph is 8 bytes (one byte per row, MSB = leftmost pixel).
 pub const FONT_8X8: [[u8; 8]; 96] = {
     let mut f = [[0u8; 8]; 96];
-    f[0] = [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]; // Space (32)
-    f[1] = [0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00]; // !
-    f[2] = [0x6C,0x6C,0x6C,0x00,0x00,0x00,0x00,0x00]; // "
-    f[3] = [0x6C,0x6C,0xFE,0x6C,0xFE,0x6C,0x6C,0x00]; // #
-    f[4] = [0x18,0x7E,0xC0,0x7C,0x06,0xFC,0x18,0x00]; // $
-    f[5] = [0x00,0xC6,0xCC,0x18,0x30,0x66,0xC6,0x00]; // %
-    f[6] = [0x38,0x6C,0x38,0x76,0xDC,0xCC,0x76,0x00]; // &
-    f[7] = [0x18,0x18,0x30,0x00,0x00,0x00,0x00,0x00]; // '
-    f[8] = [0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00]; // (
-    f[9] = [0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00]; // )
-    f[10] = [0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00,0x00]; // *
-    f[11] = [0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00]; // +
-    f[12] = [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30]; // ,
-    f[13] = [0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00]; // -
-    f[14] = [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00]; // .
-    f[15] = [0x06,0x0C,0x18,0x30,0x60,0xC0,0x80,0x00]; // /
-    f[16] = [0x7C,0xC6,0xCE,0xD6,0xE6,0xC6,0x7C,0x00]; // 0
-    f[17] = [0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00]; // 1
-    f[18] = [0x7C,0xC6,0x06,0x1C,0x30,0x66,0xFE,0x00]; // 2
-    f[19] = [0x7C,0xC6,0x06,0x3C,0x06,0xC6,0x7C,0x00]; // 3
-    f[20] = [0x1C,0x3C,0x6C,0xCC,0xFE,0x0C,0x1E,0x00]; // 4
-    f[21] = [0xFE,0xC0,0xFC,0x06,0x06,0xC6,0x7C,0x00]; // 5
-    f[22] = [0x38,0x60,0xC0,0xFC,0xC6,0xC6,0x7C,0x00]; // 6
-    f[23] = [0xFE,0xC6,0x0C,0x18,0x30,0x30,0x30,0x00]; // 7
-    f[24] = [0x7C,0xC6,0xC6,0x7C,0xC6,0xC6,0x7C,0x00]; // 8
-    f[25] = [0x7C,0xC6,0xC6,0x7E,0x06,0x0C,0x78,0x00]; // 9
-    f[26] = [0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x00]; // :
-    f[27] = [0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x30]; // ;
-    f[28] = [0x0C,0x18,0x30,0x60,0x30,0x18,0x0C,0x00]; // <
-    f[29] = [0x00,0x00,0x7E,0x00,0x00,0x7E,0x00,0x00]; // =
-    f[30] = [0x60,0x30,0x18,0x0C,0x18,0x30,0x60,0x00]; // >
-    f[31] = [0x7C,0xC6,0x0C,0x18,0x18,0x00,0x18,0x00]; // ?
-    f[32] = [0x7C,0xC6,0xDE,0xDE,0xDE,0xC0,0x78,0x00]; // @
-    f[33] = [0x38,0x6C,0xC6,0xC6,0xFE,0xC6,0xC6,0x00]; // A
-    f[34] = [0xFC,0x66,0x66,0x7C,0x66,0x66,0xFC,0x00]; // B
-    f[35] = [0x3C,0x66,0xC0,0xC0,0xC0,0x66,0x3C,0x00]; // C
-    f[36] = [0xF8,0x6C,0x66,0x66,0x66,0x6C,0xF8,0x00]; // D
-    f[37] = [0xFE,0x62,0x68,0x78,0x68,0x62,0xFE,0x00]; // E
-    f[38] = [0xFE,0x62,0x68,0x78,0x68,0x60,0xF0,0x00]; // F
-    f[39] = [0x3C,0x66,0xC0,0xC0,0xCE,0x66,0x3E,0x00]; // G
-    f[40] = [0xC6,0xC6,0xC6,0xFE,0xC6,0xC6,0xC6,0x00]; // H
-    f[41] = [0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00]; // I
-    f[42] = [0x1E,0x0C,0x0C,0x0C,0xCC,0xCC,0x78,0x00]; // J
-    f[43] = [0xE6,0x66,0x6C,0x78,0x6C,0x66,0xE6,0x00]; // K
-    f[44] = [0xF0,0x60,0x60,0x60,0x62,0x66,0xFE,0x00]; // L
-    f[45] = [0xC6,0xEE,0xFE,0xFE,0xD6,0xC6,0xC6,0x00]; // M
-    f[46] = [0xC6,0xE6,0xF6,0xDE,0xCE,0xC6,0xC6,0x00]; // N
-    f[47] = [0x7C,0xC6,0xC6,0xC6,0xC6,0xC6,0x7C,0x00]; // O
-    f[48] = [0xFC,0x66,0x66,0x7C,0x60,0x60,0xF0,0x00]; // P
-    f[49] = [0x7C,0xC6,0xC6,0xC6,0xD6,0xDE,0x7C,0x06]; // Q
-    f[50] = [0xFC,0x66,0x66,0x7C,0x6C,0x66,0xE6,0x00]; // R
-    f[51] = [0x7C,0xC6,0xE0,0x7C,0x0E,0xC6,0x7C,0x00]; // S
-    f[52] = [0x7E,0x7E,0x5A,0x18,0x18,0x18,0x3C,0x00]; // T
-    f[53] = [0xC6,0xC6,0xC6,0xC6,0xC6,0xC6,0x7C,0x00]; // U
-    f[54] = [0xC6,0xC6,0xC6,0xC6,0x6C,0x38,0x10,0x00]; // V
-    f[55] = [0xC6,0xC6,0xD6,0xFE,0xFE,0xEE,0xC6,0x00]; // W
-    f[56] = [0xC6,0x6C,0x38,0x38,0x38,0x6C,0xC6,0x00]; // X
-    f[57] = [0x66,0x66,0x66,0x3C,0x18,0x18,0x3C,0x00]; // Y
-    f[58] = [0xFE,0xC6,0x8C,0x18,0x32,0x66,0xFE,0x00]; // Z
-    f[59] = [0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00]; // [
-    f[60] = [0xC0,0x60,0x30,0x18,0x0C,0x06,0x02,0x00]; // backslash
-    f[61] = [0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00]; // ]
-    f[62] = [0x10,0x38,0x6C,0xC6,0x00,0x00,0x00,0x00]; // ^
-    f[63] = [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF]; // _
-    f[64] = [0x30,0x18,0x0C,0x00,0x00,0x00,0x00,0x00]; // `
-    f[65] = [0x00,0x00,0x78,0x0C,0x7C,0xCC,0x76,0x00]; // a
-    f[66] = [0xE0,0x60,0x7C,0x66,0x66,0x66,0xDC,0x00]; // b
-    f[67] = [0x00,0x00,0x7C,0xC6,0xC0,0xC6,0x7C,0x00]; // c
-    f[68] = [0x1C,0x0C,0x7C,0xCC,0xCC,0xCC,0x76,0x00]; // d
-    f[69] = [0x00,0x00,0x7C,0xC6,0xFE,0xC0,0x7C,0x00]; // e
-    f[70] = [0x1C,0x36,0x30,0x78,0x30,0x30,0x78,0x00]; // f
-    f[71] = [0x00,0x00,0x76,0xCC,0xCC,0x7C,0x0C,0xF8]; // g
-    f[72] = [0xE0,0x60,0x6C,0x76,0x66,0x66,0xE6,0x00]; // h
-    f[73] = [0x18,0x00,0x38,0x18,0x18,0x18,0x3C,0x00]; // i
-    f[74] = [0x06,0x00,0x06,0x06,0x06,0x66,0x66,0x3C]; // j
-    f[75] = [0xE0,0x60,0x66,0x6C,0x78,0x6C,0xE6,0x00]; // k
-    f[76] = [0x38,0x18,0x18,0x18,0x18,0x18,0x3C,0x00]; // l
-    f[77] = [0x00,0x00,0xEC,0xFE,0xD6,0xD6,0xD6,0x00]; // m
-    f[78] = [0x00,0x00,0xDC,0x66,0x66,0x66,0x66,0x00]; // n
-    f[79] = [0x00,0x00,0x7C,0xC6,0xC6,0xC6,0x7C,0x00]; // o
-    f[80] = [0x00,0x00,0xDC,0x66,0x66,0x7C,0x60,0xF0]; // p
-    f[81] = [0x00,0x00,0x76,0xCC,0xCC,0x7C,0x0C,0x1E]; // q
-    f[82] = [0x00,0x00,0xDC,0x76,0x60,0x60,0xF0,0x00]; // r
-    f[83] = [0x00,0x00,0x7E,0xC0,0x7C,0x06,0xFC,0x00]; // s
-    f[84] = [0x30,0x30,0x7C,0x30,0x30,0x36,0x1C,0x00]; // t
-    f[85] = [0x00,0x00,0xCC,0xCC,0xCC,0xCC,0x76,0x00]; // u
-    f[86] = [0x00,0x00,0xC6,0xC6,0xC6,0x6C,0x38,0x00]; // v
-    f[87] = [0x00,0x00,0xC6,0xD6,0xD6,0xFE,0x6C,0x00]; // w
-    f[88] = [0x00,0x00,0xC6,0x6C,0x38,0x6C,0xC6,0x00]; // x
-    f[89] = [0x00,0x00,0xC6,0xC6,0xCE,0x76,0x06,0xFC]; // y
-    f[90] = [0x00,0x00,0xFC,0x98,0x30,0x64,0xFC,0x00]; // z
-    f[91] = [0x0E,0x18,0x18,0x70,0x18,0x18,0x0E,0x00]; // {
-    f[92] = [0x18,0x18,0x18,0x00,0x18,0x18,0x18,0x00]; // |
-    f[93] = [0x70,0x18,0x18,0x0E,0x18,0x18,0x70,0x00]; // }
-    f[94] = [0x76,0xDC,0x00,0x00,0x00,0x00,0x00,0x00]; // ~
-    f[95] = [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]; // DEL placeholder
+    f[0] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // Space (32)
+    f[1] = [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00]; // !
+    f[2] = [0x6C, 0x6C, 0x6C, 0x00, 0x00, 0x00, 0x00, 0x00]; // "
+    f[3] = [0x6C, 0x6C, 0xFE, 0x6C, 0xFE, 0x6C, 0x6C, 0x00]; // #
+    f[4] = [0x18, 0x7E, 0xC0, 0x7C, 0x06, 0xFC, 0x18, 0x00]; // $
+    f[5] = [0x00, 0xC6, 0xCC, 0x18, 0x30, 0x66, 0xC6, 0x00]; // %
+    f[6] = [0x38, 0x6C, 0x38, 0x76, 0xDC, 0xCC, 0x76, 0x00]; // &
+    f[7] = [0x18, 0x18, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00]; // '
+    f[8] = [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00]; // (
+    f[9] = [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00]; // )
+    f[10] = [0x00, 0x66, 0x3C, 0xFF, 0x3C, 0x66, 0x00, 0x00]; // *
+    f[11] = [0x00, 0x18, 0x18, 0x7E, 0x18, 0x18, 0x00, 0x00]; // +
+    f[12] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30]; // ,
+    f[13] = [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00]; // -
+    f[14] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00]; // .
+    f[15] = [0x06, 0x0C, 0x18, 0x30, 0x60, 0xC0, 0x80, 0x00]; // /
+    f[16] = [0x7C, 0xC6, 0xCE, 0xD6, 0xE6, 0xC6, 0x7C, 0x00]; // 0
+    f[17] = [0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00]; // 1
+    f[18] = [0x7C, 0xC6, 0x06, 0x1C, 0x30, 0x66, 0xFE, 0x00]; // 2
+    f[19] = [0x7C, 0xC6, 0x06, 0x3C, 0x06, 0xC6, 0x7C, 0x00]; // 3
+    f[20] = [0x1C, 0x3C, 0x6C, 0xCC, 0xFE, 0x0C, 0x1E, 0x00]; // 4
+    f[21] = [0xFE, 0xC0, 0xFC, 0x06, 0x06, 0xC6, 0x7C, 0x00]; // 5
+    f[22] = [0x38, 0x60, 0xC0, 0xFC, 0xC6, 0xC6, 0x7C, 0x00]; // 6
+    f[23] = [0xFE, 0xC6, 0x0C, 0x18, 0x30, 0x30, 0x30, 0x00]; // 7
+    f[24] = [0x7C, 0xC6, 0xC6, 0x7C, 0xC6, 0xC6, 0x7C, 0x00]; // 8
+    f[25] = [0x7C, 0xC6, 0xC6, 0x7E, 0x06, 0x0C, 0x78, 0x00]; // 9
+    f[26] = [0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00]; // :
+    f[27] = [0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x30]; // ;
+    f[28] = [0x0C, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0C, 0x00]; // <
+    f[29] = [0x00, 0x00, 0x7E, 0x00, 0x00, 0x7E, 0x00, 0x00]; // =
+    f[30] = [0x60, 0x30, 0x18, 0x0C, 0x18, 0x30, 0x60, 0x00]; // >
+    f[31] = [0x7C, 0xC6, 0x0C, 0x18, 0x18, 0x00, 0x18, 0x00]; // ?
+    f[32] = [0x7C, 0xC6, 0xDE, 0xDE, 0xDE, 0xC0, 0x78, 0x00]; // @
+    f[33] = [0x38, 0x6C, 0xC6, 0xC6, 0xFE, 0xC6, 0xC6, 0x00]; // A
+    f[34] = [0xFC, 0x66, 0x66, 0x7C, 0x66, 0x66, 0xFC, 0x00]; // B
+    f[35] = [0x3C, 0x66, 0xC0, 0xC0, 0xC0, 0x66, 0x3C, 0x00]; // C
+    f[36] = [0xF8, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0xF8, 0x00]; // D
+    f[37] = [0xFE, 0x62, 0x68, 0x78, 0x68, 0x62, 0xFE, 0x00]; // E
+    f[38] = [0xFE, 0x62, 0x68, 0x78, 0x68, 0x60, 0xF0, 0x00]; // F
+    f[39] = [0x3C, 0x66, 0xC0, 0xC0, 0xCE, 0x66, 0x3E, 0x00]; // G
+    f[40] = [0xC6, 0xC6, 0xC6, 0xFE, 0xC6, 0xC6, 0xC6, 0x00]; // H
+    f[41] = [0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00]; // I
+    f[42] = [0x1E, 0x0C, 0x0C, 0x0C, 0xCC, 0xCC, 0x78, 0x00]; // J
+    f[43] = [0xE6, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0xE6, 0x00]; // K
+    f[44] = [0xF0, 0x60, 0x60, 0x60, 0x62, 0x66, 0xFE, 0x00]; // L
+    f[45] = [0xC6, 0xEE, 0xFE, 0xFE, 0xD6, 0xC6, 0xC6, 0x00]; // M
+    f[46] = [0xC6, 0xE6, 0xF6, 0xDE, 0xCE, 0xC6, 0xC6, 0x00]; // N
+    f[47] = [0x7C, 0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0x7C, 0x00]; // O
+    f[48] = [0xFC, 0x66, 0x66, 0x7C, 0x60, 0x60, 0xF0, 0x00]; // P
+    f[49] = [0x7C, 0xC6, 0xC6, 0xC6, 0xD6, 0xDE, 0x7C, 0x06]; // Q
+    f[50] = [0xFC, 0x66, 0x66, 0x7C, 0x6C, 0x66, 0xE6, 0x00]; // R
+    f[51] = [0x7C, 0xC6, 0xE0, 0x7C, 0x0E, 0xC6, 0x7C, 0x00]; // S
+    f[52] = [0x7E, 0x7E, 0x5A, 0x18, 0x18, 0x18, 0x3C, 0x00]; // T
+    f[53] = [0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0x7C, 0x00]; // U
+    f[54] = [0xC6, 0xC6, 0xC6, 0xC6, 0x6C, 0x38, 0x10, 0x00]; // V
+    f[55] = [0xC6, 0xC6, 0xD6, 0xFE, 0xFE, 0xEE, 0xC6, 0x00]; // W
+    f[56] = [0xC6, 0x6C, 0x38, 0x38, 0x38, 0x6C, 0xC6, 0x00]; // X
+    f[57] = [0x66, 0x66, 0x66, 0x3C, 0x18, 0x18, 0x3C, 0x00]; // Y
+    f[58] = [0xFE, 0xC6, 0x8C, 0x18, 0x32, 0x66, 0xFE, 0x00]; // Z
+    f[59] = [0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00]; // [
+    f[60] = [0xC0, 0x60, 0x30, 0x18, 0x0C, 0x06, 0x02, 0x00]; // backslash
+    f[61] = [0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00]; // ]
+    f[62] = [0x10, 0x38, 0x6C, 0xC6, 0x00, 0x00, 0x00, 0x00]; // ^
+    f[63] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF]; // _
+    f[64] = [0x30, 0x18, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00]; // `
+    f[65] = [0x00, 0x00, 0x78, 0x0C, 0x7C, 0xCC, 0x76, 0x00]; // a
+    f[66] = [0xE0, 0x60, 0x7C, 0x66, 0x66, 0x66, 0xDC, 0x00]; // b
+    f[67] = [0x00, 0x00, 0x7C, 0xC6, 0xC0, 0xC6, 0x7C, 0x00]; // c
+    f[68] = [0x1C, 0x0C, 0x7C, 0xCC, 0xCC, 0xCC, 0x76, 0x00]; // d
+    f[69] = [0x00, 0x00, 0x7C, 0xC6, 0xFE, 0xC0, 0x7C, 0x00]; // e
+    f[70] = [0x1C, 0x36, 0x30, 0x78, 0x30, 0x30, 0x78, 0x00]; // f
+    f[71] = [0x00, 0x00, 0x76, 0xCC, 0xCC, 0x7C, 0x0C, 0xF8]; // g
+    f[72] = [0xE0, 0x60, 0x6C, 0x76, 0x66, 0x66, 0xE6, 0x00]; // h
+    f[73] = [0x18, 0x00, 0x38, 0x18, 0x18, 0x18, 0x3C, 0x00]; // i
+    f[74] = [0x06, 0x00, 0x06, 0x06, 0x06, 0x66, 0x66, 0x3C]; // j
+    f[75] = [0xE0, 0x60, 0x66, 0x6C, 0x78, 0x6C, 0xE6, 0x00]; // k
+    f[76] = [0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00]; // l
+    f[77] = [0x00, 0x00, 0xEC, 0xFE, 0xD6, 0xD6, 0xD6, 0x00]; // m
+    f[78] = [0x00, 0x00, 0xDC, 0x66, 0x66, 0x66, 0x66, 0x00]; // n
+    f[79] = [0x00, 0x00, 0x7C, 0xC6, 0xC6, 0xC6, 0x7C, 0x00]; // o
+    f[80] = [0x00, 0x00, 0xDC, 0x66, 0x66, 0x7C, 0x60, 0xF0]; // p
+    f[81] = [0x00, 0x00, 0x76, 0xCC, 0xCC, 0x7C, 0x0C, 0x1E]; // q
+    f[82] = [0x00, 0x00, 0xDC, 0x76, 0x60, 0x60, 0xF0, 0x00]; // r
+    f[83] = [0x00, 0x00, 0x7E, 0xC0, 0x7C, 0x06, 0xFC, 0x00]; // s
+    f[84] = [0x30, 0x30, 0x7C, 0x30, 0x30, 0x36, 0x1C, 0x00]; // t
+    f[85] = [0x00, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0x76, 0x00]; // u
+    f[86] = [0x00, 0x00, 0xC6, 0xC6, 0xC6, 0x6C, 0x38, 0x00]; // v
+    f[87] = [0x00, 0x00, 0xC6, 0xD6, 0xD6, 0xFE, 0x6C, 0x00]; // w
+    f[88] = [0x00, 0x00, 0xC6, 0x6C, 0x38, 0x6C, 0xC6, 0x00]; // x
+    f[89] = [0x00, 0x00, 0xC6, 0xC6, 0xCE, 0x76, 0x06, 0xFC]; // y
+    f[90] = [0x00, 0x00, 0xFC, 0x98, 0x30, 0x64, 0xFC, 0x00]; // z
+    f[91] = [0x0E, 0x18, 0x18, 0x70, 0x18, 0x18, 0x0E, 0x00]; // {
+    f[92] = [0x18, 0x18, 0x18, 0x00, 0x18, 0x18, 0x18, 0x00]; // |
+    f[93] = [0x70, 0x18, 0x18, 0x0E, 0x18, 0x18, 0x70, 0x00]; // }
+    f[94] = [0x76, 0xDC, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // ~
+    f[95] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // DEL placeholder
     f
 };
 
@@ -353,17 +365,47 @@ pub fn build_font_rgba() -> Vec<u8> {
 /// Generate 6 vertices (2 triangles) for a textured quad.
 /// Winding: TL→TR→BL, BL→TR→BR.
 pub fn generate_quad_vertices(
-    x0: f32, y0: f32, x1: f32, y1: f32,
-    u0: f32, v0: f32, u1: f32, v1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    u0: f32,
+    v0: f32,
+    u1: f32,
+    v1: f32,
     color: [f32; 4],
 ) -> [HudVertex; 6] {
     [
-        HudVertex { position: [x0, y0], uv: [u0, v0], color },
-        HudVertex { position: [x1, y0], uv: [u1, v0], color },
-        HudVertex { position: [x0, y1], uv: [u0, v1], color },
-        HudVertex { position: [x0, y1], uv: [u0, v1], color },
-        HudVertex { position: [x1, y0], uv: [u1, v0], color },
-        HudVertex { position: [x1, y1], uv: [u1, v1], color },
+        HudVertex {
+            position: [x0, y0],
+            uv: [u0, v0],
+            color,
+        },
+        HudVertex {
+            position: [x1, y0],
+            uv: [u1, v0],
+            color,
+        },
+        HudVertex {
+            position: [x0, y1],
+            uv: [u0, v1],
+            color,
+        },
+        HudVertex {
+            position: [x0, y1],
+            uv: [u0, v1],
+            color,
+        },
+        HudVertex {
+            position: [x1, y0],
+            uv: [u1, v0],
+            color,
+        },
+        HudVertex {
+            position: [x1, y1],
+            uv: [u1, v1],
+            color,
+        },
     ]
 }
 
@@ -404,10 +446,10 @@ pub fn convert_indexed_to_rgba(indexed: &[u8], palette: &[u8], transparent_idx: 
             let p = (idx as usize) * 4;
             if p + 2 < palette.len() {
                 // Palette is BGRA → output RGBA
-                rgba[j * 4] = palette[p + 2];     // R
+                rgba[j * 4] = palette[p + 2]; // R
                 rgba[j * 4 + 1] = palette[p + 1]; // G
-                rgba[j * 4 + 2] = palette[p];     // B
-                rgba[j * 4 + 3] = 255;            // A
+                rgba[j * 4 + 2] = palette[p]; // B
+                rgba[j * 4 + 3] = 255; // A
             }
         }
     }
@@ -473,12 +515,25 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     let panel_y = tab_y + tab_h + 2.0 * scale_y;
     let line_h = font_scale + 2.0;
     HudLayout {
-        screen_w, screen_h, scale_x, scale_y,
-        sidebar_w, font_scale, small_font,
-        mm_pad, mm_size, mm_x, mm_y,
-        mana_bar_y, mana_bar_h, pop_y,
-        tab_y, tab_h, tab_w,
-        panel_y, line_h,
+        screen_w,
+        screen_h,
+        scale_x,
+        scale_y,
+        sidebar_w,
+        font_scale,
+        small_font,
+        mm_pad,
+        mm_size,
+        mm_x,
+        mm_y,
+        mana_bar_y,
+        mana_bar_h,
+        pop_y,
+        tab_y,
+        tab_h,
+        tab_w,
+        panel_y,
+        line_h,
     }
 }
 
@@ -574,8 +629,8 @@ impl HudRenderer {
 
         // Screen size uniform
         let screen_data = [screen_w, screen_h, 0.0f32, 0.0f32];
-        let uniform_buffer = GpuBuffer::new_uniform_init(
-            device, bytemuck::bytes_of(&screen_data), "hud_uniforms");
+        let uniform_buffer =
+            GpuBuffer::new_uniform_init(device, bytemuck::bytes_of(&screen_data), "hud_uniforms");
 
         // Build initial atlas with white pixel + font glyphs (so text works before sprites load)
         let font_rgba = build_font_rgba();
@@ -586,7 +641,10 @@ impl HudRenderer {
         let init_atlas_h = font_h.next_power_of_two();
         let mut init_data = vec![0u8; (init_atlas_w * init_atlas_h * 4) as usize];
         // White pixel at (0,0)
-        init_data[0] = 255; init_data[1] = 255; init_data[2] = 255; init_data[3] = 255;
+        init_data[0] = 255;
+        init_data[1] = 255;
+        init_data[2] = 255;
+        init_data[3] = 255;
         // Blit font at (2, 0)
         for fy in 0..font_h {
             for fx in 0..font_w {
@@ -598,17 +656,32 @@ impl HudRenderer {
             }
         }
         let atlas_tex = GpuTexture::new_2d(
-            device, queue, init_atlas_w, init_atlas_h,
-            wgpu::TextureFormat::Rgba8UnormSrgb, &init_data, "hud_atlas_initial");
+            device,
+            queue,
+            init_atlas_w,
+            init_atlas_h,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &init_data,
+            "hud_atlas_initial",
+        );
         let sampler = GpuTexture::create_sampler(device, true);
 
         let atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hud_atlas_bg"),
             layout: &bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: uniform_buffer.buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&atlas_tex.view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&atlas_tex.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         });
 
@@ -633,9 +706,21 @@ impl HudRenderer {
                     array_stride: std::mem::size_of::<HudVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
-                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0, shader_location: 0 },
-                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 8, shader_location: 1 },
-                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 16, shader_location: 2 },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 8,
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 16,
+                            shader_location: 2,
+                        },
                     ],
                 }],
                 compilation_options: Default::default(),
@@ -676,9 +761,12 @@ impl HudRenderer {
 
         // White pixel region (index 0) — sample center of pixel
         sprite_regions.push(SpriteRegion {
-            u0: 0.5 / aw, v0: 0.5 / ah,
-            u1: 0.5 / aw, v1: 0.5 / ah,
-            width: 1, height: 1,
+            u0: 0.5 / aw,
+            v0: 0.5 / ah,
+            u1: 0.5 / aw,
+            v1: 0.5 / ah,
+            width: 1,
+            height: 1,
         });
 
         // Font glyph regions (indices 1..97)
@@ -775,7 +863,8 @@ impl HudRenderer {
         for fy in 0..font_h as u32 {
             for fx in 0..font_w as u32 {
                 let src = ((fy * font_w as u32 + fx) * 4) as usize;
-                let dst = (((font_placement_y + fy) * atlas_w + font_placement_x + fx) * 4) as usize;
+                let dst =
+                    (((font_placement_y + fy) * atlas_w + font_placement_x + fx) * 4) as usize;
                 if dst + 3 < atlas_data.len() && src + 3 < font_atlas_rgba.len() {
                     atlas_data[dst..dst + 4].copy_from_slice(&font_atlas_rgba[src..src + 4]);
                 }
@@ -803,9 +892,12 @@ impl HudRenderer {
 
         // White pixel region (index 0)
         regions.push(SpriteRegion {
-            u0: 0.5 / aw, v0: 0.5 / ah,
-            u1: 0.5 / aw, v1: 0.5 / ah,
-            width: 1, height: 1,
+            u0: 0.5 / aw,
+            v0: 0.5 / ah,
+            u1: 0.5 / aw,
+            v1: 0.5 / ah,
+            width: 1,
+            height: 1,
         });
 
         // Font glyph regions (indices 1..96)
@@ -842,17 +934,32 @@ impl HudRenderer {
 
         // Phase 5: Upload atlas
         let atlas_tex = GpuTexture::new_2d(
-            device, queue, atlas_w, atlas_h,
-            wgpu::TextureFormat::Rgba8UnormSrgb, &atlas_data, "hud_atlas");
+            device,
+            queue,
+            atlas_w,
+            atlas_h,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &atlas_data,
+            "hud_atlas",
+        );
         let sampler = GpuTexture::create_sampler(device, true);
 
         self.atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hud_atlas_bg"),
             layout: &self.bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&atlas_tex.view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&atlas_tex.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         });
 
@@ -862,16 +969,35 @@ impl HudRenderer {
         self.white_region_idx = 0;
         self.font_region_start = font_start;
 
-        log::info!("[hud] Atlas built: {}x{}, {} sprites, {} font glyphs, {} total regions",
-            atlas_w, atlas_h, sprite_images.len(), 96, self.sprite_regions.len());
+        log::info!(
+            "[hud] Atlas built: {}x{}, {} sprites, {} font glyphs, {} total regions",
+            atlas_w,
+            atlas_h,
+            sprite_images.len(),
+            96,
+            self.sprite_regions.len()
+        );
     }
 
     pub fn begin_frame(&mut self) {
         self.vertices.clear();
     }
 
-    pub fn push_quad(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, u0: f32, v0: f32, u1: f32, v1: f32, color: [f32; 4]) {
-        self.vertices.extend_from_slice(&generate_quad_vertices(x0, y0, x1, y1, u0, v0, u1, v1, color));
+    pub fn push_quad(
+        &mut self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+        color: [f32; 4],
+    ) {
+        self.vertices.extend_from_slice(&generate_quad_vertices(
+            x0, y0, x1, y1, u0, v0, u1, v1, color,
+        ));
     }
 
     /// Draw a solid colored rectangle.
@@ -882,11 +1008,23 @@ impl HudRenderer {
 
     /// Draw a sprite from the atlas at screen position (x, y) with scale.
     pub fn draw_sprite(&mut self, sprite_idx: usize, x: f32, y: f32, scale_x: f32, scale_y: f32) {
-        if sprite_idx >= self.sprite_regions.len() { return; }
+        if sprite_idx >= self.sprite_regions.len() {
+            return;
+        }
         let r = self.sprite_regions[sprite_idx].clone();
         let w = r.width as f32 * scale_x;
         let h = r.height as f32 * scale_y;
-        self.push_quad(x, y, x + w, y + h, r.u0, r.v0, r.u1, r.v1, [1.0, 1.0, 1.0, 1.0]);
+        self.push_quad(
+            x,
+            y,
+            x + w,
+            y + h,
+            r.u0,
+            r.v0,
+            r.u1,
+            r.v1,
+            [1.0, 1.0, 1.0, 1.0],
+        );
     }
 
     /// Draw text using the embedded bitmap font.
@@ -908,7 +1046,17 @@ impl HudRenderer {
             let region_idx = self.font_region_start + glyph_idx;
             if region_idx < self.sprite_regions.len() {
                 let r = self.sprite_regions[region_idx].clone();
-                self.push_quad(cx, cy, cx + scale, cy + scale, r.u0, r.v0, r.u1, r.v1, color);
+                self.push_quad(
+                    cx,
+                    cy,
+                    cx + scale,
+                    cy + scale,
+                    r.u0,
+                    r.v0,
+                    r.u1,
+                    r.v1,
+                    color,
+                );
             }
             cx += scale;
         }
@@ -945,30 +1093,55 @@ impl HudRenderer {
         let rgba = generate_minimap_rgba(data);
 
         let tex = GpuTexture::new_2d(
-            device, queue, 128, 128,
-            wgpu::TextureFormat::Rgba8UnormSrgb, &rgba, "minimap");
+            device,
+            queue,
+            128,
+            128,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &rgba,
+            "minimap",
+        );
         let sampler = GpuTexture::create_sampler(device, false);
 
         self.minimap_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("minimap_bg"),
             layout: &self.bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&tex.view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&tex.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         }));
         self.minimap_texture = Some(tex);
     }
 
     /// Render the HUD. Issues draw calls with the atlas bind group, and optionally the minimap bind group.
-    pub fn render_full(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, queue: &wgpu::Queue,
-                   screen_w: f32, screen_h: f32, minimap_rect: Option<(f32, f32, f32, f32)>) {
-        if self.vertices.is_empty() && self.minimap_bind_group.is_none() { return; }
+    pub fn render_full(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        queue: &wgpu::Queue,
+        screen_w: f32,
+        screen_h: f32,
+        minimap_rect: Option<(f32, f32, f32, f32)>,
+    ) {
+        if self.vertices.is_empty() && self.minimap_bind_group.is_none() {
+            return;
+        }
 
         // Update screen size uniform
         let screen_data = [screen_w, screen_h, 0.0f32, 0.0f32];
-        self.uniform_buffer.update(queue, 0, bytemuck::bytes_of(&screen_data));
+        self.uniform_buffer
+            .update(queue, 0, bytemuck::bytes_of(&screen_data));
 
         // Upload vertex data
         let data: &[u8] = bytemuck::cast_slice(&self.vertices);
@@ -991,15 +1164,40 @@ impl HudRenderer {
         pass.set_pipeline(&self.pipeline);
 
         // Draw minimap first (separate bind group)
-        if let (Some(ref mm_bg), Some((mx, my, mw, mh))) = (&self.minimap_bind_group, minimap_rect) {
+        if let (Some(ref mm_bg), Some((mx, my, mw, mh))) = (&self.minimap_bind_group, minimap_rect)
+        {
             // Build minimap quad inline (6 vertices at the very start)
             let mm_verts = [
-                HudVertex { position: [mx, my], uv: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                HudVertex { position: [mx + mw, my], uv: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                HudVertex { position: [mx, my + mh], uv: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
-                HudVertex { position: [mx, my + mh], uv: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
-                HudVertex { position: [mx + mw, my], uv: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                HudVertex { position: [mx + mw, my + mh], uv: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                HudVertex {
+                    position: [mx, my],
+                    uv: [0.0, 0.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                HudVertex {
+                    position: [mx + mw, my],
+                    uv: [1.0, 0.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                HudVertex {
+                    position: [mx, my + mh],
+                    uv: [0.0, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                HudVertex {
+                    position: [mx, my + mh],
+                    uv: [0.0, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                HudVertex {
+                    position: [mx + mw, my],
+                    uv: [1.0, 0.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                HudVertex {
+                    position: [mx + mw, my + mh],
+                    uv: [1.0, 1.0],
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
             ];
             let mm_data: &[u8] = bytemuck::cast_slice(&mm_verts);
             // Write minimap vertices at the end of the existing vertex data
@@ -1008,7 +1206,10 @@ impl HudRenderer {
 
             pass.set_bind_group(0, mm_bg, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.draw(self.vertices.len() as u32..self.vertices.len() as u32 + 6, 0..1);
+            pass.draw(
+                self.vertices.len() as u32..self.vertices.len() as u32 + 6,
+                0..1,
+            );
         }
 
         // Draw all other HUD elements with atlas bind group
@@ -1115,7 +1316,7 @@ mod tests {
         assert_eq!(v[0].position, [10.0, 20.0]); // TL
         assert_eq!(v[1].position, [50.0, 20.0]); // TR
         assert_eq!(v[2].position, [10.0, 80.0]); // BL
-        // Second triangle = BL, TR, BR
+                                                 // Second triangle = BL, TR, BR
         assert_eq!(v[3].position, [10.0, 80.0]); // BL
         assert_eq!(v[4].position, [50.0, 20.0]); // TR
         assert_eq!(v[5].position, [50.0, 80.0]); // BR
@@ -1201,7 +1402,7 @@ mod tests {
     fn convert_indexed_opaque_pixel() {
         // Arrange: palette entry 5 = BGRA (10, 20, 30, 255)
         let mut palette = vec![0u8; 256 * 4];
-        palette[5 * 4] = 10;     // B
+        palette[5 * 4] = 10; // B
         palette[5 * 4 + 1] = 20; // G
         palette[5 * 4 + 2] = 30; // R
         palette[5 * 4 + 3] = 255;
@@ -1211,9 +1412,9 @@ mod tests {
         let rgba = convert_indexed_to_rgba(&indexed, &palette, 255);
 
         // Assert: BGRA→RGBA swap
-        assert_eq!(rgba[0], 30);  // R (from palette B+2)
-        assert_eq!(rgba[1], 20);  // G
-        assert_eq!(rgba[2], 10);  // B (from palette B+0)
+        assert_eq!(rgba[0], 30); // R (from palette B+2)
+        assert_eq!(rgba[1], 20); // G
+        assert_eq!(rgba[2], 10); // B (from palette B+0)
         assert_eq!(rgba[3], 255); // A
     }
 
@@ -1273,7 +1474,10 @@ mod tests {
         // Arrange: cell (0,0) height = 512
         let mut heights = [[0u16; 128]; 128];
         heights[0][0] = 512;
-        let data = MinimapData { heights, dots: vec![] };
+        let data = MinimapData {
+            heights,
+            dots: vec![],
+        };
 
         // Act
         let rgba = generate_minimap_rgba(&data);
@@ -1290,7 +1494,11 @@ mod tests {
         // Arrange: water terrain, one unit dot at (10, 20), tribe 1 (red)
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
-            dots: vec![MinimapDot { cell_x: 10, cell_y: 20, tribe_index: 1 }],
+            dots: vec![MinimapDot {
+                cell_x: 10,
+                cell_y: 20,
+                tribe_index: 1,
+            }],
         };
 
         // Act
@@ -1298,7 +1506,7 @@ mod tests {
 
         // Assert: cell (10, 20) should be red tribe color, not water
         let off = (20 * 128 + 10) * 4;
-        assert_eq!(rgba[off], 255);    // R
+        assert_eq!(rgba[off], 255); // R
         assert_eq!(rgba[off + 1], 60); // G
         assert_eq!(rgba[off + 2], 60); // B
     }
@@ -1398,7 +1606,11 @@ mod tests {
         // Act: click above tab bar
         let above = detect_tab_click(layout.mm_pad + 10.0, layout.tab_y - 5.0, &layout);
         // Click below tab bar
-        let below = detect_tab_click(layout.mm_pad + 10.0, layout.tab_y + layout.tab_h + 5.0, &layout);
+        let below = detect_tab_click(
+            layout.mm_pad + 10.0,
+            layout.tab_y + layout.tab_h + 5.0,
+            &layout,
+        );
         // Click left of tabs
         let left = detect_tab_click(0.0, layout.tab_y + 2.0, &layout);
 
@@ -1529,7 +1741,12 @@ mod tests {
 
     #[test]
     fn health_bar_entry_fraction() {
-        let hb = HealthBarEntry { screen_x: 100.0, screen_y: 50.0, health_fraction: 0.5, bar_type: HealthBarType::Unit };
+        let hb = HealthBarEntry {
+            screen_x: 100.0,
+            screen_y: 50.0,
+            health_fraction: 0.5,
+            bar_type: HealthBarType::Unit,
+        };
         assert_eq!(hb.health_fraction, 0.5);
     }
 

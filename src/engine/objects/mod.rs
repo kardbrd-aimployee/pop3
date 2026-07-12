@@ -1,10 +1,10 @@
-pub mod handle;
-pub mod types;
-pub mod pool;
 pub mod cell_grid;
+pub mod handle;
+pub mod pool;
+pub mod types;
 
-pub use handle::ObjectHandle;
-pub use types::{ObjectHeader, GameObjectData, PersonData, GameObject, PoolSlot};
 pub use crate::engine::buildings::BuildingData;
-pub use pool::{ObjectPool, MAX_OBJECTS};
 pub use cell_grid::{CellGrid, CELL_GRID_SIZE};
+pub use handle::ObjectHandle;
+pub use pool::{ObjectPool, MAX_OBJECTS};
+pub use types::{GameObject, GameObjectData, ObjectHeader, PersonData, PoolSlot};

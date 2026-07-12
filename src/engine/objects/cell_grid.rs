@@ -1,6 +1,7 @@
-use crate::engine::movement::{WorldCoord, TileCoord};
-use crate::engine::movement::constants::REGION_GRID_SIZE;
+use super::handle::ObjectHandle;
 use super::types::PoolSlot;
+use crate::engine::movement::constants::REGION_GRID_SIZE;
+use crate::engine::movement::WorldCoord;
 
 /// Size of the cell grid in each dimension (128x128).
 pub const CELL_GRID_SIZE: usize = REGION_GRID_SIZE;
@@ -14,7 +15,7 @@ pub const CELL_GRID_TOTAL: usize = CELL_GRID_SIZE * CELL_GRID_SIZE;
 /// a cell form a doubly-linked list through their `next_in_cell` and
 /// `prev_in_cell` fields in the ObjectHeader.
 pub struct CellGrid {
-    heads: Box<[Option<u16>; CELL_GRID_TOTAL]>,
+    heads: Box<[Option<ObjectHandle>; CELL_GRID_TOTAL]>,
 }
 
 impl CellGrid {
@@ -26,18 +27,26 @@ impl CellGrid {
     }
 
     /// Insert an object at the head of a cell's linked list.
-    pub fn insert_object(&mut self, handle: u16, cell_idx: usize, slots: &mut [PoolSlot]) {
-        let old_head = self.heads[cell_idx];
+    pub fn insert_object(&mut self, handle: ObjectHandle, cell_idx: usize, slots: &mut [PoolSlot]) {
+        let old_head = self.heads[cell_idx].filter(|head| {
+            matches!(&slots[head.index()], PoolSlot::Occupied(obj) if obj.header.object_index == *head)
+        });
 
         // Set new object's links
-        if let PoolSlot::Occupied(ref mut obj) = slots[handle as usize] {
+        if let PoolSlot::Occupied(ref mut obj) = slots[handle.index()] {
+            if obj.header.object_index != handle {
+                return;
+            }
             obj.header.next_in_cell = old_head;
             obj.header.prev_in_cell = None;
         }
 
         // Update old head's prev to point to new object
         if let Some(old_head_handle) = old_head {
-            if let PoolSlot::Occupied(ref mut old_obj) = slots[old_head_handle as usize] {
+            if let PoolSlot::Occupied(ref mut old_obj) = slots[old_head_handle.index()] {
+                if old_obj.header.object_index != old_head_handle {
+                    return;
+                }
                 old_obj.header.prev_in_cell = Some(handle);
             }
         }
@@ -47,8 +56,11 @@ impl CellGrid {
     }
 
     /// Remove an object from a cell's linked list.
-    pub fn remove_object(&mut self, handle: u16, cell_idx: usize, slots: &mut [PoolSlot]) {
-        let (prev, next) = if let PoolSlot::Occupied(ref obj) = slots[handle as usize] {
+    pub fn remove_object(&mut self, handle: ObjectHandle, cell_idx: usize, slots: &mut [PoolSlot]) {
+        let (prev, next) = if let PoolSlot::Occupied(ref obj) = slots[handle.index()] {
+            if obj.header.object_index != handle {
+                return;
+            }
             (obj.header.prev_in_cell, obj.header.next_in_cell)
         } else {
             return;
@@ -56,7 +68,10 @@ impl CellGrid {
 
         // Update prev's next (or cell head if removing head)
         if let Some(prev_handle) = prev {
-            if let PoolSlot::Occupied(ref mut prev_obj) = slots[prev_handle as usize] {
+            if let PoolSlot::Occupied(ref mut prev_obj) = slots[prev_handle.index()] {
+                if prev_obj.header.object_index != prev_handle {
+                    return;
+                }
                 prev_obj.header.next_in_cell = next;
             }
         } else {
@@ -65,13 +80,16 @@ impl CellGrid {
 
         // Update next's prev
         if let Some(next_handle) = next {
-            if let PoolSlot::Occupied(ref mut next_obj) = slots[next_handle as usize] {
+            if let PoolSlot::Occupied(ref mut next_obj) = slots[next_handle.index()] {
+                if next_obj.header.object_index != next_handle {
+                    return;
+                }
                 next_obj.header.prev_in_cell = prev;
             }
         }
 
         // Clear removed object's links
-        if let PoolSlot::Occupied(ref mut obj) = slots[handle as usize] {
+        if let PoolSlot::Occupied(ref mut obj) = slots[handle.index()] {
             obj.header.next_in_cell = None;
             obj.header.prev_in_cell = None;
         }
@@ -81,7 +99,7 @@ impl CellGrid {
     /// No-op if the object stays in the same cell.
     pub fn set_position(
         &mut self,
-        handle: u16,
+        handle: ObjectHandle,
         old_pos: &WorldCoord,
         new_pos: &WorldCoord,
         slots: &mut [PoolSlot],
@@ -103,7 +121,7 @@ impl CellGrid {
     }
 
     /// Get the head object handle for a cell.
-    pub fn cell_head(&self, cell_idx: usize) -> Option<u16> {
+    pub fn cell_head(&self, cell_idx: usize) -> Option<ObjectHandle> {
         self.heads[cell_idx]
     }
 
@@ -121,6 +139,10 @@ mod tests {
         GameObject, GameObjectData, ObjectHeader, PersonData, PoolSlot,
     };
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     /// Create a minimal occupied PoolSlot for testing.
     fn make_slot(handle: u16) -> PoolSlot {
         PoolSlot::Occupied(GameObject {
@@ -133,7 +155,7 @@ mod tests {
                 flags1: 0,
                 flags2: 0,
                 flags3: 0,
-                object_index: handle,
+                object_index: h(handle),
                 angle: 0,
                 position: WorldCoord::default(),
                 velocity: WorldCoord::default(),
@@ -146,15 +168,15 @@ mod tests {
         })
     }
 
-    fn get_next(slots: &[PoolSlot], handle: u16) -> Option<u16> {
-        match &slots[handle as usize] {
+    fn get_next(slots: &[PoolSlot], handle: ObjectHandle) -> Option<ObjectHandle> {
+        match &slots[handle.index()] {
             PoolSlot::Occupied(obj) => obj.header.next_in_cell,
             _ => panic!("slot {} not occupied", handle),
         }
     }
 
-    fn get_prev(slots: &[PoolSlot], handle: u16) -> Option<u16> {
-        match &slots[handle as usize] {
+    fn get_prev(slots: &[PoolSlot], handle: ObjectHandle) -> Option<ObjectHandle> {
+        match &slots[handle.index()] {
             PoolSlot::Occupied(obj) => obj.header.prev_in_cell,
             _ => panic!("slot {} not occupied", handle),
         }
@@ -166,11 +188,11 @@ mod tests {
         let mut slots = vec![make_slot(0)];
         let cell = 42;
 
-        grid.insert_object(0, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
 
-        assert_eq!(grid.cell_head(cell), Some(0));
-        assert_eq!(get_next(&slots, 0), None);
-        assert_eq!(get_prev(&slots, 0), None);
+        assert_eq!(grid.cell_head(cell), Some(h(0)));
+        assert_eq!(get_next(&slots, h(0)), None);
+        assert_eq!(get_prev(&slots, h(0)), None);
     }
 
     #[test]
@@ -179,17 +201,17 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1)];
         let cell = 10;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
 
         // Head should be 1 (most recently inserted)
-        assert_eq!(grid.cell_head(cell), Some(1));
+        assert_eq!(grid.cell_head(cell), Some(h(1)));
         // 1 -> 0 -> None
-        assert_eq!(get_next(&slots, 1), Some(0));
-        assert_eq!(get_next(&slots, 0), None);
+        assert_eq!(get_next(&slots, h(1)), Some(h(0)));
+        assert_eq!(get_next(&slots, h(0)), None);
         // None <- 1 <- 0
-        assert_eq!(get_prev(&slots, 1), None);
-        assert_eq!(get_prev(&slots, 0), Some(1));
+        assert_eq!(get_prev(&slots, h(1)), None);
+        assert_eq!(get_prev(&slots, h(0)), Some(h(1)));
     }
 
     #[test]
@@ -198,19 +220,19 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1), make_slot(2)];
         let cell = 5;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
-        grid.insert_object(2, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
+        grid.insert_object(h(2), cell, &mut slots);
 
         // Chain: head=2 -> 1 -> 0 -> None
-        assert_eq!(grid.cell_head(cell), Some(2));
-        assert_eq!(get_next(&slots, 2), Some(1));
-        assert_eq!(get_next(&slots, 1), Some(0));
-        assert_eq!(get_next(&slots, 0), None);
+        assert_eq!(grid.cell_head(cell), Some(h(2)));
+        assert_eq!(get_next(&slots, h(2)), Some(h(1)));
+        assert_eq!(get_next(&slots, h(1)), Some(h(0)));
+        assert_eq!(get_next(&slots, h(0)), None);
         // Reverse: None <- 2 <- 1 <- 0
-        assert_eq!(get_prev(&slots, 2), None);
-        assert_eq!(get_prev(&slots, 1), Some(2));
-        assert_eq!(get_prev(&slots, 0), Some(1));
+        assert_eq!(get_prev(&slots, h(2)), None);
+        assert_eq!(get_prev(&slots, h(1)), Some(h(2)));
+        assert_eq!(get_prev(&slots, h(0)), Some(h(1)));
     }
 
     #[test]
@@ -219,22 +241,22 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1), make_slot(2)];
         let cell = 5;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
-        grid.insert_object(2, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
+        grid.insert_object(h(2), cell, &mut slots);
         // Chain: 2 -> 1 -> 0
 
-        grid.remove_object(1, cell, &mut slots);
+        grid.remove_object(h(1), cell, &mut slots);
 
         // Chain should be: 2 -> 0 -> None
-        assert_eq!(grid.cell_head(cell), Some(2));
-        assert_eq!(get_next(&slots, 2), Some(0));
-        assert_eq!(get_next(&slots, 0), None);
-        assert_eq!(get_prev(&slots, 2), None);
-        assert_eq!(get_prev(&slots, 0), Some(2));
+        assert_eq!(grid.cell_head(cell), Some(h(2)));
+        assert_eq!(get_next(&slots, h(2)), Some(h(0)));
+        assert_eq!(get_next(&slots, h(0)), None);
+        assert_eq!(get_prev(&slots, h(2)), None);
+        assert_eq!(get_prev(&slots, h(0)), Some(h(2)));
         // Removed object's links cleared
-        assert_eq!(get_next(&slots, 1), None);
-        assert_eq!(get_prev(&slots, 1), None);
+        assert_eq!(get_next(&slots, h(1)), None);
+        assert_eq!(get_prev(&slots, h(1)), None);
     }
 
     #[test]
@@ -243,15 +265,15 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1)];
         let cell = 3;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
         // Chain: 1 -> 0
 
-        grid.remove_object(1, cell, &mut slots);
+        grid.remove_object(h(1), cell, &mut slots);
 
-        assert_eq!(grid.cell_head(cell), Some(0));
-        assert_eq!(get_prev(&slots, 0), None);
-        assert_eq!(get_next(&slots, 0), None);
+        assert_eq!(grid.cell_head(cell), Some(h(0)));
+        assert_eq!(get_prev(&slots, h(0)), None);
+        assert_eq!(get_next(&slots, h(0)), None);
     }
 
     #[test]
@@ -260,15 +282,15 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1)];
         let cell = 3;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
         // Chain: 1 -> 0
 
-        grid.remove_object(0, cell, &mut slots);
+        grid.remove_object(h(0), cell, &mut slots);
 
-        assert_eq!(grid.cell_head(cell), Some(1));
-        assert_eq!(get_next(&slots, 1), None);
-        assert_eq!(get_prev(&slots, 1), None);
+        assert_eq!(grid.cell_head(cell), Some(h(1)));
+        assert_eq!(get_next(&slots, h(1)), None);
+        assert_eq!(get_prev(&slots, h(1)), None);
     }
 
     #[test]
@@ -277,12 +299,12 @@ mod tests {
         let mut slots = vec![make_slot(0)];
         let cell = 7;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.remove_object(0, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.remove_object(h(0), cell, &mut slots);
 
         assert_eq!(grid.cell_head(cell), None);
-        assert_eq!(get_next(&slots, 0), None);
-        assert_eq!(get_prev(&slots, 0), None);
+        assert_eq!(get_next(&slots, h(0)), None);
+        assert_eq!(get_prev(&slots, h(0)), None);
     }
 
     #[test]
@@ -300,14 +322,14 @@ mod tests {
         );
 
         let cell = pos1.to_tile().cell_index();
-        grid.insert_object(0, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
 
         // set_position should not modify anything
-        grid.set_position(0, &pos1, &pos2, &mut slots);
+        grid.set_position(h(0), &pos1, &pos2, &mut slots);
 
-        assert_eq!(grid.cell_head(cell), Some(0));
-        assert_eq!(get_next(&slots, 0), None);
-        assert_eq!(get_prev(&slots, 0), None);
+        assert_eq!(grid.cell_head(cell), Some(h(0)));
+        assert_eq!(get_next(&slots, h(0)), None);
+        assert_eq!(get_prev(&slots, h(0)), None);
     }
 
     #[test]
@@ -322,11 +344,11 @@ mod tests {
         let cell2 = pos2.to_tile().cell_index();
         assert_ne!(cell1, cell2, "positions must map to different cells");
 
-        grid.insert_object(0, cell1, &mut slots);
-        grid.set_position(0, &pos1, &pos2, &mut slots);
+        grid.insert_object(h(0), cell1, &mut slots);
+        grid.set_position(h(0), &pos1, &pos2, &mut slots);
 
         assert_eq!(grid.cell_head(cell1), None);
-        assert_eq!(grid.cell_head(cell2), Some(0));
+        assert_eq!(grid.cell_head(cell2), Some(h(0)));
     }
 
     #[test]
@@ -335,9 +357,9 @@ mod tests {
         let mut slots = vec![make_slot(0), make_slot(1), make_slot(2)];
         let cell = 20;
 
-        grid.insert_object(0, cell, &mut slots);
-        grid.insert_object(1, cell, &mut slots);
-        grid.insert_object(2, cell, &mut slots);
+        grid.insert_object(h(0), cell, &mut slots);
+        grid.insert_object(h(1), cell, &mut slots);
+        grid.insert_object(h(2), cell, &mut slots);
 
         // Walk the linked list manually
         let mut collected = Vec::new();
@@ -347,13 +369,32 @@ mod tests {
             current = get_next(&slots, handle);
         }
 
-        assert_eq!(collected, vec![2, 1, 0]);
+        assert_eq!(collected, vec![h(2), h(1), h(0)]);
     }
 
     #[test]
     fn empty_cell_iteration_yields_nothing() {
         let grid = CellGrid::new();
         assert_eq!(grid.cell_head(0), None);
+    }
+
+    #[test]
+    fn stale_head_is_not_linked_after_pool_slot_reuse() {
+        use crate::engine::objects::ObjectPool;
+        let mut grid = CellGrid::new();
+        let mut pool = ObjectPool::new();
+        let old = pool
+            .create(ModelType::Person, 2, 0, WorldCoord::default())
+            .unwrap();
+        grid.insert_object(old, 9, pool.slots_mut());
+        assert!(pool.destroy(old));
+        let current = pool
+            .create(ModelType::Person, 2, 0, WorldCoord::default())
+            .unwrap();
+        assert_eq!(old.slot(), current.slot());
+        grid.insert_object(current, 9, pool.slots_mut());
+        assert_eq!(grid.cell_head(9), Some(current));
+        assert_eq!(pool.get(current).unwrap().header.next_in_cell, None);
     }
 
     #[test]

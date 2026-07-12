@@ -2,11 +2,11 @@ use std::iter::Zip;
 use std::ops::RangeFrom;
 use std::slice::Chunks;
 
-use cgmath::{Vector4, Vector3, Vector2};
+use cgmath::{Vector2, Vector3, Vector4};
 
-use crate::render::model::{Triangle, VertexModel, MeshModel};
-use crate::render::envelop::{GpuModel, ModelEnvelop, RenderType};
 use crate::data::objects::{Shape, ShapeFootprints};
+use crate::render::envelop::{GpuModel, ModelEnvelop, RenderType};
+use crate::render::model::{MeshModel, Triangle, VertexModel};
 
 pub type LandscapeModel = MeshModel<Vector2<u8>, u16>;
 
@@ -72,11 +72,26 @@ impl<const N: usize> LandscapeMesh<N> {
                 let i_u8 = i as u8;
                 let j_u8 = j as u8;
                 vertices[index] = Vector2 { x: i_u8, y: j_u8 };
-                vertices[index + 1] = Vector2 { x: i_u8, y: j_u8 + 1 };
-                vertices[index + 2] = Vector2 { x: i_u8 + 1, y: j_u8 };
-                vertices[index + 3] = Vector2 { x: i_u8 + 1, y: j_u8 + 1 };
-                vertices[index + 4] = Vector2 { x: i_u8, y: j_u8 + 1 };
-                vertices[index + 5] = Vector2 { x: i_u8 + 1, y: j_u8 };
+                vertices[index + 1] = Vector2 {
+                    x: i_u8,
+                    y: j_u8 + 1,
+                };
+                vertices[index + 2] = Vector2 {
+                    x: i_u8 + 1,
+                    y: j_u8,
+                };
+                vertices[index + 3] = Vector2 {
+                    x: i_u8 + 1,
+                    y: j_u8 + 1,
+                };
+                vertices[index + 4] = Vector2 {
+                    x: i_u8,
+                    y: j_u8 + 1,
+                };
+                vertices[index + 5] = Vector2 {
+                    x: i_u8 + 1,
+                    y: j_u8,
+                };
             }
         }
         vertices
@@ -213,7 +228,8 @@ impl<const N: usize> LandscapeMesh<N> {
     /// 4. Smooths surrounding terrain
     pub fn flatten_building_footprint(
         &mut self,
-        cell_x: i32, cell_y: i32, // building center cell
+        cell_x: i32,
+        cell_y: i32, // building center cell
         shape: &Shape,
         shape_idx: usize,
         footprints: &ShapeFootprints,
@@ -221,7 +237,9 @@ impl<const N: usize> LandscapeMesh<N> {
     ) {
         let w = shape.width as i32;
         let h = shape.height as i32;
-        if w == 0 || h == 0 { return; }
+        if w == 0 || h == 0 {
+            return;
+        }
         let ni = N as i32;
 
         // Corner = center - origin (signed, clipped to map bounds)
@@ -253,7 +271,9 @@ impl<const N: usize> LandscapeMesh<N> {
             }
         }
 
-        if count == 0 { return; }
+        if count == 0 {
+            return;
+        }
 
         let target = if use_average {
             (sum / count as u64) as u16
@@ -282,17 +302,22 @@ impl<const N: usize> LandscapeMesh<N> {
 
         // Pass 3: Smooth surrounding terrain
         let radius = (w.max(h) / 2 + 1) as usize;
-        self.smooth_terrain_area(cell_x, cell_y, radius, base_cx, base_cy, w, h, shape_idx, footprints);
+        self.smooth_terrain_area(
+            cell_x, cell_y, radius, base_cx, base_cy, w, h, shape_idx, footprints,
+        );
     }
 
     /// Smooth terrain transitions around a flattened area.
     /// Averages heights at border cells to create gradual transitions.
     fn smooth_terrain_area(
         &mut self,
-        center_x: i32, center_y: i32,
+        center_x: i32,
+        center_y: i32,
         radius: usize,
-        base_cx: i32, base_cy: i32,
-        fp_w: i32, fp_h: i32,
+        base_cx: i32,
+        base_cy: i32,
+        fp_w: i32,
+        fp_h: i32,
         shape_idx: usize,
         footprints: &ShapeFootprints,
     ) {
@@ -459,7 +484,10 @@ pub struct LandscapeProgramContainer {
 
 impl LandscapeProgramContainer {
     pub fn new() -> Self {
-        Self { variants: Vec::new(), index: 0 }
+        Self {
+            variants: Vec::new(),
+            index: 0,
+        }
     }
 
     pub fn add(&mut self, variant: LandscapeVariant) {
@@ -473,7 +501,9 @@ impl LandscapeProgramContainer {
     }
 
     pub fn prev(&mut self) {
-        if self.variants.is_empty() { return; }
+        if self.variants.is_empty() {
+            return;
+        }
         self.index = if self.index == 0 {
             self.variants.len() - 1
         } else {
@@ -486,10 +516,17 @@ impl LandscapeProgramContainer {
     }
 }
 
-pub fn make_landscape_model<const N: usize>(device: &wgpu::Device, landscape_mesh: &LandscapeMesh<N>) -> ModelEnvelop<LandscapeModel> {
+pub fn make_landscape_model<const N: usize>(
+    device: &wgpu::Device,
+    landscape_mesh: &LandscapeMesh<N>,
+) -> ModelEnvelop<LandscapeModel> {
     let mut model: LandscapeModel = MeshModel::new();
     landscape_mesh.to_model(&mut model);
-    log::debug!("Landscape mesh - vertices={:?}, indices={:?}", model.vertices.len(), model.indices.len());
+    log::debug!(
+        "Landscape mesh - vertices={:?}, indices={:?}",
+        model.vertices.len(),
+        model.indices.len()
+    );
     let m = vec![(RenderType::Triangles, model)];
     let mut model_main = ModelEnvelop::<LandscapeModel>::new(device, m);
     if let Some(m) = model_main.get(0) {
@@ -497,7 +534,10 @@ pub fn make_landscape_model<const N: usize>(device: &wgpu::Device, landscape_mes
         m.location.y = LANDSCAPE_OFFSET;
         m.scale = LANDSCAPE_SCALE;
     }
-    eprintln!("[landscape] model transform: location=({0},{0},0) scale={1}", LANDSCAPE_OFFSET, LANDSCAPE_SCALE);
+    eprintln!(
+        "[landscape] model transform: location=({0},{0},0) scale={1}",
+        LANDSCAPE_OFFSET, LANDSCAPE_SCALE
+    );
     model_main
 }
 
@@ -533,12 +573,12 @@ mod tests {
 
         // Test cells (absolute cell positions)
         let test_cells: Vec<(f32, f32)> = vec![
-            (64.0, 64.0),    // near center (when shift=0)
-            (80.5, 64.5),    // moderate distance
-            (100.5, 100.5),  // far
-            (120.5, 120.5),  // very far (edge)
-            (10.5, 10.5),    // other edge
-            (64.5, 120.5),   // far in one axis
+            (64.0, 64.0),   // near center (when shift=0)
+            (80.5, 64.5),   // moderate distance
+            (100.5, 100.5), // far
+            (120.5, 120.5), // very far (edge)
+            (10.5, 10.5),   // other edge
+            (64.5, 120.5),  // far in one axis
         ];
 
         // Test with multiple shift values
@@ -553,8 +593,10 @@ mod tests {
         for (sx, sy) in &shifts {
             mesh.set_shift(*sx, *sy);
             eprintln!("\n--- shift=({},{}) ---", sx, sy);
-            eprintln!("{:<20} {:>8} {:>10} {:>10} {:>10} {:>10}",
-                "cell(vis)", "dist", "sprite_z", "shader_z", "delta", "delta_px");
+            eprintln!(
+                "{:<20} {:>8} {:>10} {:>10} {:>10} {:>10}",
+                "cell(vis)", "dist", "sprite_z", "shader_z", "delta", "delta_px"
+            );
 
             for (cx, cy) in &test_cells {
                 // Sprite code: vis = (cell - shift) % w
@@ -583,8 +625,11 @@ mod tests {
             }
         }
 
-        eprintln!("\noverall max delta = {:.6} ({:.1}px)",
-            overall_max_delta, overall_max_delta * LANDSCAPE_SCALE * 600.0);
+        eprintln!(
+            "\noverall max delta = {:.6} ({:.1}px)",
+            overall_max_delta,
+            overall_max_delta * LANDSCAPE_SCALE * 600.0
+        );
 
         // If delta > ~0.001 (≈1.5px), sprites visibly float.
         assert!(overall_max_delta < 0.1, "curvature drift sanity check");

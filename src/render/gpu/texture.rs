@@ -14,7 +14,11 @@ impl GpuTexture {
         data: &[u8],
         label: &str,
     ) -> Self {
-        let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
             size,
@@ -42,7 +46,11 @@ impl GpuTexture {
             size,
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        GpuTexture { texture, view, size }
+        GpuTexture {
+            texture,
+            view,
+            size,
+        }
     }
 
     /// Create a 2D texture with height=1, replacing OpenGL 1D textures

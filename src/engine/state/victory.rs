@@ -54,11 +54,7 @@ pub fn check_victory_conditions(
 ///
 /// Defeat: player tribe population == 0 (timer starts on first zero-pop check)
 /// Victory: all enemy tribes eliminated
-fn check_singleplayer_victory(
-    flags: &mut GameFlags,
-    tribes: &mut TribeArray,
-    player_tribe: u8,
-) {
+fn check_singleplayer_victory(flags: &mut GameFlags, tribes: &mut TribeArray, player_tribe: u8) {
     let player = player_tribe as usize;
 
     // Check if player tribe has population
@@ -80,7 +76,10 @@ fn check_singleplayer_victory(
     }
 
     // Check if all enemy tribes are eliminated
-    let all_enemies_dead = tribes.tribes.iter().enumerate()
+    let all_enemies_dead = tribes
+        .tribes
+        .iter()
+        .enumerate()
         .filter(|(i, t)| *i != player && t.active)
         .all(|(_, t)| t.population == 0);
 
@@ -96,11 +95,7 @@ fn check_singleplayer_victory(
 /// Each tribe with zero population gets its timer started.
 /// When timer reaches max, tribe is defeated.
 /// Last tribe standing (or allied group) wins.
-fn check_multiplayer_victory(
-    flags: &mut GameFlags,
-    tribes: &mut TribeArray,
-    player_tribe: u8,
-) {
+fn check_multiplayer_victory(flags: &mut GameFlags, tribes: &mut TribeArray, player_tribe: u8) {
     let player = player_tribe as usize;
 
     // Count alive tribes and detect eliminations
@@ -221,6 +216,9 @@ mod tests {
         tribes.tribes[1].reincarnation_timer = 1; // Started but not maxed
         check_victory_conditions(0x20, &mut flags, &mut tribes, 0);
         // Timer should have been incremented by 0x10
-        assert_eq!(tribes.tribes[1].reincarnation_timer, 1 + REINCARNATION_TIMER_INCREMENT);
+        assert_eq!(
+            tribes.tribes[1].reincarnation_timer,
+            1 + REINCARNATION_TIMER_INCREMENT
+        );
     }
 }

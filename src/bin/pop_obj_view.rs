@@ -11,19 +11,19 @@ use clap::{Arg, ArgAction, Command};
 
 use cgmath::Vector3;
 
+use pop3::render::camera::*;
 use pop3::render::model::MeshModel;
 use pop3::render::tex_model::TexModel;
-use pop3::render::camera::*;
 
-use pop3::data::level::{LevelPaths, GlobeTextureParams};
-use pop3::data::objects::{Object3D, mk_pop_object};
 use pop3::data::bl320::make_bl320_texture_rgba;
+use pop3::data::level::{GlobeTextureParams, LevelPaths};
+use pop3::data::objects::{mk_pop_object, Object3D};
 
+use pop3::render::envelop::*;
+use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::context::GpuContext;
 use pop3::render::gpu::pipeline::create_pipeline;
-use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::texture::GpuTexture;
-use pop3::render::envelop::*;
 
 /******************************************************************************/
 
@@ -46,8 +46,13 @@ fn mk_empty_envelope(device: &wgpu::Device) -> ModelEnvelop<TexModel> {
 
 fn obj_title(obj_num: usize, total: usize, objects_3d: &[Option<Object3D>]) -> String {
     match objects_3d.get(obj_num) {
-        Some(Some(o)) => format!("pop-obj-view [{}/{}] faces={} scale={}",
-            obj_num, total, o.iter_face().count(), o.coord_scale() as u32),
+        Some(Some(o)) => format!(
+            "pop-obj-view [{}/{}] faces={} scale={}",
+            obj_num,
+            total,
+            o.iter_face().count(),
+            o.coord_scale() as u32
+        ),
         _ => format!("pop-obj-view [{}/{}] (empty)", obj_num, total),
     }
 }
@@ -113,7 +118,12 @@ struct App {
 }
 
 impl App {
-    fn new(base: PathBuf, landtype: String, init_obj_num: Option<u16>, objects_3d: Vec<Option<Object3D>>) -> Self {
+    fn new(
+        base: PathBuf,
+        landtype: String,
+        init_obj_num: Option<u16>,
+        objects_3d: Vec<Option<Object3D>>,
+    ) -> Self {
         let mut camera = Camera::new();
         camera.angle_x = -75;
         camera.angle_z = 60;
@@ -128,7 +138,10 @@ impl App {
             shadow_bind_group: None,
             pop_obj: None,
             camera,
-            screen: Screen { width: 800, height: 600 },
+            screen: Screen {
+                width: 800,
+                height: 600,
+            },
             objects_3d,
             obj_num: init_obj_num.unwrap_or(0) as usize,
             scale: 1.0,
@@ -167,11 +180,15 @@ impl App {
                 return;
             }
         };
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("render_encoder"),
-        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render_encoder"),
+            });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -232,7 +249,8 @@ impl ApplicationHandler for App {
             let params = GlobeTextureParams::from_level(&paths);
             (paths, params)
         };
-        let (width, height, mut bl320_tex) = make_bl320_texture_rgba(&level_paths.bl320, &params.palette);
+        let (width, height, mut bl320_tex) =
+            make_bl320_texture_rgba(&level_paths.bl320, &params.palette);
 
         // Mark transparent pixels (palette index 0) with alpha=255 so the shader
         // can discard them via `if (color.w > 0.0) { discard; }`.
@@ -247,8 +265,10 @@ impl ApplicationHandler for App {
         }
 
         let bl320_gpu_tex = GpuTexture::new_2d(
-            device, &gpu.queue,
-            width as u32, height as u32,
+            device,
+            &gpu.queue,
+            width as u32,
+            height as u32,
             wgpu::TextureFormat::Rgba8Unorm,
             &bl320_tex,
             "bl320_texture",
@@ -262,48 +282,54 @@ impl ApplicationHandler for App {
         // LightParams: sun_dir(3f) + ambient(1f) + camera_focus(2f) + viewport_radius(1f) + game_tick(1f)
         let sun_len = (0.5_f32 * 0.5 + 1.0 * 1.0 + 0.7 * 0.7).sqrt();
         let light_data: [f32; 8] = [
-            0.5 / sun_len, 1.0 / sun_len, 0.7 / sun_len, 0.4,
-            0.0, 0.0, 100.0, 0.0,
+            0.5 / sun_len,
+            1.0 / sun_len,
+            0.7 / sun_len,
+            0.4,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
         ];
-        let lighting_buffer = GpuBuffer::new_uniform_init(
-            device, bytemuck::bytes_of(&light_data), "lighting_buffer",
-        );
+        let lighting_buffer =
+            GpuBuffer::new_uniform_init(device, bytemuck::bytes_of(&light_data), "lighting_buffer");
 
-        let mvp_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("mvp_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+        let mvp_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("mvp_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
+                ],
+            });
 
         let mvp_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mvp_bind_group"),
@@ -325,27 +351,28 @@ impl ApplicationHandler for App {
         });
 
         // Texture bind group (group 1): texture + sampler
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("texture_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("texture_bind_group"),
@@ -365,7 +392,11 @@ impl ApplicationHandler for App {
         // Shadow bind group (group 2): dummy 1x1 depth texture + comparison sampler + identity MVP
         let shadow_depth_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy_shadow_depth"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -373,7 +404,8 @@ impl ApplicationHandler for App {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        let shadow_depth_view = shadow_depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let shadow_depth_view =
+            shadow_depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let shadow_comparison_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("shadow_comparison_sampler"),
             compare: Some(wgpu::CompareFunction::LessEqual),
@@ -381,54 +413,63 @@ impl ApplicationHandler for App {
         });
         // Identity matrix — no shadow transform
         let identity_mat: [f32; 16] = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ];
         let shadow_mvp_buffer = GpuBuffer::new_uniform_init(
-            device, bytemuck::bytes_of(&identity_mat), "shadow_mvp_buffer",
+            device,
+            bytemuck::bytes_of(&identity_mat),
+            "shadow_mvp_buffer",
         );
 
-        let shadow_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("shadow_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+        let shadow_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("shadow_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
 
         let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shadow_bind_group"),
             layout: &shadow_bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&shadow_depth_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&shadow_comparison_sampler) },
-                wgpu::BindGroupEntry { binding: 2, resource: shadow_mvp_buffer.buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&shadow_comparison_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: shadow_mvp_buffer.buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -439,7 +480,11 @@ impl ApplicationHandler for App {
             device,
             shader_source,
             &vertex_layouts,
-            &[&mvp_bind_group_layout, &texture_bind_group_layout, &shadow_bind_group_layout],
+            &[
+                &mvp_bind_group_layout,
+                &texture_bind_group_layout,
+                &shadow_bind_group_layout,
+            ],
             gpu.surface_format(),
             true,
             wgpu::PrimitiveTopology::TriangleList,
@@ -448,7 +493,11 @@ impl ApplicationHandler for App {
 
         // Create model
         if self.obj_num >= self.objects_3d.len() {
-            log::error!("Object number is too big {:?} >= {:?}", self.obj_num, self.objects_3d.len());
+            log::error!(
+                "Object number is too big {:?} >= {:?}",
+                self.obj_num,
+                self.objects_3d.len()
+            );
             event_loop.exit();
             return;
         }
@@ -464,7 +513,10 @@ impl ApplicationHandler for App {
                 mk_empty_envelope(device)
             }
         };
-        eprintln!("{}", obj_title(self.obj_num, self.objects_3d.len(), &self.objects_3d));
+        eprintln!(
+            "{}",
+            obj_title(self.obj_num, self.objects_3d.len(), &self.objects_3d)
+        );
 
         self.pipeline = Some(pipeline);
         self.mvp_buffer = Some(mvp_buffer);
@@ -477,7 +529,12 @@ impl ApplicationHandler for App {
         self.do_render = true;
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::Resized(physical_size) => {
                 self.screen.width = physical_size.width;
@@ -486,7 +543,7 @@ impl ApplicationHandler for App {
                     gpu.resize(physical_size);
                 }
                 self.do_render = true;
-            },
+            }
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
@@ -495,59 +552,59 @@ impl ApplicationHandler for App {
                             KeyCode::KeyQ => {
                                 event_loop.exit();
                                 return;
-                            },
+                            }
                             KeyCode::ArrowUp => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.angles[0] += 5.0;
                                 }
-                            },
+                            }
                             KeyCode::ArrowDown => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.angles[0] -= 5.0;
                                 }
-                            },
+                            }
                             KeyCode::ArrowLeft => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.angles[1] += 5.0;
                                 }
-                            },
+                            }
                             KeyCode::ArrowRight => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.angles[1] -= 5.0;
                                 }
-                            },
+                            }
                             KeyCode::KeyL => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.location[0] += 0.1;
                                 }
-                            },
+                            }
                             KeyCode::KeyH => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.location[0] -= 0.1;
                                 }
-                            },
+                            }
                             KeyCode::KeyJ => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.location[1] += 0.1;
                                 }
-                            },
+                            }
                             KeyCode::KeyK => {
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.location[1] -= 0.1;
                                 }
-                            },
+                            }
                             KeyCode::KeyN => {
                                 self.scale -= self.scale * 0.1;
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.scale = self.scale_origin * self.scale;
                                 }
-                            },
+                            }
                             KeyCode::KeyM => {
                                 self.scale += self.scale * 0.1;
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.scale = self.scale_origin * self.scale;
                                 }
-                            },
+                            }
                             KeyCode::KeyV => {
                                 // Previous non-empty object
                                 let mut i = self.obj_num;
@@ -558,7 +615,7 @@ impl ApplicationHandler for App {
                                         break;
                                     }
                                 }
-                            },
+                            }
                             KeyCode::KeyB => {
                                 // Next non-empty object
                                 let mut i = self.obj_num;
@@ -569,25 +626,25 @@ impl ApplicationHandler for App {
                                         break;
                                     }
                                 }
-                            },
+                            }
                             KeyCode::KeyR => {
                                 self.scale = 1.0;
                                 if let Some(m) = self.pop_obj.as_mut().and_then(|o| o.get(0)) {
                                     m.scale = self.scale_origin * self.scale;
                                 }
-                            },
+                            }
                             _ => (),
                         }
                         self.do_render = true;
                     }
                 }
-            },
+            }
             WindowEvent::RedrawRequested => {
                 if self.do_render && self.gpu.is_some() {
                     self.render();
                     self.do_render = false;
                 }
-            },
+            }
             _ => (),
         }
         if self.do_render {
@@ -600,7 +657,9 @@ impl ApplicationHandler for App {
 
 impl App {
     fn switch_object(&mut self, new_obj: usize) {
-        let (l, a) = self.pop_obj.as_mut()
+        let (l, a) = self
+            .pop_obj
+            .as_mut()
             .and_then(|o| o.get(0))
             .map(|m| (m.location, m.angles))
             .unwrap_or((Vector3::new(0.0, -0.5, 0.0), Vector3::new(0.0, 0.0, 0.0)));
@@ -641,8 +700,14 @@ fn main() {
         let base = matches.get_one("base").cloned();
         base.unwrap_or_else(|| Path::new("/opt/sandbox/pop").to_path_buf())
     };
-    let landtype = matches.get_one("landtype").cloned().unwrap_or_else(|| "1".to_string());
-    let bank = matches.get_one("bank").cloned().unwrap_or_else(|| "0".to_string());
+    let landtype = matches
+        .get_one("landtype")
+        .cloned()
+        .unwrap_or_else(|| "1".to_string());
+    let bank = matches
+        .get_one("bank")
+        .cloned()
+        .unwrap_or_else(|| "0".to_string());
     let debug = matches.get_flag("debug");
     let obj_num: Option<u16> = matches.get_one("obj_num").copied();
 
@@ -653,8 +718,12 @@ fn main() {
     env_logger::init_from_env(env);
 
     let objects_3d = Object3D::from_file_all(&base, &bank);
-    eprintln!("Loaded {} objects from OBJS0-{}.DAT ({} with faces)",
-        objects_3d.len(), bank, objects_3d.iter().filter(|o| o.is_some()).count());
+    eprintln!(
+        "Loaded {} objects from OBJS0-{}.DAT ({} with faces)",
+        objects_3d.len(),
+        bank,
+        objects_3d.iter().filter(|o| o.is_some()).count()
+    );
 
     let event_loop = EventLoop::new().unwrap();
     let mut app = App::new(base, landtype, obj_num, objects_3d);

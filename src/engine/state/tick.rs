@@ -121,11 +121,7 @@ impl GameWorld {
     /// tick, capped at MAX_CATCHUP_TICKS to prevent spiral of death.
     ///
     /// Returns the number of ticks actually executed this frame.
-    pub fn simulation_tick(
-        &mut self,
-        time: &dyn TimeSource,
-        subs: &mut TickSubsystems,
-    ) -> u32 {
+    pub fn simulation_tick(&mut self, time: &dyn TimeSource, subs: &mut TickSubsystems) -> u32 {
         // Only tick during active gameplay
         if self.state != GameState::InGame {
             return 0;
@@ -210,9 +206,7 @@ impl GameWorld {
         for _ in 0..iterations {
             // 7a. Single-player or tutorial tick
             // Original: CMP byte ptr [0x00884119], 0x02; JZ tutorial
-            if self.tutorial_mode == TUTORIAL_MODE_2
-                || self.tutorial_mode == TUTORIAL_MODE_3
-            {
+            if self.tutorial_mode == TUTORIAL_MODE_2 || self.tutorial_mode == TUTORIAL_MODE_3 {
                 // Tick_UpdateTutorial (0x00469320)
                 subs.tutorial.tick_update_tutorial();
             } else {
@@ -285,17 +279,38 @@ mod tests {
     type CallLog = Rc<RefCell<Vec<&'static str>>>;
 
     /// Create a NoOp subsystems bundle for tests that don't care about call order.
-    fn noop_subs() -> (NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp) {
-        (NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp)
+    fn noop_subs() -> (
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+        NoOp,
+    ) {
+        (
+            NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp, NoOp,
+        )
     }
 
     macro_rules! make_subs {
         ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr, $i:expr, $j:expr, $k:expr) => {
             TickSubsystems {
-                terrain: $a, objects: $b, water: $c,
-                network: $d, actions: $e, game_time: $f,
-                single_player: $g, tutorial: $h, ai: $i,
-                population: $j, mana: $k,
+                terrain: $a,
+                objects: $b,
+                water: $c,
+                network: $d,
+                actions: $e,
+                game_time: $f,
+                single_player: $g,
+                tutorial: $h,
+                ai: $i,
+                population: $j,
+                mana: $k,
             }
         };
     }
@@ -313,25 +328,73 @@ mod tests {
     struct RecPopulation(CallLog);
     struct RecMana(CallLog);
 
-    impl TerrainTick for RecTerrain { fn tick_update_terrain(&mut self) { self.0.borrow_mut().push("terrain"); } }
-    impl ObjectTick for RecObjects { fn tick_update_objects(&mut self) { self.0.borrow_mut().push("objects"); } }
-    impl WaterTick for RecWater { fn tick_update_water(&mut self) { self.0.borrow_mut().push("water"); } }
-    impl NetworkTick for RecNetwork { fn tick_process_network(&mut self) -> bool { self.0.borrow_mut().push("network"); true } }
-    impl ActionTick for RecActions { fn tick_process_actions(&mut self) { self.0.borrow_mut().push("actions"); } }
-    impl GameTimeTick for RecGameTime { fn tick_update_game_time(&mut self) { self.0.borrow_mut().push("game_time"); } }
-    impl SinglePlayerTick for RecSinglePlayer { fn tick_update_single_player(&mut self) { self.0.borrow_mut().push("single_player"); } }
-    impl TutorialTick for RecTutorial { fn tick_update_tutorial(&mut self) { self.0.borrow_mut().push("tutorial"); } }
-    impl AiTick for RecAi { fn tick_update_ai(&mut self) { self.0.borrow_mut().push("ai"); } }
-    impl PopulationTick for RecPopulation { fn tick_update_population(&mut self) { self.0.borrow_mut().push("population"); } }
-    impl ManaTick for RecMana { fn tick_update_mana(&mut self) { self.0.borrow_mut().push("mana"); } }
+    impl TerrainTick for RecTerrain {
+        fn tick_update_terrain(&mut self) {
+            self.0.borrow_mut().push("terrain");
+        }
+    }
+    impl ObjectTick for RecObjects {
+        fn tick_update_objects(&mut self) {
+            self.0.borrow_mut().push("objects");
+        }
+    }
+    impl WaterTick for RecWater {
+        fn tick_update_water(&mut self) {
+            self.0.borrow_mut().push("water");
+        }
+    }
+    impl NetworkTick for RecNetwork {
+        fn tick_process_network(&mut self) -> bool {
+            self.0.borrow_mut().push("network");
+            true
+        }
+    }
+    impl ActionTick for RecActions {
+        fn tick_process_actions(&mut self) {
+            self.0.borrow_mut().push("actions");
+        }
+    }
+    impl GameTimeTick for RecGameTime {
+        fn tick_update_game_time(&mut self) {
+            self.0.borrow_mut().push("game_time");
+        }
+    }
+    impl SinglePlayerTick for RecSinglePlayer {
+        fn tick_update_single_player(&mut self) {
+            self.0.borrow_mut().push("single_player");
+        }
+    }
+    impl TutorialTick for RecTutorial {
+        fn tick_update_tutorial(&mut self) {
+            self.0.borrow_mut().push("tutorial");
+        }
+    }
+    impl AiTick for RecAi {
+        fn tick_update_ai(&mut self) {
+            self.0.borrow_mut().push("ai");
+        }
+    }
+    impl PopulationTick for RecPopulation {
+        fn tick_update_population(&mut self) {
+            self.0.borrow_mut().push("population");
+        }
+    }
+    impl ManaTick for RecMana {
+        fn tick_update_mana(&mut self) {
+            self.0.borrow_mut().push("mana");
+        }
+    }
 
     #[test]
     fn test_no_tick_when_not_in_game() {
         let mut world = GameWorld::new(10);
         world.state = GameState::Frontend;
         let time = MockTime { ms: 1000 };
-        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h, mut i, mut j, mut k) = noop_subs();
-        let mut subs = make_subs!(&mut a, &mut b, &mut c, &mut d, &mut e, &mut f, &mut g, &mut h, &mut i, &mut j, &mut k);
+        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h, mut i, mut j, mut k) =
+            noop_subs();
+        let mut subs = make_subs!(
+            &mut a, &mut b, &mut c, &mut d, &mut e, &mut f, &mut g, &mut h, &mut i, &mut j, &mut k
+        );
         assert_eq!(world.simulation_tick(&time, &mut subs), 0);
     }
 
@@ -357,10 +420,17 @@ mod tests {
         // First call initializes last_tick_time
         let time = MockTime { ms: 0 };
         let mut subs = make_subs!(
-            &mut r_terrain, &mut r_objects, &mut r_water,
-            &mut r_network, &mut r_actions, &mut r_game_time,
-            &mut r_single_player, &mut r_tutorial, &mut r_ai,
-            &mut r_population, &mut r_mana
+            &mut r_terrain,
+            &mut r_objects,
+            &mut r_water,
+            &mut r_network,
+            &mut r_actions,
+            &mut r_game_time,
+            &mut r_single_player,
+            &mut r_tutorial,
+            &mut r_ai,
+            &mut r_population,
+            &mut r_mana
         );
         world.simulation_tick(&time, &mut subs);
         log.borrow_mut().clear();
@@ -373,8 +443,16 @@ mod tests {
         assert_eq!(
             *log.borrow(),
             vec![
-                "network", "actions", "game_time", "terrain", "objects", "water",
-                "single_player", "ai", "population", "mana",
+                "network",
+                "actions",
+                "game_time",
+                "terrain",
+                "objects",
+                "water",
+                "single_player",
+                "ai",
+                "population",
+                "mana",
             ]
         );
     }
@@ -386,8 +464,11 @@ mod tests {
 
         // Initialize (ms=1 so first tick actually runs; ms=0 would saturate to 0)
         let time = MockTime { ms: 1 };
-        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h, mut i, mut j, mut k) = noop_subs();
-        let mut subs = make_subs!(&mut a, &mut b, &mut c, &mut d, &mut e, &mut f, &mut g, &mut h, &mut i, &mut j, &mut k);
+        let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h, mut i, mut j, mut k) =
+            noop_subs();
+        let mut subs = make_subs!(
+            &mut a, &mut b, &mut c, &mut d, &mut e, &mut f, &mut g, &mut h, &mut i, &mut j, &mut k
+        );
         world.simulation_tick(&time, &mut subs);
 
         // Jump far ahead (should be capped at MAX_CATCHUP_TICKS)
@@ -418,10 +499,17 @@ mod tests {
 
         let time = MockTime { ms: 0 };
         let mut subs = make_subs!(
-            &mut r_terrain, &mut r_objects, &mut r_water,
-            &mut r_network, &mut r_actions, &mut r_game_time,
-            &mut r_single_player, &mut r_tutorial, &mut r_ai,
-            &mut r_population, &mut r_mana
+            &mut r_terrain,
+            &mut r_objects,
+            &mut r_water,
+            &mut r_network,
+            &mut r_actions,
+            &mut r_game_time,
+            &mut r_single_player,
+            &mut r_tutorial,
+            &mut r_ai,
+            &mut r_population,
+            &mut r_mana
         );
         world.simulation_tick(&time, &mut subs);
         log.borrow_mut().clear();

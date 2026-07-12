@@ -8,8 +8,17 @@ pub fn create_pipeline(
     topology: wgpu::PrimitiveTopology,
     label: &str,
 ) -> wgpu::RenderPipeline {
-    create_pipeline_blended(device, shader_source, vertex_layouts, bind_group_layouts,
-        surface_format, depth, topology, label, wgpu::BlendState::REPLACE)
+    create_pipeline_blended(
+        device,
+        shader_source,
+        vertex_layouts,
+        bind_group_layouts,
+        surface_format,
+        depth,
+        topology,
+        label,
+        wgpu::BlendState::REPLACE,
+    )
 }
 
 pub fn create_pipeline_blended(

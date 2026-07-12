@@ -1,8 +1,8 @@
-use cgmath::{Vector3, Matrix4, Rad, Deg};
+use cgmath::{Deg, Matrix4, Rad, Vector3};
 
+use crate::render::gpu::buffer::GpuBuffer;
 use crate::render::model::{IterTriangleModel, TriangleIteratorVector3};
 use crate::render::picking::intersect_iter;
-use crate::render::gpu::buffer::GpuBuffer;
 
 pub trait GpuModel {
     /// Vertex buffer layouts for pipeline creation
@@ -36,10 +36,24 @@ pub struct EModel<M> {
 
 impl<M> EModel<M> {
     pub fn new(model: M, render: RenderType) -> Self {
-        let location = Vector3 { x: 0.0, y: 0.0, z: 0.0 };
-        let angles = Vector3 { x: 0.0, y: 0.0, z: 0.0 };
+        let location = Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let angles = Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
         let scale = 1.0;
-        Self { model, location, angles, scale, render }
+        Self {
+            model,
+            location,
+            angles,
+            scale,
+            render,
+        }
     }
 
     pub fn transform(&self) -> Matrix4<f32> {
@@ -109,7 +123,11 @@ impl<M: GpuModel> ModelEnvelop<M> {
 
         let vertex_buffer = GpuBuffer::new_vertex(device, &all_vertex_data, "model_vertex_buffer");
         let index_buffer = if has_any_index {
-            Some(GpuBuffer::new_index(device, &all_index_data, "model_index_buffer"))
+            Some(GpuBuffer::new_index(
+                device,
+                &all_index_data,
+                "model_index_buffer",
+            ))
         } else {
             None
         };
@@ -134,7 +152,9 @@ impl<M: GpuModel> ModelEnvelop<M> {
     /// Draw all models. Caller is responsible for setting bind groups before this call.
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
         for (i, e) in self.models.iter().enumerate() {
-            if e.model.vertex_count() == 0 && e.model.index_count() == 0 { continue; }
+            if e.model.vertex_count() == 0 && e.model.index_count() == 0 {
+                continue;
+            }
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(self.vertex_offsets[i]..));
 
             if e.model.is_indexed() {
@@ -154,8 +174,11 @@ impl<M: GpuModel> ModelEnvelop<M> {
     /// Draw a single model by index. Caller is responsible for setting bind groups.
     pub fn draw_single<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, index: usize) {
         if let Some(e) = self.models.get(index) {
-            if e.model.vertex_count() == 0 && e.model.index_count() == 0 { return; }
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(self.vertex_offsets[index]..));
+            if e.model.vertex_count() == 0 && e.model.index_count() == 0 {
+                return;
+            }
+            render_pass
+                .set_vertex_buffer(0, self.vertex_buffer.slice(self.vertex_offsets[index]..));
             if e.model.is_indexed() {
                 if let Some(ref idx_buf) = self.index_buffer {
                     render_pass.set_index_buffer(
@@ -196,7 +219,8 @@ impl<M: GpuModel> ModelEnvelop<M> {
         }
 
         // Recreate vertex buffer
-        let new_vertex_buffer = GpuBuffer::new_vertex(device, &all_vertex_data, "model_vertex_buffer");
+        let new_vertex_buffer =
+            GpuBuffer::new_vertex(device, &all_vertex_data, "model_vertex_buffer");
         self.vertex_buffer = new_vertex_buffer.buffer;
 
         // Rebuild index data

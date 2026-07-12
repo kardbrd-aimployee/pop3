@@ -21,9 +21,9 @@ use winit::window::{Window, WindowAttributes};
 
 use clap::{Arg, Command};
 
+use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::context::GpuContext;
 use pop3::render::gpu::pipeline::create_pipeline;
-use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::texture::GpuTexture;
 
 use pop3::data::psfb::ContainerPSFB;
@@ -44,16 +44,56 @@ const NUM_DIRECTIONS: usize = 8;
 const DEFAULT_SPEED: f32 = 0.08;
 
 const CHARACTER_ANIMATIONS: &[AnimationDef] = &[
-    AnimationDef { sprite_start: 7578, frames_per_dir: 8, name: "Shaman Idle 1" },
-    AnimationDef { sprite_start: 7618, frames_per_dir: 8, name: "Shaman Idle 2" },
-    AnimationDef { sprite_start: 7658, frames_per_dir: 8, name: "Shaman Idle 3" },
-    AnimationDef { sprite_start: 7698, frames_per_dir: 8, name: "Shaman Idle 4" },
-    AnimationDef { sprite_start: 7738, frames_per_dir: 3, name: "Animation 5" },
-    AnimationDef { sprite_start: 7753, frames_per_dir: 3, name: "Animation 6" },
-    AnimationDef { sprite_start: 7768, frames_per_dir: 3, name: "Animation 7" },
-    AnimationDef { sprite_start: 7783, frames_per_dir: 3, name: "Animation 8" },
-    AnimationDef { sprite_start: 7798, frames_per_dir: 3, name: "Animation 9" },
-    AnimationDef { sprite_start: 7813, frames_per_dir: 3, name: "Animation 10" },
+    AnimationDef {
+        sprite_start: 7578,
+        frames_per_dir: 8,
+        name: "Shaman Idle 1",
+    },
+    AnimationDef {
+        sprite_start: 7618,
+        frames_per_dir: 8,
+        name: "Shaman Idle 2",
+    },
+    AnimationDef {
+        sprite_start: 7658,
+        frames_per_dir: 8,
+        name: "Shaman Idle 3",
+    },
+    AnimationDef {
+        sprite_start: 7698,
+        frames_per_dir: 8,
+        name: "Shaman Idle 4",
+    },
+    AnimationDef {
+        sprite_start: 7738,
+        frames_per_dir: 3,
+        name: "Animation 5",
+    },
+    AnimationDef {
+        sprite_start: 7753,
+        frames_per_dir: 3,
+        name: "Animation 6",
+    },
+    AnimationDef {
+        sprite_start: 7768,
+        frames_per_dir: 3,
+        name: "Animation 7",
+    },
+    AnimationDef {
+        sprite_start: 7783,
+        frames_per_dir: 3,
+        name: "Animation 8",
+    },
+    AnimationDef {
+        sprite_start: 7798,
+        frames_per_dir: 3,
+        name: "Animation 9",
+    },
+    AnimationDef {
+        sprite_start: 7813,
+        frames_per_dir: 3,
+        name: "Animation 10",
+    },
 ];
 
 /// Returns (source_direction, is_mirrored) for a display direction 0-7
@@ -77,7 +117,9 @@ fn get_source_direction(dir: usize) -> (usize, bool) {
 
 fn load_palette(path: &Path) -> Option<Vec<[u8; 4]>> {
     let data = std::fs::read(path).ok()?;
-    if data.len() < 1024 { return None; }
+    if data.len() < 1024 {
+        return None;
+    }
     let mut palette = Vec::with_capacity(256);
     for i in 0..256 {
         let off = i * 4;
@@ -121,7 +163,9 @@ fn build_atlas(
             }
         }
     }
-    if max_w == 0 || max_h == 0 { return None; }
+    if max_w == 0 || max_h == 0 {
+        return None;
+    }
 
     let fw = max_w as u32;
     let fh = max_h as u32;
@@ -185,20 +229,20 @@ fn build_atlas(
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SpriteUniforms {
-    projection: [[f32; 4]; 4],  // offset 0, size 64
-    uv_offset: [f32; 2],        // offset 64, size 8
-    uv_scale: [f32; 2],         // offset 72, size 8
-    mirror: [f32; 4],           // offset 80, size 16 (vec4 in WGSL)
+    projection: [[f32; 4]; 4], // offset 0, size 64
+    uv_offset: [f32; 2],       // offset 64, size 8
+    uv_scale: [f32; 2],        // offset 72, size 8
+    mirror: [f32; 4],          // offset 80, size 16 (vec4 in WGSL)
 }
 
 fn ortho_projection(width: f32, height: f32) -> [[f32; 4]; 4] {
     let hw = width / 2.0;
     let hh = height / 2.0;
     [
-        [1.0 / hw, 0.0,       0.0, 0.0],
-        [0.0,      1.0 / hh,  0.0, 0.0],
-        [0.0,      0.0,       1.0, 0.0],
-        [0.0,      0.0,       0.0, 1.0],
+        [1.0 / hw, 0.0, 0.0, 0.0],
+        [0.0, 1.0 / hh, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 }
 
@@ -216,12 +260,30 @@ struct SpriteVertex {
 /// Create a quad centered at (cx, cy) with given half-sizes
 fn make_quad(cx: f32, cy: f32, hw: f32, hh: f32) -> [SpriteVertex; 6] {
     [
-        SpriteVertex { position: [cx - hw, cy - hh], uv: [0.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy - hh], uv: [1.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy + hh], uv: [1.0, 0.0] },
-        SpriteVertex { position: [cx - hw, cy - hh], uv: [0.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy + hh], uv: [1.0, 0.0] },
-        SpriteVertex { position: [cx - hw, cy + hh], uv: [0.0, 0.0] },
+        SpriteVertex {
+            position: [cx - hw, cy - hh],
+            uv: [0.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy - hh],
+            uv: [1.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy + hh],
+            uv: [1.0, 0.0],
+        },
+        SpriteVertex {
+            position: [cx - hw, cy - hh],
+            uv: [0.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy + hh],
+            uv: [1.0, 0.0],
+        },
+        SpriteVertex {
+            position: [cx - hw, cy + hh],
+            uv: [0.0, 0.0],
+        },
     ]
 }
 
@@ -240,9 +302,9 @@ struct ViewerState {
     gpu: GpuContext,
     pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    bind_groups: Vec<wgpu::BindGroup>,        // One per direction
-    vertex_buffers: Vec<GpuBuffer>,            // One per direction
-    uniform_buffers: Vec<GpuBuffer>,           // One per direction
+    bind_groups: Vec<wgpu::BindGroup>, // One per direction
+    vertex_buffers: Vec<GpuBuffer>,    // One per direction
+    uniform_buffers: Vec<GpuBuffer>,   // One per direction
     sampler: wgpu::Sampler,
     sprite_atlas: GpuTexture,
 
@@ -271,12 +333,7 @@ impl App {
 }
 
 impl ViewerState {
-    fn rebuild_atlas(
-        &mut self,
-        container: &ContainerPSFB,
-        palette: &[[u8; 4]],
-        char_idx: usize,
-    ) {
+    fn rebuild_atlas(&mut self, container: &ContainerPSFB, palette: &[[u8; 4]], char_idx: usize) {
         let anim = &CHARACTER_ANIMATIONS[char_idx];
         if let Some(atlas) = build_atlas(container, palette, anim) {
             self.sprite_atlas = GpuTexture::new_2d(
@@ -292,24 +349,29 @@ impl ViewerState {
             // Rebuild bind groups with new texture
             self.bind_groups.clear();
             for dir in 0..NUM_DIRECTIONS {
-                let bg = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("sprite_bg_{}", dir)),
-                    layout: &self.bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: self.uniform_buffers[dir].buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(&self.sprite_atlas.view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&self.sampler),
-                        },
-                    ],
-                });
+                let bg = self
+                    .gpu
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some(&format!("sprite_bg_{}", dir)),
+                        layout: &self.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: self.uniform_buffers[dir].buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(
+                                    &self.sprite_atlas.view,
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                        ],
+                    });
                 self.bind_groups.push(bg);
             }
 
@@ -337,8 +399,10 @@ impl ViewerState {
             self.atlas = atlas;
             self.current_frame = 0;
             self.current_character = char_idx;
-            println!("Loaded: {} ({} frames/dir, atlas {}x{})",
-                anim.name, anim.frames_per_dir, self.atlas.atlas_width, self.atlas.atlas_height);
+            println!(
+                "Loaded: {} ({} frames/dir, atlas {}x{})",
+                anim.name, anim.frames_per_dir, self.atlas.atlas_width, self.atlas.atlas_height
+            );
         }
     }
 
@@ -347,7 +411,9 @@ impl ViewerState {
             Ok(t) => t,
             Err(_) => return,
         };
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let proj = ortho_projection(
             self.gpu.size.width as f32 / 2.0,
@@ -362,8 +428,18 @@ impl ViewerState {
         let ca = self.camera_angle.cos();
         let sa = self.camera_angle.sin();
         let rot_proj = [
-            [proj[0][0] * ca + proj[1][0] * sa, proj[0][1] * ca + proj[1][1] * sa, 0.0, 0.0],
-            [proj[1][0] * ca - proj[0][0] * sa, proj[1][1] * ca - proj[0][1] * sa, 0.0, 0.0],
+            [
+                proj[0][0] * ca + proj[1][0] * sa,
+                proj[0][1] * ca + proj[1][1] * sa,
+                0.0,
+                0.0,
+            ],
+            [
+                proj[1][0] * ca - proj[0][0] * sa,
+                proj[1][1] * ca - proj[0][1] * sa,
+                0.0,
+                0.0,
+            ],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ];
@@ -387,9 +463,12 @@ impl ViewerState {
             );
         }
 
-        let mut encoder = self.gpu.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("sprite_encoder") },
-        );
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("sprite_encoder"),
+            });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -399,7 +478,10 @@ impl ViewerState {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05, g: 0.05, b: 0.1, a: 1.0,
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.1,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -440,7 +522,10 @@ impl ViewerState {
         match key {
             KeyCode::Space => {
                 self.paused = !self.paused;
-                println!("Animation {}", if self.paused { "paused" } else { "running" });
+                println!(
+                    "Animation {}",
+                    if self.paused { "paused" } else { "running" }
+                );
             }
             KeyCode::ArrowUp => {
                 self.anim_speed = (self.anim_speed - 0.02).max(0.02);
@@ -639,8 +724,10 @@ impl ApplicationHandler for App {
             vertex_buffers.push(buf);
         }
 
-        println!("Loaded: {} ({} frames/dir, atlas {}x{})",
-            anim.name, anim.frames_per_dir, atlas.atlas_width, atlas.atlas_height);
+        println!(
+            "Loaded: {} ({} frames/dir, atlas {}x{})",
+            anim.name, anim.frames_per_dir, atlas.atlas_width, atlas.atlas_height
+        );
 
         self.state = Some(ViewerState {
             gpu,
@@ -662,7 +749,12 @@ impl ApplicationHandler for App {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _wid: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _wid: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -729,13 +821,12 @@ fn main() {
     let data_dir = base.join("data");
 
     // Load palette
-    let palette = load_palette(&data_dir.join("pal0-0.dat"))
-        .expect("Failed to load palette from pal0-0.dat");
+    let palette =
+        load_palette(&data_dir.join("pal0-0.dat")).expect("Failed to load palette from pal0-0.dat");
 
     // Load sprite container
     let sprite_path = data_dir.join("HSPR0-0.DAT");
-    let container = ContainerPSFB::from_file(&sprite_path)
-        .expect("Failed to load HSPR0-0.DAT");
+    let container = ContainerPSFB::from_file(&sprite_path).expect("Failed to load HSPR0-0.DAT");
 
     println!("Loaded {} sprites from HSPR0-0.DAT", container.len());
 

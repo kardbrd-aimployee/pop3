@@ -3,35 +3,30 @@
 // Provides the bridge between user input (selection, move orders) and
 // the movement system (pathfinding, per-tick position updates).
 
-use crate::engine::state::rng::GameRng;
-use crate::engine::state::traits::ObjectTick;
-use crate::engine::movement::{
-    RegionMap, SegmentPool, FailureCache, UsedTargetsCache,
-    PersonMovement, WorldCoord, RouteResult,
-    state_goto, process_route_movement, move_point_by_angle,
-    atan2,
+use super::animation::{select_animation, tick_animation, AnimationState};
+use super::coords::{cell_to_tile, cell_to_world, toroidal_delta, world_to_render_pos};
+use super::person_state::{
+    apply_damage, calculate_melee_damage, enter_state, person_type_defaults, tick_state,
+    CombatPhase, DeferredAction, PersonState, TickResult, COMBAT_DETECT_RANGE, COMBAT_MELEE_RANGE,
+    SWING_READY_TICKS,
 };
+use super::selection::{DragState, SelectionState};
+use super::unit::Unit;
 use crate::data::units::{ModelType, UnitRaw};
-use crate::engine::objects::{ObjectPool, ObjectHandle, CellGrid, GameObjectData};
 use crate::engine::buildings::{
-    self,
-    tick::BuildingTickActions,
-    SpawnAction, ConvertAction, BuildingCombatAction,
-    BuildingState,
+    self, tick::BuildingTickActions, BuildingCombatAction, BuildingState, ConvertAction,
+    SpawnAction,
 };
 use crate::engine::combat;
-use crate::engine::effects::EffectAction;
 use crate::engine::effects::types::EffectType;
-use super::unit::Unit;
-use super::person_state::{
-    PersonState, person_type_defaults, enter_state, tick_state, TickResult, DeferredAction,
-    calculate_melee_damage, apply_damage,
-    CombatPhase, SWING_READY_TICKS,
-    COMBAT_DETECT_RANGE, COMBAT_MELEE_RANGE,
+use crate::engine::effects::EffectAction;
+use crate::engine::movement::{
+    atan2, move_point_by_angle, process_route_movement, state_goto, FailureCache, PersonMovement,
+    RegionMap, RouteResult, SegmentPool, UsedTargetsCache, WorldCoord,
 };
-use super::animation::{AnimationState, select_animation, tick_animation};
-use super::selection::{SelectionState, DragState};
-use super::coords::{world_to_render_pos, toroidal_delta, cell_to_world, cell_to_tile};
+use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
+use crate::engine::state::rng::GameRng;
+use crate::engine::state::traits::ObjectTick;
 
 pub struct UnitCoordinator {
     units: Vec<Unit>,
@@ -84,7 +79,12 @@ impl UnitCoordinator {
 
     /// Extract person units from level data into live units.
     /// Non-person objects remain as static LevelObjects in main.rs.
-    pub fn load_level(&mut self, units_raw: &[UnitRaw], landscape_height: &[[u16; 128]; 128], landscape_size: usize) {
+    pub fn load_level(
+        &mut self,
+        units_raw: &[UnitRaw],
+        landscape_height: &[[u16; 128]; 128],
+        landscape_size: usize,
+    ) {
         self.units.clear();
         self.selection.clear();
         self.landscape_size = landscape_size as f32;
@@ -102,7 +102,11 @@ impl UnitCoordinator {
         Self::populate_water(&mut self.region_map, landscape_height, landscape_size);
         self.region_map.set_terrain_flags(2, 0x00); // terrain class 2 = building = unwalkable
 
-        log::info!("[unit-ctrl] load_level: {} raw units, landscape_size={}", units_raw.len(), landscape_size);
+        log::info!(
+            "[unit-ctrl] load_level: {} raw units, landscape_size={}",
+            units_raw.len(),
+            landscape_size
+        );
 
         for raw in units_raw {
             if raw.model_type() != Some(ModelType::Person) {
@@ -124,7 +128,10 @@ impl UnitCoordinator {
             let (cx, cy) = world_to_render_pos(&movement.position, self.landscape_size);
 
             // Allocate in the object pool (source of truth for allocation)
-            if let Some(handle) = self.pool.create(ModelType::Person, raw.subtype, raw.tribe_index(), pos) {
+            if let Ok(handle) =
+                self.pool
+                    .create(ModelType::Person, raw.subtype, raw.tribe_index(), pos)
+            {
                 if let Some(obj) = self.pool.get_mut(handle) {
                     obj.header.health = defaults.max_health;
                     obj.header.max_health = defaults.max_health;
@@ -141,13 +148,18 @@ impl UnitCoordinator {
                 }
                 // Insert into spatial grid
                 let cell_idx = CellGrid::cell_index_from_world(&pos);
-                self.cell_grid.insert_object(handle, cell_idx, self.pool.slots_mut());
+                self.cell_grid
+                    .insert_object(handle, cell_idx, self.pool.slots_mut());
                 self.person_handles.push(handle);
             }
 
             // Also populate the Vec<Unit> compatibility shim
             self.units.push(Unit {
                 id: self.units.len(),
+                handle: *self
+                    .person_handles
+                    .last()
+                    .expect("person pool allocation succeeded"),
                 model_type: ModelType::Person,
                 subtype: raw.subtype,
                 tribe_index: raw.tribe_index(),
@@ -179,7 +191,13 @@ impl UnitCoordinator {
             // Initialize idle state with a random timer (matches Person_Init calling Person_SetState)
             let idx = self.units.len() - 1;
             enter_state(&mut self.units[idx], PersonState::Idle, &mut self.rng);
-            select_animation(&mut self.units[idx].anim, PersonState::Idle, raw.subtype, &self.anim_frame_counts, false);
+            select_animation(
+                &mut self.units[idx].anim,
+                PersonState::Idle,
+                raw.subtype,
+                &self.anim_frame_counts,
+                false,
+            );
         }
         log::info!("[unit-ctrl] loaded {} person units", self.units.len());
     }
@@ -190,7 +208,9 @@ impl UnitCoordinator {
         self.used_targets.clear();
         for &unit_id in &self.selection.selected {
             if let Some(unit) = self.units.get_mut(unit_id) {
-                if !unit.alive { continue; }
+                if !unit.alive {
+                    continue;
+                }
                 let result = state_goto(
                     &self.region_map,
                     &mut self.segment_pool,
@@ -204,12 +224,17 @@ impl UnitCoordinator {
                 } else {
                     unit.state = PersonState::GoToPoint;
                     unit.target_unit = None; // Cancel combat
-                    // Restore subtype speed (enter_idle sets it to 0)
+                                             // Restore subtype speed (enter_idle sets it to 0)
                     unit.movement.speed = person_type_defaults(unit.subtype).speed;
                 }
-                log::info!("[move-order] unit {} result={:?} state={:?} target=({}, {})",
-                    unit_id, result, unit.state,
-                    unit.movement.target_pos.x, unit.movement.target_pos.z);
+                log::info!(
+                    "[move-order] unit {} result={:?} state={:?} target=({}, {})",
+                    unit_id,
+                    result,
+                    unit.state,
+                    unit.movement.target_pos.x,
+                    unit.movement.target_pos.z
+                );
             }
         }
     }
@@ -225,7 +250,9 @@ impl UnitCoordinator {
         // Phase 1: State machine tick + movement for each unit
         for i in 0..unit_count {
             let unit = &mut self.units[i];
-            if !unit.alive { continue; }
+            if !unit.alive {
+                continue;
+            }
 
             // Run state machine tick
             let (result, deferred) = tick_state(unit, &mut self.rng);
@@ -244,7 +271,13 @@ impl UnitCoordinator {
             }
 
             // Select animation every tick (matches decomp — walk→idle override needs movement check)
-            select_animation(&mut unit.anim, unit.state, unit.subtype, &self.anim_frame_counts, unit.movement.is_moving());
+            select_animation(
+                &mut unit.anim,
+                unit.state,
+                unit.subtype,
+                &self.anim_frame_counts,
+                unit.movement.is_moving(),
+            );
 
             // Advance animation frame
             tick_animation(&mut unit.anim);
@@ -263,8 +296,12 @@ impl UnitCoordinator {
         // Phase 2: Drowning detection
         for i in 0..unit_count {
             let unit = &self.units[i];
-            if !unit.alive { continue; }
-            if unit.state == PersonState::Drowning || unit.state == PersonState::Dead { continue; }
+            if !unit.alive {
+                continue;
+            }
+            if unit.state == PersonState::Drowning || unit.state == PersonState::Dead {
+                continue;
+            }
 
             let tile = unit.movement.position.to_tile();
             if !self.region_map.is_walkable(tile) {
@@ -289,41 +326,45 @@ impl UnitCoordinator {
 
     /// Process deferred actions collected during person tick loop.
     fn process_deferred_actions(&mut self, actions: Vec<(usize, DeferredAction)>) {
-        for (_unit_idx, action) in actions {
+        for (unit_idx, action) in actions {
             match action {
-                DeferredAction::None => {},
-                DeferredAction::AddToBuilding { building_handle } => {
-                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                DeferredAction::None => {}
+                DeferredAction::AddToBuilding { person, building } => {
+                    if let Some(building_obj) = self.pool.get_mut(building) {
                         if let GameObjectData::Building(ref mut bd) = building_obj.data {
-                            let _ = buildings::add_occupant(bd, building_handle);
+                            let _ = buildings::add_occupant(bd, person);
                         }
                     }
-                },
-                DeferredAction::RemoveFromBuilding { building_handle } => {
-                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                }
+                DeferredAction::RemoveFromBuilding { person, building } => {
+                    if let Some(building_obj) = self.pool.get_mut(building) {
                         if let GameObjectData::Building(ref mut bd) = building_obj.data {
-                            buildings::remove_occupant(bd, building_handle);
+                            buildings::remove_occupant(bd, person);
                         }
                     }
-                },
-                DeferredAction::DepositWood { building_handle, amount } => {
-                    if let Some(building_obj) = self.pool.get_mut(building_handle) {
+                }
+                DeferredAction::DepositWood { building, amount } => {
+                    if let Some(building_obj) = self.pool.get_mut(building) {
                         if let GameObjectData::Building(ref mut bd) = building_obj.data {
                             bd.wood_stored += amount;
                         }
                     }
-                },
-                DeferredAction::SpawnAtBuilding { building_handle: _ } => {
+                }
+                DeferredAction::SpawnAtBuilding { building: _ } => {
                     // Spawn processing handled by population tick subsystem
                     // (coordinator just records the intent; actual spawn happens in
                     // tick_update_population to avoid re-entrant pool mutation)
-                },
+                }
                 DeferredAction::FindNearestTree { unit_index } => {
                     if let Some(unit) = self.units.get(unit_index) {
                         let pos = unit.movement.position;
-                        if let Some(tree_pos) = crate::engine::economy::wood::find_nearest_tree_position(
-                            &pos, &self.cell_grid, &self.pool
-                        ) {
+                        if let Some(tree_pos) =
+                            crate::engine::economy::wood::find_nearest_tree_position(
+                                &pos,
+                                &self.cell_grid,
+                                &self.pool,
+                            )
+                        {
                             if let Some(unit) = self.units.get_mut(unit_index) {
                                 unit.gather_target = Some(tree_pos);
                                 unit.state_timer = 1; // mark as "has target, navigating"
@@ -331,7 +372,7 @@ impl UnitCoordinator {
                         }
                         // If no tree found, state_timer stays 0 and next tick will retry
                     }
-                },
+                }
             }
         }
     }
@@ -354,7 +395,9 @@ impl UnitCoordinator {
             });
 
             // Get death actions (kill tracking)
-            let death_actions = combat::process_death(0, tribe, last_attacker);
+            let handle = self.person_handles.get(*idx).copied();
+            let Some(handle) = handle else { continue };
+            let death_actions = combat::process_death(handle, tribe, last_attacker);
 
             // If unit has a pool handle in person_handles, clean up pool and grid
             // (For units also tracked in pool, handle cleanup)
@@ -362,8 +405,8 @@ impl UnitCoordinator {
 
             // Find matching person handle by index
             if *idx < self.person_handles.len() {
-                let handle = self.person_handles[*idx];
-                self.cell_grid.remove_object(handle, cell_idx, self.pool.slots_mut());
+                self.cell_grid
+                    .remove_object(handle, cell_idx, self.pool.slots_mut());
                 self.pool.destroy(handle);
             }
 
@@ -384,7 +427,8 @@ impl UnitCoordinator {
     /// Move a unit one step along its path (waypoint advancement + position update).
     fn advance_movement(segment_pool: &mut SegmentPool, unit: &mut Unit, _landscape_size: f32) {
         // Waypoint advancement for pathfind-routed movement
-        if unit.state == PersonState::GoToPoint || unit.state == PersonState::GoToMarker
+        if unit.state == PersonState::GoToPoint
+            || unit.state == PersonState::GoToMarker
             || unit.state == PersonState::Moving
         {
             process_route_movement(segment_pool, &mut unit.movement);
@@ -392,7 +436,8 @@ impl UnitCoordinator {
 
         // Compute facing angle toward next waypoint (for routed movement)
         // or use existing facing_angle (for wander/flee)
-        if unit.state == PersonState::GoToPoint || unit.state == PersonState::GoToMarker
+        if unit.state == PersonState::GoToPoint
+            || unit.state == PersonState::GoToMarker
             || unit.state == PersonState::Moving
         {
             let dx = toroidal_delta(unit.movement.position.x, unit.movement.next_waypoint.x);
@@ -424,19 +469,31 @@ impl UnitCoordinator {
 
         for i in 0..self.units.len() {
             let unit = &self.units[i];
-            if !unit.alive { continue; }
+            if !unit.alive {
+                continue;
+            }
             // Only idle/wandering units auto-engage
-            if unit.state != PersonState::Idle && unit.state != PersonState::Wander { continue; }
+            if unit.state != PersonState::Idle && unit.state != PersonState::Wander {
+                continue;
+            }
 
             let mut best_dist = COMBAT_DETECT_RANGE as i32 + 1;
             let mut best_target: Option<usize> = None;
 
             for j in 0..self.units.len() {
-                if i == j { continue; }
+                if i == j {
+                    continue;
+                }
                 let other = &self.units[j];
-                if !other.alive { continue; }
-                if other.tribe_index == unit.tribe_index { continue; } // Same tribe
-                if other.state == PersonState::Dead { continue; }
+                if !other.alive {
+                    continue;
+                }
+                if other.tribe_index == unit.tribe_index {
+                    continue;
+                } // Same tribe
+                if other.state == PersonState::Dead {
+                    continue;
+                }
 
                 let dx = toroidal_delta(unit.movement.position.x, other.movement.position.x) as i32;
                 let dz = toroidal_delta(unit.movement.position.z, other.movement.position.z) as i32;
@@ -479,7 +536,9 @@ impl UnitCoordinator {
 
         for i in 0..self.units.len() {
             let unit = &self.units[i];
-            if !unit.alive || unit.state != PersonState::Fighting { continue; }
+            if !unit.alive || unit.state != PersonState::Fighting {
+                continue;
+            }
 
             let target_id = match unit.target_unit {
                 Some(id) => id,
@@ -540,8 +599,10 @@ impl UnitCoordinator {
                     damage_events.push((target_idx, damage, self.units[i].tribe_index));
                     // tick_fighting will advance to LungeBack on next tick
                 }
-                CombatPhase::SwingReady | CombatPhase::LungeBack
-                | CombatPhase::LungeFwd | CombatPhase::Recovering => {
+                CombatPhase::SwingReady
+                | CombatPhase::LungeBack
+                | CombatPhase::LungeFwd
+                | CombatPhase::Recovering => {
                     // These phases are timer-driven by tick_fighting — no coordinator action
                     // Face target while waiting
                     self.units[i].movement.facing_angle = atan2(
@@ -580,7 +641,9 @@ impl UnitCoordinator {
 
         // Clear target for units whose target died
         for i in 0..self.units.len() {
-            if self.units[i].state != PersonState::Fighting { continue; }
+            if self.units[i].state != PersonState::Fighting {
+                continue;
+            }
             if let Some(target_id) = self.units[i].target_unit {
                 if let Some(target) = self.units.iter().find(|u| u.id == target_id) {
                     if !target.alive || target.state == PersonState::Dead {
@@ -593,9 +656,8 @@ impl UnitCoordinator {
 
     /// Tick all buildings in the pool. Processes spawn, convert, and combat actions.
     pub fn tick_buildings(&mut self) {
-        let building_handles: Vec<ObjectHandle> = self.pool.buildings()
-            .map(|(h, _, _)| h)
-            .collect();
+        let building_handles: Vec<ObjectHandle> =
+            self.pool.buildings().map(|(h, _, _)| h).collect();
 
         // Phase 1: tick each building, collect actions + effect spawns for state transitions
         let mut all_actions: Vec<(ObjectHandle, BuildingTickActions)> = Vec::new();
@@ -612,21 +674,32 @@ impl UnitCoordinator {
                         // Construction completing -> construction dust
                         self.pending_effect_actions.push(EffectAction::SpawnAt {
                             effect_type: EffectType::ConstructionDust as u8,
-                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                            x: pos.x as i32,
+                            y: pos.z as i32,
+                            z: 0,
+                            owner: tribe,
                         });
                     }
-                    if state_before == BuildingState::Active && state_after == BuildingState::Destroying {
+                    if state_before == BuildingState::Active
+                        && state_after == BuildingState::Destroying
+                    {
                         // Building destroyed -> destruction collapse
                         self.pending_effect_actions.push(EffectAction::SpawnAt {
                             effect_type: EffectType::DestructionCollapse as u8,
-                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                            x: pos.x as i32,
+                            y: pos.z as i32,
+                            z: 0,
+                            owner: tribe,
                         });
                     }
                     if state_after == BuildingState::Destroying && bd.damage_accumulated > 0 {
                         // Building on fire while destroying
                         self.pending_effect_actions.push(EffectAction::SpawnAt {
                             effect_type: EffectType::BuildingFire as u8,
-                            x: pos.x as i32, y: pos.z as i32, z: 0, owner: tribe,
+                            x: pos.x as i32,
+                            y: pos.z as i32,
+                            z: 0,
+                            owner: tribe,
                         });
                     }
                     all_actions.push((handle, actions));
@@ -647,7 +720,11 @@ impl UnitCoordinator {
 
         // Phase 3: process convert actions
         for (_building_handle, actions) in &all_actions {
-            if let ConvertAction::ConvertUnit { handle, new_subtype } = &actions.convert {
+            if let ConvertAction::ConvertUnit {
+                handle,
+                new_subtype,
+            } = &actions.convert
+            {
                 if let Some(obj) = self.pool.get_mut(*handle) {
                     obj.header.subtype = *new_subtype;
                 }
@@ -681,7 +758,10 @@ impl UnitCoordinator {
         let subtype = 2; // Brave
         let defaults = person_type_defaults(subtype);
 
-        if let Some(handle) = self.pool.create(ModelType::Person, subtype, tribe, spawn_pos) {
+        if let Ok(handle) = self
+            .pool
+            .create(ModelType::Person, subtype, tribe, spawn_pos)
+        {
             if let Some(obj) = self.pool.get_mut(handle) {
                 obj.header.health = defaults.max_health;
                 obj.header.max_health = defaults.max_health;
@@ -700,7 +780,8 @@ impl UnitCoordinator {
             }
             // Insert into spatial grid
             let cell_idx = CellGrid::cell_index_from_world(&spawn_pos);
-            self.cell_grid.insert_object(handle, cell_idx, self.pool.slots_mut());
+            self.cell_grid
+                .insert_object(handle, cell_idx, self.pool.slots_mut());
             self.person_handles.push(handle);
         }
     }
@@ -708,9 +789,7 @@ impl UnitCoordinator {
     /// Tick all projectiles in the pool. Returns list of impacts:
     /// (position, damage, aoe_radius, knockback_force).
     pub fn tick_projectiles(&mut self) -> Vec<(WorldCoord, u16, u16, u16)> {
-        let shot_handles: Vec<ObjectHandle> = self.pool.shots()
-            .map(|(h, _, _)| h)
-            .collect();
+        let shot_handles: Vec<ObjectHandle> = self.pool.shots().map(|(h, _, _)| h).collect();
 
         let mut impacts = Vec::new();
         let mut expired = Vec::new();
@@ -719,7 +798,12 @@ impl UnitCoordinator {
             if let Some(obj) = self.pool.get_mut(handle) {
                 if let GameObjectData::Shot(ref mut sd) = obj.data {
                     match combat::tick_projectile(sd, &mut obj.header) {
-                        combat::ProjectileResult::Impact { position, damage, aoe_radius, knockback_force } => {
+                        combat::ProjectileResult::Impact {
+                            position,
+                            damage,
+                            aoe_radius,
+                            knockback_force,
+                        } => {
                             impacts.push((position, damage, aoe_radius, knockback_force));
                             expired.push(handle);
                         }
@@ -805,7 +889,11 @@ impl UnitCoordinator {
     /// Water cells get region_id=1 so `same_region` returns false when
     /// routing between land (region 0) and water, forcing the pathfinder
     /// to engage and reject the unwalkable target.
-    fn populate_water(region_map: &mut RegionMap, landscape_height: &[[u16; 128]; 128], size: usize) {
+    fn populate_water(
+        region_map: &mut RegionMap,
+        landscape_height: &[[u16; 128]; 128],
+        size: usize,
+    ) {
         region_map.set_terrain_flags(1, 0x00); // terrain class 1 = water = unwalkable
         region_map.set_terrain_flags(3, 0x00); // terrain class 3 = shore buffer = unwalkable
         let ni = size as i32;
@@ -859,7 +947,8 @@ impl UnitCoordinator {
         self.units.clear();
         for (handle, header, person) in self.pool.persons() {
             self.units.push(Unit {
-                id: handle as usize,
+                id: handle.slot() as usize,
+                handle,
                 model_type: header.model_type,
                 subtype: header.subtype,
                 tribe_index: header.tribe,
@@ -872,14 +961,14 @@ impl UnitCoordinator {
                 state_counter: person.state_counter,
                 health: header.health,
                 max_health: header.max_health,
-                target_unit: person.target_unit.map(|h| h as usize),
-                attacker_unit: person.attacker_unit.map(|h| h as usize),
+                target_unit: person.target_unit.map(|h| h.slot() as usize),
+                attacker_unit: person.attacker_unit.map(|h| h.slot() as usize),
                 alive: person.alive,
                 home_pos: person.home_pos,
                 behavior_flags: person.behavior_flags,
                 wander_duration: person.wander_duration,
                 wander_range: person.wander_range,
-                linked_obj_id: person.linked_obj_id.map(|h| h as usize),
+                linked_obj_id: person.linked_obj_id.map(|h| h.slot() as usize),
                 bloodlust: person.bloodlust,
                 shielded: person.shielded,
                 anim: person.anim,
@@ -1006,14 +1095,23 @@ mod tests {
 
         // Cell (9, 11) is land but adjacent to water cell (10, 11) → shore buffer
         let shore_tile = cell_to_tile(9, 11, 128);
-        assert!(!map.is_walkable(shore_tile), "shore-adjacent cell should be unwalkable");
+        assert!(
+            !map.is_walkable(shore_tile),
+            "shore-adjacent cell should be unwalkable"
+        );
 
         // Cell (13, 11) is land but adjacent to water cell (12, 11) → shore buffer
         let shore_tile2 = cell_to_tile(13, 11, 128);
-        assert!(!map.is_walkable(shore_tile2), "shore-adjacent cell should be unwalkable");
+        assert!(
+            !map.is_walkable(shore_tile2),
+            "shore-adjacent cell should be unwalkable"
+        );
 
         // Cell (8, 11) is 2 cells away from water → should remain walkable
         let far_land = cell_to_tile(8, 11, 128);
-        assert!(map.is_walkable(far_land), "cell 2 away from water should be walkable");
+        assert!(
+            map.is_walkable(far_land),
+            "cell 2 away from water should be walkable"
+        );
     }
 }

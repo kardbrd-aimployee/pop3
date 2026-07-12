@@ -1,8 +1,8 @@
 // Full cascade after terrain modification.
 // After height changes, updates: normals -> walkability -> water -> pathfinding -> mesh.
 
-use crate::engine::movement::segment::SegmentPool;
 use super::water;
+use crate::engine::movement::segment::SegmentPool;
 
 const GRID_SIZE: usize = 128;
 const GRID_MASK: usize = 127;

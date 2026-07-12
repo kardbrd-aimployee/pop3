@@ -46,7 +46,10 @@ impl RegionMap {
         for flag in terrain_flags.iter_mut() {
             *flag = TERRAIN_WALKABLE_BIT;
         }
-        Self { cells, terrain_flags }
+        Self {
+            cells,
+            terrain_flags,
+        }
     }
 
     /// Set terrain flags for a terrain class (used during level loading / testing).

@@ -1,7 +1,7 @@
-use crate::data::level::GlobeTextureParams;
-use crate::data::types::{ImageTileSource, Image, TiledComposer, ImageSourceComposed};
-use crate::data::landscape::common::{LandPosQuad, LandscapeFull, DispProvider};
+use crate::data::landscape::common::{DispProvider, LandPosQuad, LandscapeFull};
 use crate::data::landscape::land::render_landscape;
+use crate::data::level::GlobeTextureParams;
+use crate::data::types::{Image, ImageSourceComposed, ImageTileSource, TiledComposer};
 
 struct DispProvider8<'a> {
     x: usize,
@@ -11,13 +11,14 @@ struct DispProvider8<'a> {
 
 impl<'a> DispProvider8<'a> {
     pub fn new(disp: &'a [i8]) -> Self {
-        Self{x: 0, y: 0, disp}
+        Self { x: 0, y: 0, disp }
     }
 }
 
 impl<'a> DispProvider for DispProvider8<'a> {
     fn val(&self, i: usize, j: usize) -> i8 {
-        let disp_index: usize = ((self.x as usize & 0x7) << 13) + ((self.y as usize & 0x7) << 5) + i*4;
+        let disp_index: usize =
+            ((self.x as usize & 0x7) << 13) + ((self.y as usize & 0x7) << 5) + i * 4;
         self.disp[disp_index + ((j as usize) << 10)]
     }
 
@@ -31,17 +32,18 @@ impl<'a> DispProvider for DispProvider8<'a> {
     }
 }
 
-pub fn texture_globe_provider<'a, P>(land: &LandscapeFull
-                                     , params: &GlobeTextureParams
-                                     , tile_source: &'a mut P)
-where P: ImageTileSource {
+pub fn texture_globe_provider<'a, P>(
+    land: &LandscapeFull,
+    params: &GlobeTextureParams,
+    tile_source: &'a mut P,
+) where
+    P: ImageTileSource,
+{
     let mut disp = DispProvider8::new(&params.disp0);
     render_landscape(&mut land.iter_quad(), params, &mut disp, tile_source);
 }
 
-pub fn texture_globe(width: usize
-                     , land: &LandscapeFull
-                     , params: &GlobeTextureParams) -> Image {
+pub fn texture_globe(width: usize, land: &LandscapeFull, params: &GlobeTextureParams) -> Image {
     let mut tile_source = {
         let n = 8;
         let image = Image::alloc(width * n, width * n);

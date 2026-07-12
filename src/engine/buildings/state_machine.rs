@@ -23,6 +23,7 @@ pub fn transition_building_state(building: &mut BuildingData, new_state: Buildin
 /// Sets behavior_flags based on subtype from the type properties table (BLD.5).
 pub fn on_construction_complete(building: &mut BuildingData) {
     building.behavior_flags = building_behavior_flags(building.building_subtype);
+    building.construction_progress = 0;
 }
 
 /// Called when a building is destroyed.
@@ -38,12 +39,19 @@ pub fn on_destroy(building: &mut BuildingData) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::objects::ObjectHandle;
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
 
     #[test]
     fn valid_transition_init_to_construction_done() {
         let mut b = BuildingData::default();
         assert_eq!(b.state, BuildingState::Init);
-        assert!(transition_building_state(&mut b, BuildingState::ConstructionDone));
+        assert!(transition_building_state(
+            &mut b,
+            BuildingState::ConstructionDone
+        ));
         assert_eq!(b.state, BuildingState::ConstructionDone);
     }
 
@@ -75,7 +83,10 @@ mod tests {
     fn valid_transition_sinking_to_final_teardown() {
         let mut b = BuildingData::default();
         b.state = BuildingState::Sinking;
-        assert!(transition_building_state(&mut b, BuildingState::FinalTeardown));
+        assert!(transition_building_state(
+            &mut b,
+            BuildingState::FinalTeardown
+        ));
         assert_eq!(b.state, BuildingState::FinalTeardown);
     }
 
@@ -97,7 +108,10 @@ mod tests {
     #[test]
     fn invalid_transition_skip_states() {
         let mut b = BuildingData::default();
-        assert!(!transition_building_state(&mut b, BuildingState::Destroying));
+        assert!(!transition_building_state(
+            &mut b,
+            BuildingState::Destroying
+        ));
         assert_eq!(b.state, BuildingState::Init);
     }
 
@@ -117,8 +131,8 @@ mod tests {
     fn on_destroy_clears_occupants_and_maxes_damage() {
         let mut b = BuildingData::default();
         b.building_subtype = BuildingSubtype::SmallHut;
-        b.occupant_slots[0] = Some(42);
-        b.occupant_slots[1] = Some(99);
+        b.occupant_slots[0] = Some(h(42));
+        b.occupant_slots[1] = Some(h(99));
         b.occupant_count = 2;
         on_destroy(&mut b);
         assert_eq!(b.occupant_count, 0);

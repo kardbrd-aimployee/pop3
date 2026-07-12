@@ -1,6 +1,6 @@
+use crate::engine::movement::WorldCoord;
 use crate::engine::objects::handle::ObjectHandle;
 use crate::engine::objects::types::ObjectHeader;
-use crate::engine::movement::WorldCoord;
 
 /// Shot type constants matching original binary.
 pub const SHOT_STANDARD: u8 = 1;
@@ -12,12 +12,12 @@ pub const SHOT_FIREBALL: u8 = 4;
 pub struct ShotData {
     pub shot_type: u8,
     pub target_handle: Option<ObjectHandle>,
-    pub target_pos: WorldCoord,     // fallback if target destroyed
+    pub target_pos: WorldCoord, // fallback if target destroyed
     pub damage: u16,
     pub aoe_radius: u16,
     pub knockback_force: u16,
     pub lifetime: u16,
-    pub speed: u16,                 // world units per tick
+    pub speed: u16,                          // world units per tick
     pub source_handle: Option<ObjectHandle>, // who fired this
 }
 
@@ -39,7 +39,12 @@ impl Default for ShotData {
 
 pub enum ProjectileResult {
     Continue,
-    Impact { position: WorldCoord, damage: u16, aoe_radius: u16, knockback_force: u16 },
+    Impact {
+        position: WorldCoord,
+        damage: u16,
+        aoe_radius: u16,
+        knockback_force: u16,
+    },
     Expired,
 }
 
@@ -100,6 +105,10 @@ mod tests {
     use super::*;
     use crate::data::units::ModelType;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     fn make_header(pos: WorldCoord) -> ObjectHeader {
         ObjectHeader {
             model_type: ModelType::Shot,
@@ -110,7 +119,7 @@ mod tests {
             flags1: 0,
             flags2: 0,
             flags3: 0,
-            object_index: 0,
+            object_index: h(0),
             angle: 0,
             position: pos,
             velocity: WorldCoord::default(),
@@ -151,7 +160,12 @@ mod tests {
         // Distance 30 < speed 64, so should impact immediately
         let result = tick_projectile(&mut shot, &mut header);
         match result {
-            ProjectileResult::Impact { damage, aoe_radius, knockback_force, .. } => {
+            ProjectileResult::Impact {
+                damage,
+                aoe_radius,
+                knockback_force,
+                ..
+            } => {
                 assert_eq!(damage, 200);
                 assert_eq!(aoe_radius, 3);
                 assert_eq!(knockback_force, 50);
@@ -187,14 +201,14 @@ mod tests {
 
     #[test]
     fn drum_tower_shot_has_correct_defaults() {
-        let shot = drum_tower_shot(WorldCoord::new(100, 200), Some(42));
+        let shot = drum_tower_shot(WorldCoord::new(100, 200), Some(h(42)));
         assert_eq!(shot.shot_type, SHOT_STANDARD);
         assert_eq!(shot.damage, 150);
         assert_eq!(shot.aoe_radius, 2);
         assert_eq!(shot.knockback_force, 64);
         assert_eq!(shot.lifetime, 180);
         assert_eq!(shot.speed, 48);
-        assert_eq!(shot.target_handle, Some(42));
+        assert_eq!(shot.target_handle, Some(h(42)));
         assert_eq!(shot.target_pos, WorldCoord::new(100, 200));
     }
 

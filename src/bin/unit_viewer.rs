@@ -26,18 +26,17 @@ use winit::window::{Window, WindowAttributes};
 
 use clap::{Arg, Command};
 
+use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::context::GpuContext;
 use pop3::render::gpu::pipeline::create_pipeline;
-use pop3::render::gpu::buffer::GpuBuffer;
 use pop3::render::gpu::texture::GpuTexture;
 
+use pop3::data::animation::{
+    build_tribe_atlas, compute_global_bbox, discover_unit_combos, AnimationSequence,
+    AnimationsData, NUM_TRIBES,
+};
 use pop3::data::psfb::ContainerPSFB;
 use pop3::data::types::BinDeserializer;
-use pop3::data::animation::{
-    AnimationsData, AnimationSequence,
-    discover_unit_combos, build_tribe_atlas, compute_global_bbox,
-    NUM_TRIBES,
-};
 
 /******************************************************************************/
 // Bitmap font (8x8, ASCII 32..127)
@@ -47,8 +46,8 @@ const FONT_CHAR_W: u32 = 8;
 const FONT_CHAR_H: u32 = 8;
 const FONT_COLS: u32 = 16;
 const FONT_ROWS: u32 = 6;
-const FONT_TEX_W: u32 = FONT_COLS * FONT_CHAR_W;  // 128
-const FONT_TEX_H: u32 = FONT_ROWS * FONT_CHAR_H;  // 48
+const FONT_TEX_W: u32 = FONT_COLS * FONT_CHAR_W; // 128
+const FONT_TEX_H: u32 = FONT_ROWS * FONT_CHAR_H; // 48
 
 #[rustfmt::skip]
 const FONT_8X8: [u64; 96] = [
@@ -200,7 +199,9 @@ fn get_source_direction(dir: usize) -> (usize, bool) {
 /// A static pose has ≤1 frame in direction 0 (single-frame self-loop in VFRA).
 fn is_static_pose(sequences: &[AnimationSequence], anim_index: usize) -> bool {
     let base = anim_index * DIRS_PER_ANIM;
-    if base >= sequences.len() { return true; }
+    if base >= sequences.len() {
+        return true;
+    }
     sequences[base].frames.len() <= 1
 }
 
@@ -227,7 +228,9 @@ fn find_next_animated(
 
 fn load_palette(path: &Path) -> Option<Vec<[u8; 4]>> {
     let data = std::fs::read(path).ok()?;
-    if data.len() < 1024 { return None; }
+    if data.len() < 1024 {
+        return None;
+    }
     let mut palette = Vec::with_capacity(256);
     for i in 0..256 {
         let off = i * 4;
@@ -261,10 +264,10 @@ fn ortho_projection(width: f32, height: f32) -> [[f32; 4]; 4] {
     let hw = width / 2.0;
     let hh = height / 2.0;
     [
-        [1.0 / hw, 0.0,       0.0, 0.0],
-        [0.0,      1.0 / hh,  0.0, 0.0],
-        [0.0,      0.0,       1.0, 0.0],
-        [0.0,      0.0,       0.0, 1.0],
+        [1.0 / hw, 0.0, 0.0, 0.0],
+        [0.0, 1.0 / hh, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
     ]
 }
 
@@ -281,12 +284,30 @@ struct SpriteVertex {
 
 fn make_quad(cx: f32, cy: f32, hw: f32, hh: f32) -> [SpriteVertex; 6] {
     [
-        SpriteVertex { position: [cx - hw, cy - hh], uv: [0.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy - hh], uv: [1.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy + hh], uv: [1.0, 0.0] },
-        SpriteVertex { position: [cx - hw, cy - hh], uv: [0.0, 1.0] },
-        SpriteVertex { position: [cx + hw, cy + hh], uv: [1.0, 0.0] },
-        SpriteVertex { position: [cx - hw, cy + hh], uv: [0.0, 0.0] },
+        SpriteVertex {
+            position: [cx - hw, cy - hh],
+            uv: [0.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy - hh],
+            uv: [1.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy + hh],
+            uv: [1.0, 0.0],
+        },
+        SpriteVertex {
+            position: [cx - hw, cy - hh],
+            uv: [0.0, 1.0],
+        },
+        SpriteVertex {
+            position: [cx + hw, cy + hh],
+            uv: [1.0, 0.0],
+        },
+        SpriteVertex {
+            position: [cx - hw, cy + hh],
+            uv: [0.0, 0.0],
+        },
     ]
 }
 
@@ -302,12 +323,21 @@ struct TextRenderer {
 }
 
 impl TextRenderer {
-    fn new(device: &wgpu::Device, queue: &wgpu::Queue, surface_format: wgpu::TextureFormat) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
         let font_data = build_font_texture();
         // R8Unorm for single-channel font
         let font_texture = GpuTexture::new_2d(
-            device, queue, FONT_TEX_W, FONT_TEX_H,
-            wgpu::TextureFormat::R8Unorm, &font_data, "font_texture",
+            device,
+            queue,
+            FONT_TEX_W,
+            FONT_TEX_H,
+            wgpu::TextureFormat::R8Unorm,
+            &font_data,
+            "font_texture",
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("font_sampler"),
@@ -406,7 +436,12 @@ impl TextRenderer {
             cache: None,
         });
 
-        TextRenderer { pipeline, bind_group_layout, font_texture, sampler }
+        TextRenderer {
+            pipeline,
+            bind_group_layout,
+            font_texture,
+            sampler,
+        }
     }
 
     /// Render text lines at pixel position (x, y) from top-left.
@@ -433,7 +468,10 @@ impl TextRenderer {
             let mut cursor_x = start_x;
             for ch in text.chars() {
                 let idx = (ch as u32).wrapping_sub(32) as usize;
-                if idx >= 96 { cursor_x += char_w; continue; }
+                if idx >= 96 {
+                    cursor_x += char_w;
+                    continue;
+                }
 
                 let col = idx % FONT_COLS as usize;
                 let row = idx / FONT_COLS as usize;
@@ -448,12 +486,30 @@ impl TextRenderer {
                 let y0 = 1.0 - (cursor_y / screen_h) * 2.0;
                 let y1 = 1.0 - ((cursor_y + char_h) / screen_h) * 2.0;
 
-                vertices.push(SpriteVertex { position: [x0, y1], uv: [u0, v0] });
-                vertices.push(SpriteVertex { position: [x1, y1], uv: [u1, v0] });
-                vertices.push(SpriteVertex { position: [x1, y0], uv: [u1, v1] });
-                vertices.push(SpriteVertex { position: [x0, y1], uv: [u0, v0] });
-                vertices.push(SpriteVertex { position: [x1, y0], uv: [u1, v1] });
-                vertices.push(SpriteVertex { position: [x0, y0], uv: [u0, v1] });
+                vertices.push(SpriteVertex {
+                    position: [x0, y1],
+                    uv: [u0, v0],
+                });
+                vertices.push(SpriteVertex {
+                    position: [x1, y1],
+                    uv: [u1, v0],
+                });
+                vertices.push(SpriteVertex {
+                    position: [x1, y0],
+                    uv: [u1, v1],
+                });
+                vertices.push(SpriteVertex {
+                    position: [x0, y1],
+                    uv: [u0, v0],
+                });
+                vertices.push(SpriteVertex {
+                    position: [x1, y0],
+                    uv: [u1, v1],
+                });
+                vertices.push(SpriteVertex {
+                    position: [x0, y0],
+                    uv: [u0, v1],
+                });
 
                 cursor_x += char_w;
             }
@@ -465,7 +521,11 @@ impl TextRenderer {
 
         // Use the color of the first line (or white) for the uniform.
         // We use identity projection since we directly output NDC coords.
-        let color = if lines.is_empty() { [1.0, 1.0, 1.0, 1.0] } else { lines[0].1 };
+        let color = if lines.is_empty() {
+            [1.0, 1.0, 1.0, 1.0]
+        } else {
+            lines[0].1
+        };
         let uniforms = SpriteUniforms {
             projection: [
                 [1.0, 0.0, 0.0, 0.0],
@@ -543,7 +603,6 @@ struct ViewerState {
     anim_speed: f32,
     paused: bool,
     last_instant: std::time::Instant,
-
 }
 
 impl App {
@@ -585,8 +644,10 @@ fn format_anim_info(
         None if combos.is_empty() => "Base".to_string(),
         None => format!("Base (0/{})", combos.len()),
     };
-    format!("Anim {}/{} | Tribe {} ({}) | {} | {} frames",
-        anim_index, total_anims, tribe, tribe_name, combo_str, frames)
+    format!(
+        "Anim {}/{} | Tribe {} ({}) | {} | {} frames",
+        anim_index, total_anims, tribe, tribe_name, combo_str, frames
+    )
 }
 
 impl ViewerState {
@@ -611,10 +672,17 @@ impl ViewerState {
         // Use the shared build_tribe_atlas with explicit combo override and global bbox
         let combo_override = Some(unit_combo);
         let vstart_base = anim_index * DIRS_PER_ANIM;
-        if let Some((atlas_w, atlas_h, rgba, _fw, _fh, max_frames, _max_y)) =
-            build_tribe_atlas(sequences, container, palette, vstart_base, combo_override, Some(global_bbox))
-        {
-            let atlas = SpriteAtlas { frames_per_dir: max_frames };
+        if let Some((atlas_w, atlas_h, rgba, _fw, _fh, max_frames, _max_y)) = build_tribe_atlas(
+            sequences,
+            container,
+            palette,
+            vstart_base,
+            combo_override,
+            Some(global_bbox),
+        ) {
+            let atlas = SpriteAtlas {
+                frames_per_dir: max_frames,
+            };
             self.sprite_atlas = GpuTexture::new_2d(
                 &self.gpu.device,
                 &self.gpu.queue,
@@ -628,31 +696,43 @@ impl ViewerState {
             // Rebuild bind groups with new texture
             self.bind_groups.clear();
             for dir in 0..NUM_DIRECTIONS {
-                let bg = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("sprite_bg_{}", dir)),
-                    layout: &self.bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: self.uniform_buffers[dir].buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(&self.sprite_atlas.view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(&self.sampler),
-                        },
-                    ],
-                });
+                let bg = self
+                    .gpu
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some(&format!("sprite_bg_{}", dir)),
+                        layout: &self.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: self.uniform_buffers[dir].buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(
+                                    &self.sprite_atlas.view,
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&self.sampler),
+                            },
+                        ],
+                    });
                 self.bind_groups.push(bg);
             }
 
             // Vertex buffers use fixed-size quads (built once in resumed()),
             // so no rebuild needed here.
 
-            self.info_text = format_anim_info(anim_index, self.total_anims, tribe, combo_idx, &combos, atlas.frames_per_dir);
+            self.info_text = format_anim_info(
+                anim_index,
+                self.total_anims,
+                tribe,
+                combo_idx,
+                &combos,
+                atlas.frames_per_dir,
+            );
             println!("{}", self.info_text);
 
             self.atlas = atlas;
@@ -671,7 +751,9 @@ impl ViewerState {
             Ok(t) => t,
             Err(_) => return,
         };
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let proj = ortho_projection(
             self.gpu.size.width as f32 / 1.5,
@@ -686,7 +768,8 @@ impl ViewerState {
 
         for dir in 0..NUM_DIRECTIONS {
             let (source_dir, mirrored) = get_source_direction(dir);
-            let frame_uv_y = (self.current_tribe as usize * STORED_DIRECTIONS + source_dir) as f32 / total_rows;
+            let frame_uv_y =
+                (self.current_tribe as usize * STORED_DIRECTIONS + source_dir) as f32 / total_rows;
 
             let uniforms = SpriteUniforms {
                 projection: proj,
@@ -724,24 +807,35 @@ impl ViewerState {
         ];
 
         let (help_vb, help_bg, _help_ub, help_vc) = self.text_renderer.prepare_text(
-            &self.gpu.device, screen_w, screen_h,
-            &help_lines, 8.0, 8.0, 1.5,
+            &self.gpu.device,
+            screen_w,
+            screen_h,
+            &help_lines,
+            8.0,
+            8.0,
+            1.5,
         );
 
         let frame_info = format!("Frame {}/{}", self.current_frame + 1, fpd);
-        let info_lines: Vec<(&str, [f32; 4])> = vec![
-            (&self.info_text, yellow),
-            (&frame_info, yellow),
-        ];
+        let info_lines: Vec<(&str, [f32; 4])> =
+            vec![(&self.info_text, yellow), (&frame_info, yellow)];
 
         let (info_vb, info_bg, _info_ub, info_vc) = self.text_renderer.prepare_text(
-            &self.gpu.device, screen_w, screen_h,
-            &info_lines, screen_w - 500.0, 8.0, 1.5,
+            &self.gpu.device,
+            screen_w,
+            screen_h,
+            &info_lines,
+            screen_w - 500.0,
+            8.0,
+            1.5,
         );
 
-        let mut encoder = self.gpu.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("sprite_encoder") },
-        );
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("sprite_encoder"),
+            });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -751,7 +845,10 @@ impl ViewerState {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05, g: 0.05, b: 0.1, a: 1.0,
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.1,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -801,7 +898,6 @@ impl ViewerState {
                 self.current_frame = (self.current_frame + 1) % self.atlas.frames_per_dir.max(1);
             }
         }
-
     }
 
     fn handle_key(
@@ -815,7 +911,10 @@ impl ViewerState {
         match key {
             KeyCode::Space => {
                 self.paused = !self.paused;
-                println!("Animation {}", if self.paused { "paused" } else { "running" });
+                println!(
+                    "Animation {}",
+                    if self.paused { "paused" } else { "running" }
+                );
             }
             KeyCode::ArrowUp => {
                 self.anim_speed = (self.anim_speed - 0.02).max(0.02);
@@ -841,24 +940,56 @@ impl ViewerState {
             // Cycle animation forward (skip static poses)
             KeyCode::Tab | KeyCode::KeyN => {
                 let next = find_next_animated(sequences, self.current_anim, 1, self.total_anims);
-                self.rebuild_atlas(sequences, container, palette, next, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    next,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             // Cycle animation backward (skip static poses)
             KeyCode::KeyP => {
                 let prev = find_next_animated(sequences, self.current_anim, -1, self.total_anims);
-                self.rebuild_atlas(sequences, container, palette, prev, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    prev,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             // Jump ~10 animations forward (skip static poses)
             KeyCode::Equal => {
                 let target = (self.current_anim + 10) % self.total_anims;
                 let next = find_next_animated(sequences, target.max(1) - 1, 1, self.total_anims);
-                self.rebuild_atlas(sequences, container, palette, next, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    next,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             // Jump ~10 animations backward (skip static poses)
             KeyCode::Minus => {
                 let target = (self.current_anim + self.total_anims - 10) % self.total_anims;
                 let prev = find_next_animated(sequences, target + 1, -1, self.total_anims);
-                self.rebuild_atlas(sequences, container, palette, prev, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    prev,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             // Cycle tribe (UV-only, no atlas rebuild needed since atlas has all 4 tribes)
             KeyCode::KeyT => {
@@ -866,8 +997,12 @@ impl ViewerState {
                 let tribe_name = TRIBE_NAMES.get(self.current_tribe as usize).unwrap_or(&"?");
                 println!("Tribe: {} ({})", self.current_tribe, tribe_name);
                 self.info_text = format_anim_info(
-                    self.current_anim, self.total_anims, self.current_tribe,
-                    self.current_combo_idx, &self.unit_combos, self.atlas.frames_per_dir,
+                    self.current_anim,
+                    self.total_anims,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    &self.unit_combos,
+                    self.atlas.frames_per_dir,
                 );
             }
             // Cycle unit features overlay
@@ -881,20 +1016,60 @@ impl ViewerState {
                         Some(i) => Some(i + 1),
                     }
                 };
-                self.rebuild_atlas(sequences, container, palette, self.current_anim, self.current_tribe, next_combo, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    self.current_anim,
+                    self.current_tribe,
+                    next_combo,
+                    global_bbox,
+                );
             }
             // Quick-jump to known animations
             KeyCode::Digit1 => {
-                self.rebuild_atlas(sequences, container, palette, 15, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    15,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             KeyCode::Digit2 => {
-                self.rebuild_atlas(sequences, container, palette, 20, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    20,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             KeyCode::Digit3 => {
-                self.rebuild_atlas(sequences, container, palette, 21, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    21,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             KeyCode::Digit4 => {
-                self.rebuild_atlas(sequences, container, palette, 26, self.current_tribe, self.current_combo_idx, global_bbox);
+                self.rebuild_atlas(
+                    sequences,
+                    container,
+                    palette,
+                    26,
+                    self.current_tribe,
+                    self.current_combo_idx,
+                    global_bbox,
+                );
             }
             _ => {}
         }
@@ -928,10 +1103,17 @@ impl ApplicationHandler for App {
 
         let initial_vstart = initial_anim * DIRS_PER_ANIM;
         let (atlas_w, atlas_h, rgba, _fw, _fh, max_frames, _max_y) = build_tribe_atlas(
-            &self.sequences, &self.container, &self.palette,
-            initial_vstart, Some(None), Some(self.global_bbox),
-        ).expect("Failed to build initial animation atlas");
-        let atlas = SpriteAtlas { frames_per_dir: max_frames };
+            &self.sequences,
+            &self.container,
+            &self.palette,
+            initial_vstart,
+            Some(None),
+            Some(self.global_bbox),
+        )
+        .expect("Failed to build initial animation atlas");
+        let atlas = SpriteAtlas {
+            frames_per_dir: max_frames,
+        };
 
         let base = initial_anim * DIRS_PER_ANIM;
         let initial_combos = discover_unit_combos(&self.sequences, base);
@@ -1040,7 +1222,7 @@ impl ApplicationHandler for App {
         );
 
         // Fixed-size quads (matching bevy_demo5's fixed Rectangle::new(100, 100))
-        let hw = 130.0;  // 260×340 default quad size
+        let hw = 130.0; // 260×340 default quad size
         let hh = 170.0;
         let radius = 200.0;
 
@@ -1058,7 +1240,14 @@ impl ApplicationHandler for App {
             vertex_buffers.push(buf);
         }
 
-        let info_text = format_anim_info(initial_anim, total_anims, initial_tribe, None, &initial_combos, atlas.frames_per_dir);
+        let info_text = format_anim_info(
+            initial_anim,
+            total_anims,
+            initial_tribe,
+            None,
+            &initial_combos,
+            atlas.frames_per_dir,
+        );
         println!("{}", info_text);
 
         let text_renderer = TextRenderer::new(device, &gpu.queue, gpu.surface_format());
@@ -1088,7 +1277,12 @@ impl ApplicationHandler for App {
         });
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _wid: winit::window::WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _wid: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -1106,7 +1300,13 @@ impl ApplicationHandler for App {
                             return;
                         }
                         if let Some(state) = &mut self.state {
-                            state.handle_key(key, &self.sequences, &self.container, &self.palette, self.global_bbox);
+                            state.handle_key(
+                                key,
+                                &self.sequences,
+                                &self.container,
+                                &self.palette,
+                                self.global_bbox,
+                            );
                         }
                     }
                 }
@@ -1165,35 +1365,51 @@ fn main() {
             PathBuf::from("/Users/adriencandiotti/Library/Containers/com.isaacmarovitz.Whisky/Bottles/74820C9D-5F8C-4BFE-B5DB-90E1DE818D3F/drive_c/GOG Games/Populous - The Beginning")
         });
 
-    let initial_anim = matches.get_one::<usize>("anim").copied().unwrap_or(DEFAULT_ANIM);
+    let initial_anim = matches
+        .get_one::<usize>("anim")
+        .copied()
+        .unwrap_or(DEFAULT_ANIM);
     let initial_tribe = matches.get_one::<u8>("tribe").copied().unwrap_or(0);
 
     let data_dir = base.join("data");
 
     // Load palette
-    let palette = load_palette(&data_dir.join("pal0-0.dat"))
-        .expect("Failed to load palette from pal0-0.dat");
+    let palette =
+        load_palette(&data_dir.join("pal0-0.dat")).expect("Failed to load palette from pal0-0.dat");
 
     // Load sprite container
     let sprite_path = data_dir.join("HSPR0-0.DAT");
-    let container = ContainerPSFB::from_file(&sprite_path)
-        .expect("Failed to load HSPR0-0.DAT");
+    let container = ContainerPSFB::from_file(&sprite_path).expect("Failed to load HSPR0-0.DAT");
     println!("Loaded {} sprites from HSPR0-0.DAT", container.len());
 
     // Load animation data
     let anims_data = AnimationsData::from_path(&data_dir);
-    println!("Animation data: {} vele, {} vfra, {} vstart",
-        anims_data.vele.len(), anims_data.vfra.len(), anims_data.vstart.len());
+    println!(
+        "Animation data: {} vele, {} vfra, {} vstart",
+        anims_data.vele.len(),
+        anims_data.vfra.len(),
+        anims_data.vstart.len()
+    );
 
     let sequences = AnimationSequence::from_data(&anims_data);
-    println!("Loaded {} animation sequences ({} animations)",
-        sequences.len(), sequences.len() / 8);
+    println!(
+        "Loaded {} animation sequences ({} animations)",
+        sequences.len(),
+        sequences.len() / 8
+    );
 
     // Compute global bounding box across ALL animations for consistent sizing
     let global_bbox = compute_global_bbox(&sequences, &container);
     let (gx0, gy0, gx1, gy1) = global_bbox;
-    println!("Global bbox: {}x{} (x: {}..{}, y: {}..{})",
-        gx1 - gx0, gy1 - gy0, gx0, gx1, gy0, gy1);
+    println!(
+        "Global bbox: {}x{} (x: {}..{}, y: {}..{})",
+        gx1 - gx0,
+        gy1 - gy0,
+        gx0,
+        gx1,
+        gy0,
+        gy1
+    );
 
     let env = env_logger::Env::default()
         .filter_or("F_LOG_LEVEL", "info")
@@ -1214,6 +1430,13 @@ fn main() {
     println!();
 
     let event_loop = EventLoop::new().unwrap();
-    let mut app = App::new(container, palette, sequences, initial_anim, initial_tribe, global_bbox);
+    let mut app = App::new(
+        container,
+        palette,
+        sequences,
+        initial_anim,
+        initial_tribe,
+        global_bbox,
+    );
     event_loop.run_app(&mut app).unwrap();
 }

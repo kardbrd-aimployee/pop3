@@ -1,27 +1,34 @@
-use std::io::{Cursor, Write};
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
-use std::collections::HashSet;
+use std::io::{Cursor, Write};
+use std::path::{Path, PathBuf};
 
-use image::{RgbImage, RgbaImage, Rgb, GrayImage, ImageFormat, ImageOutputFormat, ImageBuffer, DynamicImage};
 use clap::{arg, Arg, ArgAction, Command};
+use image::{
+    DynamicImage, GrayImage, ImageBuffer, ImageFormat, ImageOutputFormat, Rgb, RgbImage, RgbaImage,
+};
 
-use pop3::data::level::{GlobeTextureParams, LevelPaths, LevelRes, ObjectPaths, read_pal};
-use pop3::data::psfb::ContainerPSFB;
+use pop3::data::animation::{AnimationFrame, AnimationSequence, AnimationsData};
+use pop3::data::bl320::{read_bl160, read_bl320};
 use pop3::data::landscape::common::{LandPos, LandscapeFull};
-use pop3::data::landscape::minimap::texture_minimap;
+use pop3::data::landscape::disp::texture_bigf0;
 use pop3::data::landscape::globe::texture_globe;
 use pop3::data::landscape::land::texture_land;
-use pop3::data::landscape::disp::texture_bigf0;
+use pop3::data::landscape::minimap::texture_minimap;
 use pop3::data::landscape::water::texture_water;
+use pop3::data::level::{read_pal, GlobeTextureParams, LevelPaths, LevelRes, ObjectPaths};
+use pop3::data::objects::{FaceRaw, ObjectRaw, PointRaw, Shape};
 use pop3::data::pls::decode;
-use pop3::data::bl320::{read_bl320, read_bl160};
-use pop3::data::types::{BinDeserializer, Image, AllocatorIter, ULCentreComposer, URCentreComposer, LayeredStorageSource, LayerComposer};
-use pop3::data::types::{ImageInfo, ImageArea};
-use pop3::data::types::{image_allocator_1d_horizontal, image_allocator_1d_vertical, image_allocator_2d};
-use pop3::data::objects::{ObjectRaw, Shape, PointRaw, FaceRaw};
-use pop3::data::animation::{AnimationsData, AnimationSequence, AnimationFrame};
+use pop3::data::psfb::ContainerPSFB;
+use pop3::data::types::{
+    image_allocator_1d_horizontal, image_allocator_1d_vertical, image_allocator_2d,
+};
+use pop3::data::types::{
+    AllocatorIter, BinDeserializer, Image, LayerComposer, LayeredStorageSource, ULCentreComposer,
+    URCentreComposer,
+};
+use pop3::data::types::{ImageArea, ImageInfo};
 
 /******************************************************************************/
 
@@ -36,7 +43,7 @@ fn draw_palette(pal: &[u8], width: u32, height: u32, num_colors: u32) -> RgbImag
     let color_height = height / num_colors;
     for c in 0..num_colors {
         let palette_index = (c * 4) as usize;
-        let buf: &[u8] = &pal[palette_index..(palette_index+3)];
+        let buf: &[u8] = &pal[palette_index..(palette_index + 3)];
         let si = c * color_height;
         for i in 0..color_height {
             for j in 0..width {
@@ -78,7 +85,7 @@ fn seq_to_pal(pal: &[u8]) -> PaletteArray {
     let mut pal_tup = [(0u8, 0u8, 0u8); 256];
     for i in 0..255 {
         let pi = i * 4;
-        pal_tup[i] = (pal[pi], pal[pi+1], pal[pi+2]);
+        pal_tup[i] = (pal[pi], pal[pi + 1], pal[pi + 2]);
     }
     pal_tup
 }
@@ -103,11 +110,17 @@ fn draw_image(palette: &Option<PaletteArray>, img: Image) -> DynamicImage {
     DynamicImage::ImageLuma8(img)
 }
 
-fn draw_sprites(psfb: &ContainerPSFB, start: usize, num: usize, prefix: &Path, palette: &Option<PaletteArray>) {
+fn draw_sprites(
+    psfb: &ContainerPSFB,
+    start: usize,
+    num: usize,
+    prefix: &Path,
+    palette: &Option<PaletteArray>,
+) {
     if start >= num {
         return;
     }
-    for i in start..(start+num) {
+    for i in start..(start + num) {
         if let Some(sprite) = psfb.get_image(i as usize) {
             let name = format!("{:}_{:?}.bmp", prefix.to_str().unwrap(), i);
             println!("{}", name);
@@ -118,10 +131,15 @@ fn draw_sprites(psfb: &ContainerPSFB, start: usize, num: usize, prefix: &Path, p
     }
 }
 
-fn draw_sprites_img(psfb: &ContainerPSFB, start: usize, num: usize, palette: &Option<PaletteArray>) -> DynamicImage {
+fn draw_sprites_img(
+    psfb: &ContainerPSFB,
+    start: usize,
+    num: usize,
+    palette: &Option<PaletteArray>,
+) -> DynamicImage {
     let allocator = image_allocator_2d(1500);
     let mut p = allocator.alloc_iter(&mut psfb.sprites_info().iter());
-    for i in start..(start+num) {
+    for i in start..(start + num) {
         psfb.get_storage(i as usize, &mut p);
     }
     let image = p.get_image();
@@ -134,40 +152,66 @@ struct AnimationsConfig {
     with_type: bool,
 }
 
-fn draw_anim_frames<L>(anim_seq: &Vec<AnimationSequence>
-                      , psfb: &ContainerPSFB
-                      , palette: &Option<PaletteArray>
-                      , frames_set: &FramesSet
-                      , composer: &L
-                      , config: &AnimationsConfig
-                      ) -> DynamicImage
-    where L: LayerComposer<ComposerResult=ImageArea> {
+fn draw_anim_frames<L>(
+    anim_seq: &Vec<AnimationSequence>,
+    psfb: &ContainerPSFB,
+    palette: &Option<PaletteArray>,
+    frames_set: &FramesSet,
+    composer: &L,
+    config: &AnimationsConfig,
+) -> DynamicImage
+where
+    L: LayerComposer<ComposerResult = ImageArea>,
+{
     let allocator = image_allocator_2d(config.img_size);
     let frames = {
         let seq = AnimationSequence::get_frames(anim_seq);
         if !frames_set.is_empty() {
-            seq.into_iter().filter(|f| frames_set.contains(&f.index)).collect::<Vec<AnimationFrame>>()
+            seq.into_iter()
+                .filter(|f| frames_set.contains(&f.index))
+                .collect::<Vec<AnimationFrame>>()
         } else {
             seq
         }
     };
-    let composed_sprites: Vec<L::ComposerResult> = frames.iter().flat_map(|frame| {
-        frame.get_permutations(config.with_tribe, config.with_type).into_iter().map(|sprites_seq| {
-            let v = sprites_seq.into_iter().filter_map(|sprite| {
-                psfb.get_info(sprite.sprite_index).map(|im| {
-                    ImageArea::from_image(&im, sprite.coord_x as isize, sprite.coord_y as isize)
+    let composed_sprites: Vec<L::ComposerResult> = frames
+        .iter()
+        .flat_map(|frame| {
+            frame
+                .get_permutations(config.with_tribe, config.with_type)
+                .into_iter()
+                .map(|sprites_seq| {
+                    let v = sprites_seq
+                        .into_iter()
+                        .filter_map(|sprite| {
+                            psfb.get_info(sprite.sprite_index).map(|im| {
+                                ImageArea::from_image(
+                                    &im,
+                                    sprite.coord_x as isize,
+                                    sprite.coord_y as isize,
+                                )
+                            })
+                        })
+                        .collect::<Vec<ImageArea>>();
+                    composer.compose_layers(&mut v.iter())
                 })
-            }).collect::<Vec<ImageArea>>();
-            composer.compose_layers(&mut v.iter())
-        }).collect::<Vec<L::ComposerResult>>()
-    }).collect();
+                .collect::<Vec<L::ComposerResult>>()
+        })
+        .collect();
     let mut p = allocator.alloc_iter(&mut composed_sprites.iter());
     let mut cs_iter = composed_sprites.iter();
     for frame in &frames {
         let pr = frame.get_permutations(config.with_tribe, config.with_type);
         for (elems, i) in pr.into_iter().zip(&mut cs_iter) {
             let img_area = ImageArea::from_image_pos(i);
-            let mut ulc = LayeredStorageSource::new(&mut p, img_area, elems.iter().map(|im| (im.coord_x as isize, im.coord_y as isize)), composer);
+            let mut ulc = LayeredStorageSource::new(
+                &mut p,
+                img_area,
+                elems
+                    .iter()
+                    .map(|im| (im.coord_x as isize, im.coord_y as isize)),
+                composer,
+            );
             for elem in &elems {
                 psfb.get_storage(elem.sprite_index, &mut ulc);
             }
@@ -247,14 +291,14 @@ fn cli() -> Command {
         .subcommand(
             Command::new("bl320")
                 .about("Create image for BL320")
-                .args(&args)
+                .args(&args),
         )
         .subcommand(
             Command::new("bl160")
                 .about("Create image for BL160")
                 .args(&args)
                 .arg(arg!(<width> "Sprite width"))
-                .arg(arg!(<height> "Sprite height"))
+                .arg(arg!(<height> "Sprite height")),
         )
         .subcommand(
             Command::new("bigf0")
@@ -291,14 +335,13 @@ fn cli() -> Command {
         .subcommand(
             Command::new("anims")
                 .about("Animations commands")
-                .args([
-                    Arg::new("psfb_path")
-                        .long("psfb_path")
-                        .action(ArgAction::Set)
-                        .value_name("FILE_PATH")
-                        .value_parser(clap::value_parser!(PathBuf))
-                        .help("Path to PSFB file"),
-                ]).arg_required_else_help(true),
+                .args([Arg::new("psfb_path")
+                    .long("psfb_path")
+                    .action(ArgAction::Set)
+                    .value_name("FILE_PATH")
+                    .value_parser(clap::value_parser!(PathBuf))
+                    .help("Path to PSFB file")])
+                .arg_required_else_help(true),
         )
         .subcommand(
             Command::new("anims_draw")
@@ -336,18 +379,17 @@ fn cli() -> Command {
                         .long("no_type")
                         .action(ArgAction::SetTrue)
                         .help("Do not show type images"),
-                ]).arg_required_else_help(true),
+                ])
+                .arg_required_else_help(true),
         )
         .subcommand(
-            Command::new("pls")
-                .about("Decode pls files")
-                .arg(
-                    Arg::new("pls_path")
+            Command::new("pls").about("Decode pls files").arg(
+                Arg::new("pls_path")
                     .action(ArgAction::Set)
                     .value_name("PLS_PATH")
                     .value_parser(clap::value_parser!(PathBuf))
-                    .help("Path to pls file")
-                )
+                    .help("Path to pls file"),
+            ),
         )
         .subcommand(
             Command::new("psfb")
@@ -387,7 +429,8 @@ fn cli() -> Command {
                         .value_name("PREFIX_PATH")
                         .value_parser(clap::value_parser!(PathBuf))
                         .help("Prefix for generated images"),
-                ]).arg_required_else_help(true),
+                ])
+                .arg_required_else_help(true),
         )
 }
 
@@ -398,26 +441,31 @@ enum TextureType {
 }
 
 fn write_img_stdout<P, C>(img: &ImageBuffer<P, C>, format: ImageOutputFormat)
-    where P: image::Pixel + image::PixelWithColorType,
-          C: std::ops::Deref<Target = [P::Subpixel]>,
-          [<P as image::Pixel>::Subpixel]: image::EncodableLayout {
+where
+    P: image::Pixel + image::PixelWithColorType,
+    C: std::ops::Deref<Target = [P::Subpixel]>,
+    [<P as image::Pixel>::Subpixel]: image::EncodableLayout,
+{
     let mut temp_vec = Vec::new();
-    img.write_to(&mut Cursor::new(&mut temp_vec), format).unwrap();
+    img.write_to(&mut Cursor::new(&mut temp_vec), format)
+        .unwrap();
     std::io::stdout().write_all(&temp_vec).unwrap();
 }
 
 fn write_dyn_img_stdout(img: &DynamicImage, format: ImageOutputFormat) {
     let mut temp_vec = Vec::new();
-    img.write_to(&mut Cursor::new(&mut temp_vec), format).unwrap();
+    img.write_to(&mut Cursor::new(&mut temp_vec), format)
+        .unwrap();
     std::io::stdout().write_all(&temp_vec).unwrap();
 }
 
-fn make_texture_land(tex_type: TextureType
-                     , level_num: u8
-                     , base: &Path
-                     , level_type_opt: Option<&String>
-                     , _tex_move: Option<(u32, u32)>
-                     ) {
+fn make_texture_land(
+    tex_type: TextureType,
+    level_num: u8,
+    base: &Path,
+    level_type_opt: Option<&String>,
+    _tex_move: Option<(u32, u32)>,
+) {
     let level_res = LevelRes::new(base, level_num, level_type_opt.map(|s| s.as_str()));
 
     let land_size = level_res.landscape.land_size();
@@ -428,15 +476,9 @@ fn make_texture_land(tex_type: TextureType
     //let (h, v) = tex_move.unwrap_or((0, 0));
 
     let img = match tex_type {
-        TextureType::Land => {
-            texture_land(land_size, &landscape, params_globe)
-        }
-        TextureType::Globe => {
-            texture_globe(land_size, &landscape, params_globe)
-        }
-        TextureType::Minimap => {
-            texture_minimap(land_size, true, &landscape, &params_globe.bigf0)
-        }
+        TextureType::Land => texture_land(land_size, &landscape, params_globe),
+        TextureType::Globe => texture_globe(land_size, &landscape, params_globe),
+        TextureType::Minimap => texture_minimap(land_size, true, &landscape, &params_globe.bigf0),
     };
     let img = draw_image_pal(&params_globe.palette, img);
 
@@ -463,19 +505,47 @@ fn main() {
     let matches = cli().get_matches();
     match matches.subcommand() {
         Some(("globe", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_type = sub_matches.get_one::<String>("landtype");
-            let tex_move = sub_matches.get_one::<String>("move").and_then(|s| parse_move(s));
-            make_texture_land(TextureType::Globe, level_num, base_path, level_type, tex_move);
+            let tex_move = sub_matches
+                .get_one::<String>("move")
+                .and_then(|s| parse_move(s));
+            make_texture_land(
+                TextureType::Globe,
+                level_num,
+                base_path,
+                level_type,
+                tex_move,
+            );
         }
         Some(("land", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_type = sub_matches.get_one::<String>("landtype");
-            let tex_move = sub_matches.get_one::<String>("move").and_then(|s| parse_move(s));
-            make_texture_land(TextureType::Land, level_num, base_path, level_type, tex_move);
+            let tex_move = sub_matches
+                .get_one::<String>("move")
+                .and_then(|s| parse_move(s));
+            make_texture_land(
+                TextureType::Land,
+                level_num,
+                base_path,
+                level_type,
+                tex_move,
+            );
         }
         Some(("bl320", sub_matches)) => {
-            let level_type: String = sub_matches.get_one::<String>("landtype").expect("required").parse().unwrap();
+            let level_type: String = sub_matches
+                .get_one::<String>("landtype")
+                .expect("required")
+                .parse()
+                .unwrap();
             let paths = LevelPaths::from_default_dir(base_path, &level_type);
             let pal = read_pal(&paths);
             let allocator = image_allocator_1d_horizontal();
@@ -484,9 +554,21 @@ fn main() {
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
         }
         Some(("bl160", sub_matches)) => {
-            let level_type: String = sub_matches.get_one::<String>("landtype").expect("required").parse().unwrap();
-            let width: usize = sub_matches.get_one::<String>("width").expect("required").parse().unwrap();
-            let height: usize = sub_matches.get_one::<String>("height").expect("required").parse().unwrap();
+            let level_type: String = sub_matches
+                .get_one::<String>("landtype")
+                .expect("required")
+                .parse()
+                .unwrap();
+            let width: usize = sub_matches
+                .get_one::<String>("width")
+                .expect("required")
+                .parse()
+                .unwrap();
+            let height: usize = sub_matches
+                .get_one::<String>("height")
+                .expect("required")
+                .parse()
+                .unwrap();
             let paths = LevelPaths::from_default_dir(base_path, &level_type);
             let pal = read_pal(&paths);
             let allocator = image_allocator_1d_vertical();
@@ -495,34 +577,62 @@ fn main() {
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
         }
         Some(("minimap", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_type = sub_matches.get_one::<String>("landtype");
             make_texture_land(TextureType::Minimap, level_num, base_path, level_type, None);
         }
         Some(("water", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
-            let offset = sub_matches.get_one::<String>("offset").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
+            let offset = sub_matches
+                .get_one::<String>("offset")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_res = LevelRes::new(base_path, level_num, None);
             let img = texture_water(offset, &level_res.params);
             let img = draw_image_pal(&level_res.params.palette, img);
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
         }
         Some(("bigf0", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
-            let height = sub_matches.get_one::<String>("height").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
+            let height = sub_matches
+                .get_one::<String>("height")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_res = LevelRes::new(base_path, level_num, None);
             let img = texture_bigf0(height, &level_res.params);
             let img = draw_image_pal(&level_res.params.palette, img);
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
         }
         Some(("disp", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_res = LevelRes::new(base_path, level_num, None);
             let img = make_disp_texture2(&level_res.params);
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
         }
         Some(("palette", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_res = LevelRes::new(base_path, level_num, None);
             let img = draw_palette(&level_res.params.palette, 1024, 1024, 128);
             write_img_stdout(&img, DEFAULT_IMG_FORMAT);
@@ -552,7 +662,11 @@ fn main() {
             }
         }
         Some(("units", sub_matches)) => {
-            let level_num = sub_matches.get_one::<String>("num").expect("required").parse().unwrap();
+            let level_num = sub_matches
+                .get_one::<String>("num")
+                .expect("required")
+                .parse()
+                .unwrap();
             let level_res = LevelRes::new(base_path, level_num, None);
             println!("Num units = {}", level_res.units.len());
             for unit in &level_res.units {
@@ -570,8 +684,12 @@ fn main() {
             println!("PSFB = {:?}", psfb_path);
             let psfb_container = psfb_path.and_then(|p| ContainerPSFB::from_file(Path::new(&p)));
             let anims_data = AnimationsData::from_path(&base_path.join("data"));
-            println!("Num vele={:?}, vfra={:?}, vstart={:?}"
-                    , anims_data.vele.len(), anims_data.vfra.len(), anims_data.vstart.len());
+            println!(
+                "Num vele={:?}, vfra={:?}, vstart={:?}",
+                anims_data.vele.len(),
+                anims_data.vfra.len(),
+                anims_data.vstart.len()
+            );
             for (index, vele) in (0..).zip(&anims_data.vele) {
                 println!("  {:?}:{:?}", index, vele);
             }
@@ -583,9 +701,16 @@ fn main() {
             }
             let anim_seq_vec = AnimationSequence::from_data(&anims_data);
             for anim_seq in &anim_seq_vec {
-                println!("AnimationSequence {:?} ({:?})", anim_seq.index, anim_seq.frames.len());
+                println!(
+                    "AnimationSequence {:?} ({:?})",
+                    anim_seq.index,
+                    anim_seq.frames.len()
+                );
                 for anim_frame in &anim_seq.frames {
-                    println!("  AnimationFrame {:?} ({:?}, {:?})", anim_frame.index, anim_frame.width, anim_frame.height);
+                    println!(
+                        "  AnimationFrame {:?} ({:?}, {:?})",
+                        anim_frame.index, anim_frame.width, anim_frame.height
+                    );
                     for anim_sprite in &anim_frame.sprites {
                         println!("    AnimationElement {:?} ({:?}, {:?}, tribe={:?}, flags=0x{:x}, uvar5=0x{:x}, original_flags=0x{:x})"
                                 , anim_sprite.sprite_index
@@ -595,10 +720,20 @@ fn main() {
                                 , anim_sprite.flags
                                 , anim_sprite.uvar5
                                 , anim_sprite.original_flags);
-                        if let Some(sprite) = psfb_container.as_ref().and_then(|p| p.get_info(anim_sprite.sprite_index)) {
-                            let fit = (anim_frame.width >= sprite.width()) && (anim_frame.height >= sprite.height());
+                        if let Some(sprite) = psfb_container
+                            .as_ref()
+                            .and_then(|p| p.get_info(anim_sprite.sprite_index))
+                        {
+                            let fit = (anim_frame.width >= sprite.width())
+                                && (anim_frame.height >= sprite.height());
                             let fit32 = (32 >= sprite.width()) && (32 >= sprite.height());
-                            println!("     Sprite({:?}, {:?}, fit={:?}, fit32={:?})", sprite.width(), sprite.height(), fit, fit32);
+                            println!(
+                                "     Sprite({:?}, {:?}, fit={:?}, fit32={:?})",
+                                sprite.width(),
+                                sprite.height(),
+                                fit,
+                                fit32
+                            );
                         }
                     }
                 }
@@ -610,9 +745,7 @@ fn main() {
             let file_path: PathBuf = sub_matches.get_one("path").cloned().unwrap();
             let palette_path: Option<PathBuf> = sub_matches.get_one("palette").cloned();
             let s = String::from("ul");
-            let composer_type = {
-                sub_matches.get_one::<String>("composer").unwrap_or(&s)
-            };
+            let composer_type = { sub_matches.get_one::<String>("composer").unwrap_or(&s) };
             let palette = if let Some(path) = palette_path {
                 let mut file = File::options().read(true).open(path).unwrap();
                 let mut pal = Vec::new();
@@ -622,29 +755,58 @@ fn main() {
             } else {
                 None
             };
-            let frames_ids = sub_matches.get_one::<String>("ids").map(|s| parse_ids(s)).unwrap_or_default();
+            let frames_ids = sub_matches
+                .get_one::<String>("ids")
+                .map(|s| parse_ids(s))
+                .unwrap_or_default();
             let img_size = 800;
             let with_tribe: bool = !sub_matches.get_flag("no_tribe");
             let with_type: bool = !sub_matches.get_flag("no_type");
-            let anims_config = AnimationsConfig{img_size, with_tribe, with_type};
+            let anims_config = AnimationsConfig {
+                img_size,
+                with_tribe,
+                with_type,
+            };
             if let Some(c) = ContainerPSFB::from_file(&file_path) {
                 let img = {
                     match composer_type.as_str() {
                         "ul" => {
-                            let composer = ULCentreComposer{vertical: 5, horizontal: 5};
-                            draw_anim_frames(&anim_seq_vec, &c, &palette, &frames_ids, &composer, &anims_config)
-                        },
+                            let composer = ULCentreComposer {
+                                vertical: 5,
+                                horizontal: 5,
+                            };
+                            draw_anim_frames(
+                                &anim_seq_vec,
+                                &c,
+                                &palette,
+                                &frames_ids,
+                                &composer,
+                                &anims_config,
+                            )
+                        }
                         _ => {
-                            let composer = URCentreComposer{vertical: 5, horizontal: 5};
-                            draw_anim_frames(&anim_seq_vec, &c, &palette, &frames_ids, &composer, &anims_config)
-                        },
+                            let composer = URCentreComposer {
+                                vertical: 5,
+                                horizontal: 5,
+                            };
+                            draw_anim_frames(
+                                &anim_seq_vec,
+                                &c,
+                                &palette,
+                                &frames_ids,
+                                &composer,
+                                &anims_config,
+                            )
+                        }
                     }
                 };
                 write_dyn_img_stdout(&img, DEFAULT_IMG_FORMAT);
             }
         }
         Some(("pls", sub_matches)) => {
-            let path = sub_matches.get_one::<PathBuf>("pls_path").expect("required");
+            let path = sub_matches
+                .get_one::<PathBuf>("pls_path")
+                .expect("required");
             let pls_data = decode_pls(path);
             std::io::stdout().write_all(&pls_data).unwrap();
         }
@@ -675,18 +837,10 @@ fn main() {
                     }
                 } else {
                     let (start, num) = match (start_num, num) {
-                        (Some(i), Some(n)) => {
-                            (i as usize, n as usize)
-                        }
-                        (None, Some(n)) => {
-                            (0, n as usize)
-                        }
-                        (Some(i), None) => {
-                            (i as usize, 0)
-                        }
-                        (None, None) => {
-                            (0, c.len())
-                        }
+                        (Some(i), Some(n)) => (i as usize, n as usize),
+                        (None, Some(n)) => (0, n as usize),
+                        (Some(i), None) => (i as usize, 0),
+                        (None, None) => (0, c.len()),
                     };
                     if num <= 1 {
                         if let Some(image) = c.get_image(start) {

@@ -1,14 +1,15 @@
-use num_traits::{sign::Unsigned, float::Float};
-use num_traits::identities::{zero, one};
 use cgmath::Vector3;
+use num_traits::identities::{one, zero};
+use num_traits::{float::Float, sign::Unsigned};
 
 use crate::render::model::TriangleModel;
 
 pub fn cube<M, V, I>(model: &mut M)
-    where M: TriangleModel<Vector3<V>, I>,
-          V: Float + Copy,
-          I: Unsigned + Copy
-    {
+where
+    M: TriangleModel<Vector3<V>, I>,
+    V: Float + Copy,
+    I: Unsigned + Copy,
+{
     let i0 = model.push_vertex(Vector3::new(zero::<V>(), zero::<V>(), zero::<V>()));
     let i1 = model.push_vertex(Vector3::new(one::<V>(), zero::<V>(), zero::<V>()));
     let i2 = model.push_vertex(Vector3::new(zero::<V>(), one::<V>(), zero::<V>()));

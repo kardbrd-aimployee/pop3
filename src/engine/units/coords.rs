@@ -12,8 +12,8 @@
 //
 // So: world.x → cell_y (flipped), world.z → cell_x
 
+use crate::engine::movement::{TileCoord, WorldCoord};
 use cgmath::{Matrix4, Vector4};
-use crate::engine::movement::{WorldCoord, TileCoord};
 
 /// Convert world coordinates to cell coordinates for rendering.
 /// `n` is landscape size (typically 128.0).
@@ -62,7 +62,10 @@ pub fn cell_to_world(cell_x: f32, cell_y: f32, n: f32) -> WorldCoord {
 pub fn cell_to_tile(cell_x: i32, cell_y: i32, n: i32) -> TileCoord {
     let tile_z = (cell_x * 2) as u8;
     let tile_x = ((n - 2 - cell_y) * 2) as u8;
-    TileCoord { x: tile_x, z: tile_z }
+    TileCoord {
+        x: tile_x,
+        z: tile_z,
+    }
 }
 
 /// Convert GPU-space hit point to cell coordinates.
@@ -79,7 +82,12 @@ pub fn gpu_to_cell(gx: f32, gy: f32, step: f32, shift_x: f32, shift_y: f32, w: f
 /// Convert a landscape triangle index to cell coordinates.
 /// The mesh has `mesh_width * mesh_width * 6` vertices, 2 triangles per cell,
 /// with stride `mesh_width` (not mesh_width-1) in the vertex array.
-pub fn triangle_to_cell(triangle_id: usize, mesh_width: usize, shift_x: usize, shift_y: usize) -> (f32, f32) {
+pub fn triangle_to_cell(
+    triangle_id: usize,
+    mesh_width: usize,
+    shift_x: usize,
+    shift_y: usize,
+) -> (f32, f32) {
     let cell_idx = triangle_id / 2;
     let vis_i = cell_idx / mesh_width;
     let vis_j = cell_idx % mesh_width;
@@ -140,7 +148,10 @@ impl ScreenRect {
 
     /// Center point of the rect.
     pub fn center(&self) -> (f32, f32) {
-        ((self.min_x + self.max_x) * 0.5, (self.min_y + self.max_y) * 0.5)
+        (
+            (self.min_x + self.max_x) * 0.5,
+            (self.min_y + self.max_y) * 0.5,
+        )
     }
 }
 
@@ -206,8 +217,13 @@ mod tests {
             for cx in 0..n {
                 let t = cell_to_tile(cx, cy, n);
                 let idx = t.cell_index();
-                assert!(seen.insert(idx),
-                    "duplicate tile index {} for cell ({}, {})", idx, cx, cy);
+                assert!(
+                    seen.insert(idx),
+                    "duplicate tile index {} for cell ({}, {})",
+                    idx,
+                    cx,
+                    cy
+                );
             }
         }
         assert_eq!(seen.len(), (n * n) as usize);
@@ -532,58 +548,118 @@ mod tests {
 
     #[test]
     fn screen_rect_contains_point_inside() {
-        let rect = ScreenRect { min_x: 10.0, min_y: 20.0, max_x: 50.0, max_y: 60.0 };
+        let rect = ScreenRect {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 50.0,
+            max_y: 60.0,
+        };
         assert!(rect.contains(30.0, 40.0));
     }
 
     #[test]
     fn screen_rect_contains_point_outside() {
-        let rect = ScreenRect { min_x: 10.0, min_y: 20.0, max_x: 50.0, max_y: 60.0 };
+        let rect = ScreenRect {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 50.0,
+            max_y: 60.0,
+        };
         assert!(!rect.contains(5.0, 40.0));
         assert!(!rect.contains(30.0, 70.0));
     }
 
     #[test]
     fn screen_rect_contains_point_on_edge() {
-        let rect = ScreenRect { min_x: 10.0, min_y: 20.0, max_x: 50.0, max_y: 60.0 };
+        let rect = ScreenRect {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 50.0,
+            max_y: 60.0,
+        };
         assert!(rect.contains(10.0, 20.0)); // min corner
         assert!(rect.contains(50.0, 60.0)); // max corner
     }
 
     #[test]
     fn screen_rect_overlaps_intersecting() {
-        let a = ScreenRect { min_x: 0.0, min_y: 0.0, max_x: 20.0, max_y: 20.0 };
-        let b = ScreenRect { min_x: 10.0, min_y: 10.0, max_x: 30.0, max_y: 30.0 };
+        let a = ScreenRect {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 20.0,
+            max_y: 20.0,
+        };
+        let b = ScreenRect {
+            min_x: 10.0,
+            min_y: 10.0,
+            max_x: 30.0,
+            max_y: 30.0,
+        };
         assert!(a.overlaps(&b));
         assert!(b.overlaps(&a));
     }
 
     #[test]
     fn screen_rect_overlaps_disjoint() {
-        let a = ScreenRect { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0 };
-        let b = ScreenRect { min_x: 20.0, min_y: 20.0, max_x: 30.0, max_y: 30.0 };
+        let a = ScreenRect {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 10.0,
+            max_y: 10.0,
+        };
+        let b = ScreenRect {
+            min_x: 20.0,
+            min_y: 20.0,
+            max_x: 30.0,
+            max_y: 30.0,
+        };
         assert!(!a.overlaps(&b));
         assert!(!b.overlaps(&a));
     }
 
     #[test]
     fn screen_rect_overlaps_touching_edge() {
-        let a = ScreenRect { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0 };
-        let b = ScreenRect { min_x: 10.0, min_y: 0.0, max_x: 20.0, max_y: 10.0 };
+        let a = ScreenRect {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 10.0,
+            max_y: 10.0,
+        };
+        let b = ScreenRect {
+            min_x: 10.0,
+            min_y: 0.0,
+            max_x: 20.0,
+            max_y: 10.0,
+        };
         assert!(a.overlaps(&b)); // touching = overlapping
     }
 
     #[test]
     fn screen_rect_overlaps_contained() {
-        let outer = ScreenRect { min_x: 0.0, min_y: 0.0, max_x: 100.0, max_y: 100.0 };
-        let inner = ScreenRect { min_x: 20.0, min_y: 20.0, max_x: 40.0, max_y: 40.0 };
+        let outer = ScreenRect {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        };
+        let inner = ScreenRect {
+            min_x: 20.0,
+            min_y: 20.0,
+            max_x: 40.0,
+            max_y: 40.0,
+        };
         assert!(outer.overlaps(&inner));
         assert!(inner.overlaps(&outer));
     }
 
     #[test]
     fn screen_rect_center() {
-        let rect = ScreenRect { min_x: 10.0, min_y: 20.0, max_x: 50.0, max_y: 60.0 };
+        let rect = ScreenRect {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 50.0,
+            max_y: 60.0,
+        };
         let (cx, cy) = rect.center();
         assert!((cx - 30.0).abs() < 0.01);
         assert!((cy - 40.0).abs() < 0.01);

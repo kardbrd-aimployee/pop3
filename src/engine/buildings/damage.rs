@@ -1,5 +1,5 @@
-use super::types::*;
 use super::state_machine::transition_building_state;
+use super::types::*;
 use crate::engine::objects::ObjectHeader;
 
 /// Apply damage to a building. Returns true if building was destroyed.
@@ -41,6 +41,7 @@ mod tests {
     use super::*;
     use crate::data::units::ModelType;
     use crate::engine::movement::WorldCoord;
+    use crate::engine::objects::ObjectHandle;
 
     fn make_header(health: u16) -> ObjectHeader {
         ObjectHeader {
@@ -52,7 +53,7 @@ mod tests {
             flags1: 0,
             flags2: 0,
             flags3: 0,
-            object_index: 0,
+            object_index: ObjectHandle::new(0, 1),
             angle: 0,
             position: WorldCoord::default(),
             velocity: WorldCoord::default(),

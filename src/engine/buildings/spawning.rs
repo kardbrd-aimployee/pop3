@@ -24,6 +24,9 @@ pub enum SpawnAction {
 /// Check if hut should spawn a brave this tick.
 /// Caller must verify can_spawn() and create the brave in the pool.
 pub fn tick_spawn(building: &mut BuildingData) -> SpawnAction {
+    if !building.population_timer_enabled {
+        return SpawnAction::None;
+    }
     if building.behavior_flags & 0x20 == 0 {
         return SpawnAction::None;
     }

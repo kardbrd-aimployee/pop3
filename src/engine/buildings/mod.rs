@@ -1,18 +1,25 @@
-pub mod types;
-pub mod state_machine;
-pub mod occupants;
-pub mod tick;
-pub mod spawning;
-pub mod training;
-pub mod placement;
-pub mod damage;
+pub mod catalog;
 pub mod combat;
+pub mod damage;
+pub mod occupants;
+pub mod placement;
+pub mod spawning;
+pub mod state_machine;
+pub mod tick;
+pub mod training;
+pub mod types;
 
-pub use types::{BuildingData, BuildingState, BuildingSubtype, MAX_OCCUPANTS};
-pub use state_machine::{transition_building_state, on_construction_complete, on_destroy};
-pub use occupants::{add_occupant, remove_occupant, eject_occupant, is_full};
-pub use spawning::{tick_spawn, SpawnAction, sprog_time_for_level};
-pub use training::{tick_convert, start_training, ConvertAction, training_output_subtype, training_mana_cost};
-pub use placement::{validate_placement, PlacementError, GhostPreview};
+pub use catalog::BuildingCatalog;
+pub use combat::{
+    set_building_target, set_fighters, tick_building_combat, BuildingCombatAction,
+    MAX_BUILDING_FIGHTERS,
+};
 pub use damage::{apply_building_damage, chain_damage_radius};
-pub use combat::{tick_building_combat, set_fighters, set_building_target, BuildingCombatAction, MAX_BUILDING_FIGHTERS};
+pub use occupants::{add_occupant, eject_occupant, is_full, remove_occupant};
+pub use placement::{validate_placement, GhostPreview, PlacementError};
+pub use spawning::{sprog_time_for_level, tick_spawn, SpawnAction};
+pub use state_machine::{on_construction_complete, on_destroy, transition_building_state};
+pub use training::{
+    start_training, tick_convert, training_mana_cost, training_output_subtype, ConvertAction,
+};
+pub use types::{BuildingData, BuildingState, BuildingSubtype, MAX_OCCUPANTS};

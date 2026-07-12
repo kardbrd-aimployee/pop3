@@ -77,8 +77,16 @@ pub fn process_route_movement(
     let dz = (person.position.z as i32 - current_wp.z as i32).abs();
 
     // Handle toroidal wrapping for distance
-    let dx = if dx > WORLD_WRAP_THRESHOLD { WORLD_SIZE - dx } else { dx };
-    let dz = if dz > WORLD_WRAP_THRESHOLD { WORLD_SIZE - dz } else { dz };
+    let dx = if dx > WORLD_WRAP_THRESHOLD {
+        WORLD_SIZE - dx
+    } else {
+        dx
+    };
+    let dz = if dz > WORLD_WRAP_THRESHOLD {
+        WORLD_SIZE - dz
+    } else {
+        dz
+    };
 
     // Phase 3: Check arrival threshold
     // Original: 0x240 for normal paths, 0xE0 for building entrances
@@ -120,10 +128,7 @@ pub fn process_route_movement(
 /// Decrements ref_count. If ref_count hits 0 and segment is NOT persistent
 /// (flag bit 2), the slot is freed. Copies target_pos to next_waypoint
 /// so the unit walks the final stretch directly.
-fn release_segment(
-    segment_pool: &mut SegmentPool,
-    person: &mut PersonMovement,
-) {
+fn release_segment(segment_pool: &mut SegmentPool, person: &mut PersonMovement) {
     let seg_idx = person.segment_index;
 
     // Decrement reference count
@@ -287,11 +292,8 @@ mod tests {
 
     #[test]
     fn multi_waypoint_full_traversal() {
-        let (mut pool, idx) = setup_segment_pool_with_path(&[
-            (0x10, 0x10),
-            (0x20, 0x20),
-            (0x30, 0x30),
-        ]);
+        let (mut pool, idx) =
+            setup_segment_pool_with_path(&[(0x10, 0x10), (0x20, 0x20), (0x30, 0x30)]);
 
         let mut person = PersonMovement::default();
         person.segment_index = idx;
@@ -301,19 +303,28 @@ mod tests {
         // Walk to waypoint 0
         let wp0 = TileCoord::new(0x10, 0x10).to_world();
         person.position = WorldCoord::new(wp0.x, wp0.z);
-        assert_eq!(process_route_movement(&mut pool, &mut person), WaypointResult::Advanced);
+        assert_eq!(
+            process_route_movement(&mut pool, &mut person),
+            WaypointResult::Advanced
+        );
         assert_eq!(person.waypoint_idx, 1);
 
         // Walk to waypoint 1
         let wp1 = TileCoord::new(0x20, 0x20).to_world();
         person.position = WorldCoord::new(wp1.x, wp1.z);
-        assert_eq!(process_route_movement(&mut pool, &mut person), WaypointResult::Advanced);
+        assert_eq!(
+            process_route_movement(&mut pool, &mut person),
+            WaypointResult::Advanced
+        );
         assert_eq!(person.waypoint_idx, 2);
 
         // Walk to waypoint 2 (last)
         let wp2 = TileCoord::new(0x30, 0x30).to_world();
         person.position = WorldCoord::new(wp2.x, wp2.z);
-        assert_eq!(process_route_movement(&mut pool, &mut person), WaypointResult::Completed);
+        assert_eq!(
+            process_route_movement(&mut pool, &mut person),
+            WaypointResult::Completed
+        );
         assert_eq!(person.segment_index, 0);
         assert_eq!(person.next_waypoint, person.target_pos);
     }

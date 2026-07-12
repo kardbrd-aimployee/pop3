@@ -1,0 +1,128 @@
+use std::path::PathBuf;
+
+use pop3::data::level::{LevelDefinition, LevelRes, ObjectPaths};
+use pop3::data::objects::{Object3D, ShapeFootprints};
+use pop3::data::units::ModelType;
+use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
+use pop3::engine::objects::CellGrid;
+use pop3::engine::{GameAction, GameSession};
+
+#[test]
+#[ignore = "requires legally owned POP3_DATA_DIR assets"]
+fn real_level_one_hut_vertical_slice() {
+    let base = PathBuf::from(
+        std::env::var("POP3_DATA_DIR").expect("set POP3_DATA_DIR to the Populous 3 data root"),
+    );
+    let level = LevelRes::new(&base, 1, None);
+    let obj_bank = level.obj_bank;
+    let expected = level
+        .units
+        .iter()
+        .filter(|raw| raw.model_type().is_some() && raw.loc_x() != 0 && raw.loc_y() != 0)
+        .count();
+    let expected_people = level
+        .units
+        .iter()
+        .filter(|raw| {
+            raw.model_type() == Some(ModelType::Person) && raw.loc_x() != 0 && raw.loc_y() != 0
+        })
+        .count();
+
+    let (building_objects, _) = Object3D::load_dual_banks(&base, obj_bank);
+    let bank = if obj_bank == 0 { 2 } else { obj_bank };
+    let paths = ObjectPaths::from_default_dir(&base, &bank.to_string());
+    let footprints = ShapeFootprints::from_file(&paths.shapes);
+    let catalog = BuildingCatalog::from_assets(&building_objects, &footprints);
+    let mut session = GameSession::from_level(LevelDefinition::from(level), catalog)
+        .expect("Level 1 must instantiate");
+    assert_eq!(session.world.pool().active_count() as usize, expected);
+    let original_people: std::collections::HashSet<_> = session
+        .world
+        .pool()
+        .persons()
+        .map(|(handle, _, _)| handle)
+        .collect();
+
+    let cell = (0..128)
+        .flat_map(|y| (0..128).map(move |x| (x, y)))
+        .find(|&cell| {
+            session
+                .validate_building_placement(BuildingSubtype::SmallHut, cell, 0)
+                .is_ok()
+        })
+        .expect("Level 1 must contain a valid hut site");
+    session.enqueue(GameAction::PlaceBuilding {
+        subtype: BuildingSubtype::SmallHut,
+        owner: 0,
+        cell,
+        rotation: 0,
+    });
+    assert!(session.step().actions[0].clone().is_applied());
+    let placed_hut = session
+        .world
+        .terrain
+        .occupant(cell.0, cell.1)
+        .expect("placed hut must occupy its footprint");
+    let hut_position = session.world.get(placed_hut).unwrap().header.position;
+    let expected_spawn =
+        pop3::engine::movement::WorldCoord::new(hut_position.x.wrapping_add(512), hut_position.z);
+    for _ in 0..3 {
+        session.step();
+    }
+    for _ in 0..1500 {
+        session.step();
+    }
+
+    assert!(session.world.pool().persons().count() >= expected_people + 1);
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.persons.len(),
+        session.world.pool().persons().count()
+    );
+    let new_people: Vec<_> = snapshot
+        .persons
+        .iter()
+        .filter(|record| !original_people.contains(&record.handle))
+        .collect();
+    let spawned_here: Vec<_> = new_people
+        .into_iter()
+        .filter(|record| {
+            session
+                .world
+                .get(record.handle)
+                .is_some_and(|object| object.header.position == expected_spawn)
+        })
+        .collect();
+    assert_eq!(spawned_here.len(), 1);
+    let brave = spawned_here
+        .into_iter()
+        .find(|record| record.subtype == 2 && record.tribe == 0)
+        .expect("spawned brave must be rendered")
+        .handle;
+    let position = session.world.get(brave).unwrap().header.position;
+    assert_eq!(
+        session
+            .world
+            .cell_head(CellGrid::cell_index_from_world(&position)),
+        Some(brave)
+    );
+    assert_eq!(
+        snapshot.tribes[0].population as usize,
+        session
+            .world
+            .pool()
+            .persons()
+            .filter(|(_, h, p)| h.tribe == 0 && p.alive)
+            .count()
+    );
+}
+
+trait Applied {
+    fn is_applied(&self) -> bool;
+}
+
+impl Applied for pop3::engine::session::ActionEvent {
+    fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied(_))
+    }
+}

@@ -1,5 +1,5 @@
-pub mod types;
 pub mod spawn;
+pub mod types;
 
 pub type EffectId = u16;
 pub const MAX_EFFECTS: usize = 512;
@@ -14,14 +14,14 @@ pub const GRAVITY_ACCEL: i32 = 32; // fixed-point gravity per tick
 
 #[derive(Clone, Debug)]
 pub struct Effect {
-    pub effect_type: u8,     // 0x00-0x5C (93 types)
-    pub state: u8,           // current state (0xFF = inactive sentinel)
-    pub flags: u8,           // GRAVITY, LOOP, ATTACHED
-    pub owner: u8,           // tribe index 0-3
-    pub x: i32,              // world position
+    pub effect_type: u8, // 0x00-0x5C (93 types)
+    pub state: u8,       // current state (0xFF = inactive sentinel)
+    pub flags: u8,       // GRAVITY, LOOP, ATTACHED
+    pub owner: u8,       // tribe index 0-3
+    pub x: i32,          // world position
     pub y: i32,
-    pub z: i32,              // height
-    pub velocity_x: i32,     // fixed-point velocity (>>8 per tick)
+    pub z: i32,          // height
+    pub velocity_x: i32, // fixed-point velocity (>>8 per tick)
     pub velocity_y: i32,
     pub velocity_z: i32,
     pub frame: i16,          // animation frame
@@ -31,8 +31,8 @@ pub struct Effect {
     pub target: Option<u32>, // attached entity ID
     pub damage: i32,
     pub radius: i32,
-    pub duration: i32,       // ticks remaining
-    pub color: u32,          // RGBA packed
+    pub duration: i32, // ticks remaining
+    pub color: u32,    // RGBA packed
 }
 
 impl Default for Effect {
@@ -63,7 +63,7 @@ impl Default for Effect {
 
 pub struct EffectPool {
     slots: Vec<Effect>,
-    free_list: Vec<u16>,     // LIFO free indices
+    free_list: Vec<u16>, // LIFO free indices
     active_count: u32,
 }
 
@@ -81,7 +81,14 @@ impl EffectPool {
     }
 
     /// Allocate a new effect from the LIFO free list. Returns None if pool is full.
-    pub fn spawn(&mut self, effect_type: u8, x: i32, y: i32, z: i32, owner: u8) -> Option<EffectId> {
+    pub fn spawn(
+        &mut self,
+        effect_type: u8,
+        x: i32,
+        y: i32,
+        z: i32,
+        owner: u8,
+    ) -> Option<EffectId> {
         let slot_idx = self.free_list.pop()?;
         let slot = &mut self.slots[slot_idx as usize];
         *slot = Effect {
@@ -182,7 +189,13 @@ impl EffectPool {
 #[derive(Debug, Clone)]
 pub enum EffectAction {
     /// Spawn an effect at a world position.
-    SpawnAt { effect_type: u8, x: i32, y: i32, z: i32, owner: u8 },
+    SpawnAt {
+        effect_type: u8,
+        x: i32,
+        y: i32,
+        z: i32,
+        owner: u8,
+    },
 }
 
 #[cfg(test)]

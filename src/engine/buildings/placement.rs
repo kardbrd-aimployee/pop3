@@ -24,7 +24,7 @@ pub fn validate_placement(
     Ok(())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlacementError {
     Water,
     Occupied,
@@ -59,7 +59,10 @@ mod tests {
         let walk = empty_walkability();
         let flags = empty_building_flags();
         let footprint = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
-        assert_eq!(validate_placement(10, 10, &footprint, &walk, &flags), Ok(()));
+        assert_eq!(
+            validate_placement(10, 10, &footprint, &walk, &flags),
+            Ok(())
+        );
     }
 
     #[test]
@@ -104,7 +107,10 @@ mod tests {
         let flags = empty_building_flags();
         // Place at edge, footprint wraps around
         let footprint = vec![(0, 0), (1, 0)]; // (127,0) and (128&127=0, 0)
-        assert_eq!(validate_placement(127, 0, &footprint, &walk, &flags), Ok(()));
+        assert_eq!(
+            validate_placement(127, 0, &footprint, &walk, &flags),
+            Ok(())
+        );
     }
 
     #[test]

@@ -1,10 +1,10 @@
+use super::handle::ObjectHandle;
 use crate::data::units::ModelType;
-use crate::engine::movement::{PersonMovement, WorldCoord};
-use crate::engine::units::person_state::PersonState;
-use crate::engine::units::animation::AnimationState;
 use crate::engine::buildings::BuildingData;
 use crate::engine::combat::projectile::ShotData;
-use super::handle::ObjectHandle;
+use crate::engine::movement::{PersonMovement, WorldCoord};
+use crate::engine::units::animation::AnimationState;
+use crate::engine::units::person_state::PersonState;
 
 /// Common header fields for all game objects.
 /// Matches the original binary's object layout (offsets 0x00..0x70).
@@ -24,8 +24,8 @@ pub struct ObjectHeader {
     pub velocity: WorldCoord,
     pub health: u16,
     pub max_health: u16,
-    pub next_in_cell: Option<u16>,
-    pub prev_in_cell: Option<u16>,
+    pub next_in_cell: Option<ObjectHandle>,
+    pub prev_in_cell: Option<ObjectHandle>,
 }
 
 /// Type-specific data for each object kind.
@@ -65,7 +65,7 @@ pub struct PersonData {
     pub shielded: bool,
     pub cell_x: f32,
     pub cell_y: f32,
-    pub building_handle: Option<u16>,
+    pub building_handle: Option<ObjectHandle>,
     pub wood_carried: u16,
     pub guard_position: Option<WorldCoord>,
     pub gather_target: Option<WorldCoord>,
@@ -117,6 +117,10 @@ pub enum PoolSlot {
 mod tests {
     use super::*;
 
+    const fn h(slot: u16) -> ObjectHandle {
+        ObjectHandle::new(slot, 1)
+    }
+
     #[test]
     fn object_header_construction() {
         let header = ObjectHeader {
@@ -128,13 +132,13 @@ mod tests {
             flags1: 0x1000,
             flags2: 0,
             flags3: 0,
-            object_index: 42,
+            object_index: h(42),
             angle: 512,
             position: WorldCoord::new(100, 200),
             velocity: WorldCoord::default(),
             health: 500,
             max_health: 1000,
-            next_in_cell: Some(10),
+            next_in_cell: Some(h(10)),
             prev_in_cell: None,
         };
         assert_eq!(header.model_type, ModelType::Person);
@@ -142,12 +146,12 @@ mod tests {
         assert_eq!(header.tribe, 0);
         assert_eq!(header.state, 1);
         assert_eq!(header.flags1, 0x1000);
-        assert_eq!(header.object_index, 42);
+        assert_eq!(header.object_index, h(42));
         assert_eq!(header.angle, 512);
         assert_eq!(header.position, WorldCoord::new(100, 200));
         assert_eq!(header.health, 500);
         assert_eq!(header.max_health, 1000);
-        assert_eq!(header.next_in_cell, Some(10));
+        assert_eq!(header.next_in_cell, Some(h(10)));
         assert_eq!(header.prev_in_cell, None);
     }
 
@@ -186,7 +190,9 @@ mod tests {
 
     #[test]
     fn pool_slot_free_and_occupied() {
-        let free_slot = PoolSlot::Free { next_free: Some(42) };
+        let free_slot = PoolSlot::Free {
+            next_free: Some(42),
+        };
         match free_slot {
             PoolSlot::Free { next_free } => assert_eq!(next_free, Some(42)),
             _ => panic!("Expected Free variant"),
@@ -202,7 +208,7 @@ mod tests {
                 flags1: 0,
                 flags2: 0,
                 flags3: 0,
-                object_index: 0,
+                object_index: h(0),
                 angle: 0,
                 position: WorldCoord::default(),
                 velocity: WorldCoord::default(),
@@ -224,13 +230,17 @@ mod tests {
     fn pool_slot_size_reasonable() {
         let size = std::mem::size_of::<PoolSlot>();
         println!("PoolSlot size: {} bytes", size);
-        assert!(size < 1024, "PoolSlot should be less than 1KB, got {} bytes", size);
+        assert!(
+            size < 1024,
+            "PoolSlot should be less than 1KB, got {} bytes",
+            size
+        );
     }
 
     #[test]
-    fn object_handle_is_u16() {
-        let handle: ObjectHandle = 42u16;
-        assert_eq!(std::mem::size_of::<ObjectHandle>(), std::mem::size_of::<u16>());
-        assert_eq!(handle, 42u16);
+    fn object_handle_contains_slot_and_generation() {
+        let handle = ObjectHandle::new(42, 7);
+        assert_eq!(handle.slot(), 42);
+        assert_eq!(handle.generation(), 7);
     }
 }

@@ -11,32 +11,32 @@ use super::person_state::PersonState;
 /// -1 means no animation for that combination.
 /// Extracted from ~/decomp_export/sections/.data.bin at offset 0x2AB30.
 pub const PERSON_ANIMATION_TABLE: [[i16; 9]; 26] = [
-    /*  0 Idle */ [  0,   0,  15,  16,  17,  18,  19,  20,  -1],
-    /*  1 Walk */ [  0,   1,  21,  22,  23,  24,  25,  26,  -1],
-    /*  2 Ride */ [  0, 130, 110, 111, 112, 113, 114, 129,  -1],
-    /*  3 Actn */ [  0,  -1,  32,  33,  34,  35,  36,  37,  -1],
-    /*  4 SpId */ [  0,  -1,  43,  44,  45,  46,  47,  20,  -1],
-    /*  5 SpWk */ [  0,  -1,  48,  49,  50,  51,  52,  26,  -1],
-    /*  6 Die  */ [  0,  -1,  27,  28,  29,  30,  31,  20,  -1],
-    /*  7 Celb */ [  0,  -1,  38,  39,  40,  41,  42,  20,  -1],
-    /*  8 Wrk1 */ [  0,  -1,  53,  54,  55,  56,  57, 106,  -1],
-    /*  9 Wrk2 */ [  0,  -1,  58,  59,  60,  61,  62,  20,  -1],
-    /* 10 Wrk3 */ [  0,  -1,  63,  64,  65,  66,  67, 106,  -1],
-    /* 11 Wrk4 */ [  0,  -1,  68,  69,  70,  71,  72,  20,  -1],
-    /* 12 Vhcl */ [  0, 108,  78,  79,  80,  81,  82, 107,  -1],
-    /* 13 Wrk5 */ [  0,  -1,  73,  74,  75,  76,  77,  20,  -1],
-    /* 14 Spec */ [  0,  -1, 100,  -1,  -1, 101,  -1,  -1,  -1],
-    /* 15 Sham */ [  0,  -1,  -1,  -1,  -1,  -1,  94,  -1,  -1],
-    /* 16 Swim */ [  0,  -1,  83,  84,  85,  86,  87, 125,  -1],
-    /* 17  ??? */ [  0,  -1,  -1,  -1,  -1,  -1,  -1, 107,  -1],
-    /* 18 Crry */ [  0,   0,  88,  89,  90,  91,  92, 127,  -1],
-    /* 19 Dig  */ [  0,   0, 115, 116, 117, 118, 119, 126,  -1],
-    /* 20 Bld  */ [  0, 108, 120, 121, 122, 123, 124, 128,  -1],
-    /* 21 Sit1 */ [  0,   0, 131, 132, 133, 134, 135,  20,  -1],
-    /* 22 Sit2 */ [  0,   0, 136, 137, 138, 139, 140,  20,  -1],
-    /* 23 Sit3 */ [  0,   0, 141, 142, 143, 144, 145,  20,  -1],
-    /* 24 Sit4 */ [  0,   0, 146, 147, 148, 149, 150,  20,  -1],
-    /* 25 Run  */ [  0,   1, 156, 157, 158, 159, 160,  26,  -1],
+    /*  0 Idle */ [0, 0, 15, 16, 17, 18, 19, 20, -1],
+    /*  1 Walk */ [0, 1, 21, 22, 23, 24, 25, 26, -1],
+    /*  2 Ride */ [0, 130, 110, 111, 112, 113, 114, 129, -1],
+    /*  3 Actn */ [0, -1, 32, 33, 34, 35, 36, 37, -1],
+    /*  4 SpId */ [0, -1, 43, 44, 45, 46, 47, 20, -1],
+    /*  5 SpWk */ [0, -1, 48, 49, 50, 51, 52, 26, -1],
+    /*  6 Die  */ [0, -1, 27, 28, 29, 30, 31, 20, -1],
+    /*  7 Celb */ [0, -1, 38, 39, 40, 41, 42, 20, -1],
+    /*  8 Wrk1 */ [0, -1, 53, 54, 55, 56, 57, 106, -1],
+    /*  9 Wrk2 */ [0, -1, 58, 59, 60, 61, 62, 20, -1],
+    /* 10 Wrk3 */ [0, -1, 63, 64, 65, 66, 67, 106, -1],
+    /* 11 Wrk4 */ [0, -1, 68, 69, 70, 71, 72, 20, -1],
+    /* 12 Vhcl */ [0, 108, 78, 79, 80, 81, 82, 107, -1],
+    /* 13 Wrk5 */ [0, -1, 73, 74, 75, 76, 77, 20, -1],
+    /* 14 Spec */ [0, -1, 100, -1, -1, 101, -1, -1, -1],
+    /* 15 Sham */ [0, -1, -1, -1, -1, -1, 94, -1, -1],
+    /* 16 Swim */ [0, -1, 83, 84, 85, 86, 87, 125, -1],
+    /* 17  ??? */ [0, -1, -1, -1, -1, -1, -1, 107, -1],
+    /* 18 Crry */ [0, 0, 88, 89, 90, 91, 92, 127, -1],
+    /* 19 Dig  */ [0, 0, 115, 116, 117, 118, 119, 126, -1],
+    /* 20 Bld  */ [0, 108, 120, 121, 122, 123, 124, 128, -1],
+    /* 21 Sit1 */ [0, 0, 131, 132, 133, 134, 135, 20, -1],
+    /* 22 Sit2 */ [0, 0, 136, 137, 138, 139, 140, 20, -1],
+    /* 23 Sit3 */ [0, 0, 141, 142, 143, 144, 145, 20, -1],
+    /* 24 Sit4 */ [0, 0, 146, 147, 148, 149, 150, 20, -1],
+    /* 25 Run  */ [0, 1, 156, 157, 158, 159, 160, 26, -1],
 ];
 
 /// Animation speed multiplier per subtype (DAT_0059f8db, stride 0x0b).
@@ -96,8 +96,7 @@ pub fn state_to_anim_type(state: PersonState) -> u8 {
         | PersonState::Fighting
         | PersonState::InShield
         | PersonState::EnteringVehicle
-        | PersonState::WaitingAtReincPillar
-            => 0,
+        | PersonState::WaitingAtReincPillar => 0,
 
         // Walk (type 1) — default for movement states
         PersonState::Wander
@@ -121,38 +120,28 @@ pub fn state_to_anim_type(state: PersonState) -> u8 {
         | PersonState::WaitingInWater
         | PersonState::Celebrating
         | PersonState::Teleporting
-        | PersonState::InternalState
-            => 1,
+        | PersonState::InternalState => 1,
 
         // Action (type 3)
-        PersonState::InsideBuilding
-        | PersonState::InTraining
-            => 3,
+        PersonState::InsideBuilding | PersonState::InTraining => 3,
 
         // Death uses Vehicle type (0x0C = 12) in original
-        PersonState::Dead
-            => 6,
+        PersonState::Dead => 6,
 
         // Run (type 25 = 0x19)
-        PersonState::Fleeing
-        | PersonState::Preaching
-        | PersonState::ExitingVehicle
-            => 25,
+        PersonState::Fleeing | PersonState::Preaching | PersonState::ExitingVehicle => 25,
 
         // Drowning = Swim (type 16)
-        PersonState::Drowning
-            => 16,
+        PersonState::Drowning => 16,
 
         // Dying = Die (type 6)
-        PersonState::Dying
-            => 6,
+        PersonState::Dying => 6,
 
         // WaitOutside, Training, Housing, InShieldIdle — use Walk
         PersonState::WaitOutside
         | PersonState::Training
         | PersonState::Housing
-        | PersonState::InShieldIdle
-            => 1,
+        | PersonState::InShieldIdle => 1,
     }
 }
 
@@ -165,14 +154,24 @@ pub fn lookup_animation(state: PersonState, subtype: u8) -> Option<u16> {
     }
     let col = (subtype as usize).min(8);
     let val = PERSON_ANIMATION_TABLE[anim_type][col];
-    if val < 0 { None } else { Some(val as u16) }
+    if val < 0 {
+        None
+    } else {
+        Some(val as u16)
+    }
 }
 
 /// Select and set animation based on current state.
 /// Equivalent to Person_SelectAnimation + Person_SetAnimation.
 /// `frame_counts` maps animation index → number of frames.
 /// `is_moving` overrides walk→idle when unit is stationary (matches decomp wander_timer==0 check).
-pub fn select_animation(anim: &mut AnimationState, state: PersonState, subtype: u8, frame_counts: &[u8], is_moving: bool) {
+pub fn select_animation(
+    anim: &mut AnimationState,
+    state: PersonState,
+    subtype: u8,
+    frame_counts: &[u8],
+    is_moving: bool,
+) {
     let mut anim_type = state_to_anim_type(state);
     // Override: walk type but not actually moving → use idle (matches decomp)
     if anim_type == 1 && !is_moving {
@@ -186,7 +185,11 @@ pub fn select_animation(anim: &mut AnimationState, state: PersonState, subtype: 
         } else {
             // Fallback to idle
             let idle_val = PERSON_ANIMATION_TABLE[0][col];
-            if idle_val >= 0 { idle_val as u16 } else { 0 }
+            if idle_val >= 0 {
+                idle_val as u16
+            } else {
+                0
+            }
         }
     };
 
@@ -205,9 +208,13 @@ pub fn select_animation(anim: &mut AnimationState, state: PersonState, subtype: 
 /// Equivalent to Sprite_TickAnimCycles (0x004ea0e0).
 pub fn tick_animation(anim: &mut AnimationState) {
     // Not playing
-    if anim.flags & 0x02 == 0 { return; }
+    if anim.flags & 0x02 == 0 {
+        return;
+    }
     // Single-frame animation
-    if anim.frame_count <= 1 { return; }
+    if anim.frame_count <= 1 {
+        return;
+    }
 
     anim.tick_counter += 1;
     if anim.tick_counter >= anim.ticks_per_frame as u16 {
@@ -235,7 +242,10 @@ mod tests {
 
     #[test]
     fn table_idle_shaman() {
-        assert_eq!(PERSON_ANIMATION_TABLE[0][PERSON_SUBTYPE_SHAMAN as usize], 20);
+        assert_eq!(
+            PERSON_ANIMATION_TABLE[0][PERSON_SUBTYPE_SHAMAN as usize],
+            20
+        );
     }
 
     #[test]
@@ -245,7 +255,10 @@ mod tests {
 
     #[test]
     fn table_walk_shaman() {
-        assert_eq!(PERSON_ANIMATION_TABLE[1][PERSON_SUBTYPE_SHAMAN as usize], 26);
+        assert_eq!(
+            PERSON_ANIMATION_TABLE[1][PERSON_SUBTYPE_SHAMAN as usize],
+            26
+        );
     }
 
     #[test]
@@ -255,45 +268,69 @@ mod tests {
 
     #[test]
     fn table_run_brave() {
-        assert_eq!(PERSON_ANIMATION_TABLE[25][PERSON_SUBTYPE_BRAVE as usize], 156);
+        assert_eq!(
+            PERSON_ANIMATION_TABLE[25][PERSON_SUBTYPE_BRAVE as usize],
+            156
+        );
     }
 
     #[test]
     fn lookup_idle_brave() {
-        assert_eq!(lookup_animation(PersonState::Idle, PERSON_SUBTYPE_BRAVE), Some(15));
+        assert_eq!(
+            lookup_animation(PersonState::Idle, PERSON_SUBTYPE_BRAVE),
+            Some(15)
+        );
     }
 
     #[test]
     fn lookup_idle_shaman() {
-        assert_eq!(lookup_animation(PersonState::Idle, PERSON_SUBTYPE_SHAMAN), Some(20));
+        assert_eq!(
+            lookup_animation(PersonState::Idle, PERSON_SUBTYPE_SHAMAN),
+            Some(20)
+        );
     }
 
     #[test]
     fn lookup_walk_brave() {
-        assert_eq!(lookup_animation(PersonState::GoToPoint, PERSON_SUBTYPE_BRAVE), Some(21));
+        assert_eq!(
+            lookup_animation(PersonState::GoToPoint, PERSON_SUBTYPE_BRAVE),
+            Some(21)
+        );
     }
 
     #[test]
     fn lookup_wander_brave() {
-        assert_eq!(lookup_animation(PersonState::Wander, PERSON_SUBTYPE_BRAVE), Some(21));
+        assert_eq!(
+            lookup_animation(PersonState::Wander, PERSON_SUBTYPE_BRAVE),
+            Some(21)
+        );
     }
 
     #[test]
     fn lookup_fleeing_brave() {
         // Fleeing → Run (type 25)
-        assert_eq!(lookup_animation(PersonState::Fleeing, PERSON_SUBTYPE_BRAVE), Some(156));
+        assert_eq!(
+            lookup_animation(PersonState::Fleeing, PERSON_SUBTYPE_BRAVE),
+            Some(156)
+        );
     }
 
     #[test]
     fn lookup_dead_brave() {
         // Dead → Die (type 6)
-        assert_eq!(lookup_animation(PersonState::Dead, PERSON_SUBTYPE_BRAVE), Some(27));
+        assert_eq!(
+            lookup_animation(PersonState::Dead, PERSON_SUBTYPE_BRAVE),
+            Some(27)
+        );
     }
 
     #[test]
     fn lookup_drowning_brave() {
         // Drowning → Swim (type 16)
-        assert_eq!(lookup_animation(PersonState::Drowning, PERSON_SUBTYPE_BRAVE), Some(83));
+        assert_eq!(
+            lookup_animation(PersonState::Drowning, PERSON_SUBTYPE_BRAVE),
+            Some(83)
+        );
     }
 
     #[test]
@@ -305,9 +342,9 @@ mod tests {
     // Frame counts for test animations: index 15 (idle brave) = 4 frames, 21 (walk brave) = 6 frames
     fn test_frame_counts() -> Vec<u8> {
         let mut fc = vec![1u8; 200];
-        fc[15] = 4;  // idle brave
-        fc[20] = 3;  // idle shaman
-        fc[21] = 6;  // walk brave
+        fc[15] = 4; // idle brave
+        fc[20] = 3; // idle shaman
+        fc[21] = 6; // walk brave
         fc
     }
 
@@ -315,7 +352,13 @@ mod tests {
     fn select_animation_sets_idle_brave() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, false);
+        select_animation(
+            &mut anim,
+            PersonState::Idle,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            false,
+        );
         assert_eq!(anim.animation_id, 15);
         assert_eq!(anim.frame_index, 0);
         assert_eq!(anim.frame_count, 4);
@@ -326,9 +369,21 @@ mod tests {
     fn select_animation_walk_changes_id() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, false);
+        select_animation(
+            &mut anim,
+            PersonState::Idle,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            false,
+        );
         assert_eq!(anim.animation_id, 15);
-        select_animation(&mut anim, PersonState::GoToPoint, PERSON_SUBTYPE_BRAVE, &fc, true);
+        select_animation(
+            &mut anim,
+            PersonState::GoToPoint,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            true,
+        );
         assert_eq!(anim.animation_id, 21);
         assert_eq!(anim.frame_index, 0); // reset on change
         assert_eq!(anim.frame_count, 6); // walk brave frame count
@@ -338,11 +393,23 @@ mod tests {
     fn select_animation_same_id_no_reset() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, false);
+        select_animation(
+            &mut anim,
+            PersonState::Idle,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            false,
+        );
         anim.frame_index = 3;
         anim.tick_counter = 2;
         // Same state, same subtype → same animation_id → no reset
-        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, false);
+        select_animation(
+            &mut anim,
+            PersonState::Idle,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            false,
+        );
         assert_eq!(anim.frame_index, 3);
         assert_eq!(anim.tick_counter, 2);
     }

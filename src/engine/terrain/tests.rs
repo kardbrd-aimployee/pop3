@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::engine::terrain::modify::*;
-    use crate::engine::terrain::cascade::*;
-    use crate::engine::terrain::water::*;
     use crate::engine::movement::segment::SegmentPool;
     use crate::engine::movement::types::TileCoord;
+    use crate::engine::terrain::cascade::*;
+    use crate::engine::terrain::modify::*;
+    use crate::engine::terrain::water::*;
 
     // ============ modify_height tests ============
 
@@ -123,7 +123,12 @@ mod tests {
     fn terrain_update_water_cells_marks_low_cells() {
         let mut heights = [[500u16; 128]; 128];
         let mut water_flags = [[0u8; 128]; 128];
-        let region = CascadeRegion { min_x: 0, min_y: 0, max_x: 3, max_y: 3 };
+        let region = CascadeRegion {
+            min_x: 0,
+            min_y: 0,
+            max_x: 3,
+            max_y: 3,
+        };
 
         // Set some cells below water level
         heights[0][0] = 10;
@@ -141,7 +146,12 @@ mod tests {
     fn terrain_update_water_cells_clears_raised_cells() {
         let mut heights = [[500u16; 128]; 128];
         let mut water_flags = [[0u8; 128]; 128];
-        let region = CascadeRegion { min_x: 0, min_y: 0, max_x: 3, max_y: 3 };
+        let region = CascadeRegion {
+            min_x: 0,
+            min_y: 0,
+            max_x: 3,
+            max_y: 3,
+        };
 
         // Pre-set water flag on a cell that's now above water level
         water_flags[2][2] = WATER_WALKABILITY_FLAG;
@@ -166,7 +176,12 @@ mod tests {
         seg.end_tile_x = 50;
         seg.end_tile_z = 50;
 
-        let region = CascadeRegion { min_x: 5, min_y: 5, max_x: 15, max_y: 15 };
+        let region = CascadeRegion {
+            min_x: 5,
+            min_y: 5,
+            max_x: 15,
+            max_y: 15,
+        };
         let count = invalidate_segments_in_region(&mut pool, &region);
         assert_eq!(count, 1);
         assert_eq!(pool.get(idx).unwrap().ref_count, 0);
@@ -185,7 +200,12 @@ mod tests {
         seg.end_tile_x = 110;
         seg.end_tile_z = 110;
 
-        let region = CascadeRegion { min_x: 0, min_y: 0, max_x: 10, max_y: 10 };
+        let region = CascadeRegion {
+            min_x: 0,
+            min_y: 0,
+            max_x: 10,
+            max_y: 10,
+        };
         let count = invalidate_segments_in_region(&mut pool, &region);
         assert_eq!(count, 0);
         assert!(pool.get(idx).unwrap().ref_count > 0);
@@ -204,7 +224,12 @@ mod tests {
         seg.end_tile_x = 10;
         seg.end_tile_z = 10;
 
-        let region = CascadeRegion { min_x: 5, min_y: 5, max_x: 15, max_y: 15 };
+        let region = CascadeRegion {
+            min_x: 5,
+            min_y: 5,
+            max_x: 15,
+            max_y: 15,
+        };
         let count = invalidate_segments_in_region(&mut pool, &region);
         assert_eq!(count, 1);
     }
@@ -217,9 +242,21 @@ mod tests {
         let mut normals = [[[0.0f32; 3]; 128]; 128];
         let mut walkability = [[0u8; 128]; 128];
         let mut pool = SegmentPool::new();
-        let region = CascadeRegion { min_x: 10, min_y: 10, max_x: 12, max_y: 12 };
+        let region = CascadeRegion {
+            min_x: 10,
+            min_y: 10,
+            max_x: 12,
+            max_y: 12,
+        };
 
-        let result = terrain_cascade(&heights, &region, &mut normals, &mut walkability, 50, &mut pool);
+        let result = terrain_cascade(
+            &heights,
+            &region,
+            &mut normals,
+            &mut walkability,
+            50,
+            &mut pool,
+        );
         assert!(result.normals_updated);
         assert!(result.mesh_dirty);
     }
@@ -234,12 +271,28 @@ mod tests {
         let mut normals = [[[0.0f32; 3]; 128]; 128];
         let mut walkability = [[0u8; 128]; 128];
         let mut pool = SegmentPool::new();
-        let region = CascadeRegion { min_x: 9, min_y: 9, max_x: 12, max_y: 12 };
+        let region = CascadeRegion {
+            min_x: 9,
+            min_y: 9,
+            max_x: 12,
+            max_y: 12,
+        };
 
-        let result = terrain_cascade(&heights, &region, &mut normals, &mut walkability, 50, &mut pool);
+        let result = terrain_cascade(
+            &heights,
+            &region,
+            &mut normals,
+            &mut walkability,
+            50,
+            &mut pool,
+        );
         // Cell (10, 10) should be marked as unwalkable due to steep slope
         // The steep slope flag is 0x02
-        assert_ne!(walkability[10][10] & 0x02, 0, "Cell with steep slope should be marked unwalkable");
+        assert_ne!(
+            walkability[10][10] & 0x02,
+            0,
+            "Cell with steep slope should be marked unwalkable"
+        );
     }
 
     #[test]
@@ -250,9 +303,21 @@ mod tests {
         let mut normals = [[[0.0f32; 3]; 128]; 128];
         let mut walkability = [[0u8; 128]; 128];
         let mut pool = SegmentPool::new();
-        let region = CascadeRegion { min_x: 9, min_y: 9, max_x: 12, max_y: 12 };
+        let region = CascadeRegion {
+            min_x: 9,
+            min_y: 9,
+            max_x: 12,
+            max_y: 12,
+        };
 
-        let result = terrain_cascade(&heights, &region, &mut normals, &mut walkability, 100, &mut pool);
+        let result = terrain_cascade(
+            &heights,
+            &region,
+            &mut normals,
+            &mut walkability,
+            100,
+            &mut pool,
+        );
         assert!(!result.water_cells_changed.is_empty());
         assert_ne!(walkability[10][10] & WATER_WALKABILITY_FLAG, 0);
     }
@@ -273,8 +338,20 @@ mod tests {
         seg.end_tile_x = 50;
         seg.end_tile_z = 50;
 
-        let region = CascadeRegion { min_x: 5, min_y: 5, max_x: 15, max_y: 15 };
-        let result = terrain_cascade(&heights, &region, &mut normals, &mut walkability, 50, &mut pool);
+        let region = CascadeRegion {
+            min_x: 5,
+            min_y: 5,
+            max_x: 15,
+            max_y: 15,
+        };
+        let result = terrain_cascade(
+            &heights,
+            &region,
+            &mut normals,
+            &mut walkability,
+            50,
+            &mut pool,
+        );
         assert_eq!(result.segments_invalidated, 1);
     }
 
@@ -298,13 +375,37 @@ mod tests {
         let mut normals = [[[0.0f32; 3]; 128]; 128];
         let mut walkability = [[0u8; 128]; 128];
         let mut pool = SegmentPool::new();
-        let region = CascadeRegion { min_x: 10, min_y: 10, max_x: 11, max_y: 11 };
+        let region = CascadeRegion {
+            min_x: 10,
+            min_y: 10,
+            max_x: 11,
+            max_y: 11,
+        };
 
-        terrain_cascade(&heights, &region, &mut normals, &mut walkability, 50, &mut pool);
+        terrain_cascade(
+            &heights,
+            &region,
+            &mut normals,
+            &mut walkability,
+            50,
+            &mut pool,
+        );
 
         let n = normals[10][10];
-        assert!((n[0]).abs() < 0.01, "x component should be ~0 for flat terrain, got {}", n[0]);
-        assert!(n[1] > 0.99, "y component should be ~1 for flat terrain, got {}", n[1]);
-        assert!((n[2]).abs() < 0.01, "z component should be ~0 for flat terrain, got {}", n[2]);
+        assert!(
+            (n[0]).abs() < 0.01,
+            "x component should be ~0 for flat terrain, got {}",
+            n[0]
+        );
+        assert!(
+            n[1] > 0.99,
+            "y component should be ~1 for flat terrain, got {}",
+            n[1]
+        );
+        assert!(
+            (n[2]).abs() < 0.01,
+            "z component should be ~0 for flat terrain, got {}",
+            n[2]
+        );
     }
 }
