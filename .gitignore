@@ -1,4 +1,5 @@
 /target
+/.cargo/
 /img
 /img_nums
 /results
