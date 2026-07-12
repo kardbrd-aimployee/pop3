@@ -218,9 +218,9 @@ No owned original game data is available at the current default path, so this au
 
 The effect pool has no render consumer. Building health bars are modeled but not generated. Terrain mutations have no complete dirty-region-to-GPU pipeline. Audio is absent. Even correct simulation code will feel broken without visible and audible feedback.
 
-### 10. The status documents have drifted
+### 10. Historical tracking has drifted
 
-`things-to-implement.md` predates the recent engine work and marks many implemented modules as TODO. Conversely, `.planning/REQUIREMENTS.md` marks some items complete based on unit-level implementation even though the running app cannot use them. Progress should be tracked at three levels: **logic**, **runtime integration**, and **playable acceptance test**.
+Superseded historical inventories and phase checklists disagree about completion: some omit recently implemented modules, while others treat isolated unit-tested logic as a playable feature. Progress should be tracked at three levels: **logic**, **runtime integration**, and **playable acceptance test**.
 
 ## Recommended completion roadmap
 
@@ -378,4 +378,4 @@ This sequence exercises the existing work instead of discarding it and exposes a
 
 ## Final assessment
 
-The project is much closer to a viable remake than the old `things-to-implement.md` inventory suggests, but farther from playability than the recent phase completion checkboxes imply. The hard reverse-engineering, rendering, pathfinding, and many subsystem primitives are valuable. The shortest route to a game is now to connect them around one authoritative world, prove one real level end to end, and then expand compatibility level by level.
+The project is much closer to a viable remake than historical inventories suggested, but farther from playability than historical phase checklists implied. The hard reverse-engineering, rendering, pathfinding, and many subsystem primitives are valuable. The shortest route to a game is now to connect them around one authoritative world, prove one real level end to end, and then expand compatibility level by level.

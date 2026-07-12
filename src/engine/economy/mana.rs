@@ -1,5 +1,5 @@
 // Mana generation rates and pool management.
-// Original binary constants from things-to-implement.md section 22.
+// Original binary constants are documented in docs/specs/spells.md (Appendix N).
 
 /// Per-unit mana generation rates (per tick).
 pub const MANA_F_BRAVE: u32 = 1;

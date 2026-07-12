@@ -1,5 +1,5 @@
 // Population tracking and housing capacity.
-// Original binary constants from things-to-implement.md section 22.
+// Original binary constants are documented in docs/specs/person_units.md (Appendix O).
 
 /// Maximum occupants per hut level.
 pub const MAX_POP_VALUE_HUT_1: u16 = 3;
