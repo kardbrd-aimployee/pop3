@@ -24,6 +24,12 @@ Pop3 is a fan-made, open-source project. It is not affiliated with or endorsed b
 - Sprite-based unit rendering with 8-direction animation system
 - 25 levels supported
 
+## Project direction
+
+- [Design constraints and hard blockers](DESIGN.md)
+- [Completion roadmap and acceptance criteria](docs/plans/game-completion-roadmap.md)
+- [Reverse-engineering specifications](docs/specs/index.md)
+
 ## Building
 
 Requires the [Rust toolchain](https://rustup.rs/).
