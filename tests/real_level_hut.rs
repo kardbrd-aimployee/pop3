@@ -42,6 +42,13 @@ fn real_level_one_hut_vertical_slice() {
         .persons()
         .map(|(handle, _, _)| handle)
         .collect();
+    let builder = session
+        .world
+        .pool()
+        .persons()
+        .find(|(_, header, person)| header.tribe == 0 && header.subtype == 2 && person.alive)
+        .map(|(handle, _, _)| handle)
+        .expect("Level 1 must contain a blue brave builder");
 
     let cell = (0..128)
         .flat_map(|y| (0..128).map(move |x| (x, y)))
@@ -66,10 +73,12 @@ fn real_level_one_hut_vertical_slice() {
     let hut_position = session.world.get(placed_hut).unwrap().header.position;
     let expected_spawn =
         pop3::engine::movement::WorldCoord::new(hut_position.x.wrapping_add(512), hut_position.z);
-    for _ in 0..3 {
-        session.step();
-    }
-    for _ in 0..10_000 {
+    session.enqueue(GameAction::AssignConstruction {
+        units: vec![builder],
+        building: placed_hut,
+    });
+    assert!(session.step().actions[0].clone().is_applied());
+    for _ in 0..30_000 {
         session.step();
         if session.world.pool().persons().count() >= expected_people + 1 {
             break;

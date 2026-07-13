@@ -100,6 +100,9 @@ pub fn build_building_meshes(
 
     let mut building_count = 0;
     for obj in objects {
+        if obj.building_state == Some(crate::engine::buildings::BuildingState::Init) {
+            continue;
+        }
         // Look up model index and select the right bank based on model type
         let (idx, bank): (Option<usize>, &[Option<Object3D>]) = match obj.model_type {
             ModelType::Building => (

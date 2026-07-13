@@ -53,7 +53,7 @@ pub fn tick_building_with_population(
     // 3. State dispatch
     match building.state {
         BuildingState::Init => {
-            tick_constructing(building, header);
+            // Construction progress is driven by assigned brave work in World.
             BuildingTickActions::none()
         }
         BuildingState::ConstructionDone => {
@@ -77,18 +77,6 @@ pub fn tick_building_with_population(
             BuildingTickActions::none()
         }
         BuildingState::FinalTeardown => BuildingTickActions::none(),
-    }
-}
-
-fn tick_constructing(building: &mut BuildingData, _header: &mut ObjectHeader) {
-    if building.wood_stored > 0 {
-        let consume = 1.min(building.wood_stored);
-        building.wood_stored -= consume;
-        building.construction_progress += 1;
-    }
-    // Transition when fully constructed (progress reaches target for type)
-    if building.construction_progress >= construction_target(building.building_subtype) {
-        transition_building_state(building, BuildingState::ConstructionDone);
     }
 }
 
@@ -187,26 +175,27 @@ mod tests {
     }
 
     #[test]
-    fn construction_consumes_wood_and_increments_progress() {
+    fn construction_does_not_advance_without_builder_work() {
         let mut b = BuildingData::default();
         b.building_subtype = BuildingSubtype::SmallHut;
         b.wood_stored = 10;
         b.construction_progress = 0;
         let mut h = make_header();
         tick_building(&mut b, &mut h, DUMMY_HANDLE);
-        assert_eq!(b.wood_stored, 9);
-        assert_eq!(b.construction_progress, 1);
+        assert_eq!(b.wood_stored, 10);
+        assert_eq!(b.construction_progress, 0);
     }
 
     #[test]
-    fn construction_completes_at_target() {
+    fn construction_cannot_complete_from_a_building_tick() {
         let mut b = BuildingData::default();
         b.building_subtype = BuildingSubtype::SmallHut; // target = 3
         b.wood_stored = 10;
         b.construction_progress = 2; // one more tick to reach 3
         let mut h = make_header();
         tick_building(&mut b, &mut h, DUMMY_HANDLE);
-        assert_eq!(b.state, BuildingState::ConstructionDone);
+        assert_eq!(b.state, BuildingState::Init);
+        assert_eq!(b.construction_progress, 2);
     }
 
     #[test]

@@ -22,6 +22,7 @@ pub fn transition_building_state(building: &mut BuildingData, new_state: Buildin
 /// Called when a building completes construction (state transitions to Active).
 /// Sets behavior_flags based on subtype from the type properties table (BLD.5).
 pub fn on_construction_complete(building: &mut BuildingData) {
+    building.construction_phase = 4;
     building.behavior_flags = building_behavior_flags(building.building_subtype);
     building.construction_progress = 0;
 }

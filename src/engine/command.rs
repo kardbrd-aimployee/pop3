@@ -69,6 +69,9 @@ pub enum AppCommand {
         x: f32,
         z: f32,
     },
+    AssignConstruction {
+        building: ObjectHandle,
+    },
 
     // Game state
     ToggleSimulation,

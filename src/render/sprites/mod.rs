@@ -10,6 +10,7 @@ use crate::render::tex_model::{TexModel, TexVertex};
 use crate::data::animation::{NUM_TRIBES, STORED_DIRECTIONS};
 use crate::data::level::LevelRes;
 use crate::data::units::{object_3d_index, ModelType};
+use crate::engine::buildings::BuildingState;
 use crate::engine::state::constants::*;
 
 use crate::engine::units::{Unit, UnitCoordinator};
@@ -213,6 +214,8 @@ pub struct LevelObject {
     pub subtype: u8,
     pub tribe_index: u8,
     pub angle: u32,
+    pub building_state: Option<BuildingState>,
+    pub construction_phase: u8,
 }
 
 pub fn extract_level_objects(level_res: &LevelRes) -> Vec<LevelObject> {
@@ -246,6 +249,8 @@ pub fn extract_level_objects(level_res: &LevelRes) -> Vec<LevelObject> {
             subtype: unit.subtype,
             tribe_index: unit.tribe_index(),
             angle: unit.angle(),
+            building_state: None,
+            construction_phase: 4,
         });
     }
     objects
@@ -369,7 +374,11 @@ pub fn build_spawn_model(
             .find(|(id, _, _)| *id == unit_data.animation_id)
             .map(|(_, off, fc)| (*off, *fc))
             .unwrap_or((0, frames_per_dir));
-        let frame_idx = (unit_data.frame_index as u32).min(anim_frames.saturating_sub(1));
+        let frame_idx = if anim_frames == 0 {
+            0
+        } else {
+            unit_data.frame_index as u32 % anim_frames
+        };
         let uv_off_x = (col_offset + frame_idx) as f32 / fpd;
 
         let tribe_row = tribe_index as usize * STORED_DIRECTIONS + src_dir;

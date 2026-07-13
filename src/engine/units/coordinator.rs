@@ -975,7 +975,7 @@ impl UnitCoordinator {
                 building_handle: person.building_handle,
                 wood_carried: person.wood_carried,
                 guard_position: person.guard_position,
-                gather_target: person.gather_target,
+                gather_target: None,
             });
         }
     }

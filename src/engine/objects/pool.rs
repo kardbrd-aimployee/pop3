@@ -87,7 +87,7 @@ impl ObjectPool {
             ModelType::Building => GameObjectData::Building(BuildingData::default()),
             ModelType::Creature => GameObjectData::Creature(()),
             ModelType::Vehicle => GameObjectData::Vehicle(()),
-            ModelType::Scenery => GameObjectData::Scenery(()),
+            ModelType::Scenery => GameObjectData::Scenery(SceneryData::default()),
             ModelType::General => GameObjectData::General(()),
             ModelType::Effect => GameObjectData::Effect(()),
             ModelType::Shot => GameObjectData::Shot(ShotData::default()),

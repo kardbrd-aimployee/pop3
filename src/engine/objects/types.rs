@@ -34,7 +34,7 @@ pub enum GameObjectData {
     Building(BuildingData),
     Creature(()),
     Vehicle(()),
-    Scenery(()),
+    Scenery(SceneryData),
     General(()),
     Effect(()),
     Shot(ShotData),
@@ -68,7 +68,9 @@ pub struct PersonData {
     pub building_handle: Option<ObjectHandle>,
     pub wood_carried: u16,
     pub guard_position: Option<WorldCoord>,
-    pub gather_target: Option<WorldCoord>,
+    pub gather_target: Option<ObjectHandle>,
+    /// True while this person owns one reserved wood trip for its building.
+    pub construction_wood_reserved: bool,
 }
 
 impl Default for PersonData {
@@ -96,6 +98,22 @@ impl Default for PersonData {
             wood_carried: 0,
             guard_position: None,
             gather_target: None,
+            construction_wood_reserved: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SceneryData {
+    pub wood_remaining: u8,
+    pub wood_reserved: u8,
+}
+
+impl Default for SceneryData {
+    fn default() -> Self {
+        Self {
+            wood_remaining: 0,
+            wood_reserved: 0,
         }
     }
 }
@@ -177,7 +195,7 @@ mod tests {
             GameObjectData::Building(BuildingData::default()),
             GameObjectData::Creature(()),
             GameObjectData::Vehicle(()),
-            GameObjectData::Scenery(()),
+            GameObjectData::Scenery(SceneryData::default()),
             GameObjectData::General(()),
             GameObjectData::Effect(()),
             GameObjectData::Shot(ShotData::default()),

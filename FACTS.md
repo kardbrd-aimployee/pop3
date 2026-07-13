@@ -101,6 +101,12 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 
 ## Original-game verification
 
+- A placed building plan is a live building object with model type `2`, subtype `1` for a small hut, and construction state `1`. The pre-placement cursor overlay is separate from this object.
+- `Building_InitFromType` at `0x0042E980` links the plan into the cell grid and reserves its footprint. The completed hut mesh must not be used merely because the live object already has hut subtype `1`.
+- Assigned workers retain the live plan handle and use person states `Building` (`0x0D`), `Gathering` (`0x13`), `GatheringWood` (`0x15`), and `CarryingWood` (`0x16`). Relevant entry points include `Person_EnterBuildingState` at `0x00501750`, `Person_EnterGatheringState` at `0x005021C0`, and `Person_StartWoodGathering` at `0x00502F70`.
+- Verified brave animations are carry `88`, dig/work `115`, and building `120`.
+- Blue small-hut construction selects shape/sprite ID `214`, `226`, or `238`. These are not OBJS indices. Construction phase at object offset `+0x78` raises the selected construction asset from below the ground through phases zero to four.
+- Completion replaces the construction shape with the final subtype shape and sets construction phase four in `Building_OnConstructionComplete` at `0x0042FD70`. The remake currently uses a foundation overlay until the original construction-sprite composition is decoded.
 - `LEVELS/constant.dat` is XOR-obfuscated text. The original loader decrypts it at `0x0041EB50` and converts percent values to 8.8 fixed point with integer truncation.
 - `constant.dat` sets hut wood costs to `300/300/300`. A carried piece contributes `100`, so initial construction and each renovation require three pieces.
 - `constant.dat` sets hut housing limits to `3/5/7`.

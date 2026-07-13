@@ -299,7 +299,7 @@ pub const UNIT_IDLE_ANIMS: [(u8, usize); 6] = [
 /// Shamans use pre-rendered per-tribe sprites, not VELE compositing.
 /// Format: (subtype, &[animation_indices])
 pub const UNIT_MULTI_ANIMS: [(u8, &[usize]); 5] = [
-    (PERSON_SUBTYPE_BRAVE, &[15, 21]),
+    (PERSON_SUBTYPE_BRAVE, &[15, 21, 88, 115, 120]),
     (PERSON_SUBTYPE_WARRIOR, &[16, 22]),
     (PERSON_SUBTYPE_PREACHER, &[17, 23]),
     (PERSON_SUBTYPE_SPY, &[18, 24]),

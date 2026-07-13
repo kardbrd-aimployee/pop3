@@ -23,6 +23,10 @@ pub enum GameAction {
         cell: (i32, i32),
         rotation: u8,
     },
+    AssignConstruction {
+        units: Vec<ObjectHandle>,
+        building: ObjectHandle,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +168,7 @@ impl GameSession {
                     }
                 }
                 for handle in units {
+                    self.world.cancel_construction_job(*handle);
                     if let Some(object) = self.world.get_mut_for_action(*handle) {
                         if let crate::engine::objects::GameObjectData::Person(person) =
                             &mut object.data
@@ -184,6 +189,9 @@ impl GameSession {
                 .world
                 .place_building(*subtype, *owner, *cell, *rotation)
                 .map(|_| ()),
+            GameAction::AssignConstruction { units, building } => {
+                self.world.assign_construction(units, *building)
+            }
         }
     }
 
