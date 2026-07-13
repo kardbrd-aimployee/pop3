@@ -69,8 +69,11 @@ fn real_level_one_hut_vertical_slice() {
     for _ in 0..3 {
         session.step();
     }
-    for _ in 0..1500 {
+    for _ in 0..10_000 {
         session.step();
+        if session.world.pool().persons().count() >= expected_people + 1 {
+            break;
+        }
     }
 
     assert!(session.world.pool().persons().count() >= expected_people + 1);

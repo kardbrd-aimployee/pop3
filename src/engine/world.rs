@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::data::level::{LevelDefinition, LevelObjectIndex};
 use crate::data::units::ModelType;
-use crate::engine::buildings::tick::{construction_target, tick_building};
+use crate::engine::buildings::spawning::population_growth_weight;
+use crate::engine::buildings::tick::{construction_target, tick_building_with_population};
 use crate::engine::buildings::types::{building_behavior_flags, building_max_health};
 use crate::engine::buildings::{
     BuildingCatalog, BuildingState, BuildingSubtype, PlacementError, SpawnAction,
@@ -451,6 +452,18 @@ impl World {
     }
 
     pub fn tick_buildings(&mut self) {
+        self.synchronize_tribes();
+        let mut weighted_population = [0u32; 4];
+        for (_, header, person) in self.pool.persons() {
+            if person.alive && header.tribe < 4 {
+                weighted_population[header.tribe as usize] +=
+                    population_growth_weight(header.subtype);
+            }
+        }
+        let mut remaining_population_capacity: [u16; 4] = std::array::from_fn(|index| {
+            let tribe = &self.tribes.tribes[index];
+            tribe.max_population.saturating_sub(tribe.population as u16)
+        });
         let handles: Vec<_> = self.pool.buildings().map(|(h, _, _)| h).collect();
         let mut spawns = Vec::new();
         let mut attacks = Vec::new();
@@ -461,8 +474,23 @@ impl World {
                 let GameObjectData::Building(building) = &mut object.data else {
                     continue;
                 };
-                let actions = tick_building(building, &mut object.header, handle);
+                let population = weighted_population
+                    .get(tribe as usize)
+                    .copied()
+                    .unwrap_or(0);
+                let remaining_capacity = remaining_population_capacity.get_mut(tribe as usize);
+                let has_capacity = remaining_capacity.as_deref().copied().unwrap_or(0) > 0;
+                let actions = tick_building_with_population(
+                    building,
+                    &mut object.header,
+                    handle,
+                    population,
+                    has_capacity,
+                );
                 if actions.spawn == SpawnAction::SpawnBrave {
+                    if let Some(remaining) = remaining_capacity {
+                        *remaining = remaining.saturating_sub(1);
+                    }
                     spawns.push((position, tribe));
                 }
                 attacks.extend(actions.combat);
@@ -733,7 +761,8 @@ mod tests {
             world.tick_buildings();
         }
         assert_eq!(world.tribes.tribes[0].max_population, 3);
-        for _ in 0..1500 {
+        // Empty small hut at the first population band: ceil(1187 / 2).
+        for _ in 0..594 {
             world.tick_buildings();
         }
         assert_eq!(world.pool.persons().count(), 1);

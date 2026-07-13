@@ -94,11 +94,14 @@ pub fn find_nearest_building_position(
 
 /// Construction wood costs by building subtype.
 pub const WOOD_COST_SMALL_HUT: u16 = 3;
-pub const WOOD_COST_MEDIUM_HUT: u16 = 5;
-pub const WOOD_COST_LARGE_HUT: u16 = 7;
+pub const WOOD_COST_MEDIUM_HUT: u16 = 3;
+pub const WOOD_COST_LARGE_HUT: u16 = 3;
 pub const WOOD_COST_DRUM_TOWER: u16 = 5;
-pub const WOOD_COST_TEMPLE: u16 = 6;
-pub const WOOD_COST_TRAINING: u16 = 5;
+pub const WOOD_COST_TEMPLE: u16 = 8;
+pub const WOOD_COST_TRAINING: u16 = 8;
+pub const WOOD_COST_RECONVERSION: u16 = 3;
+pub const WOOD_COST_BOAT_HUT: u16 = 5;
+pub const WOOD_COST_AIRSHIP_HUT: u16 = 8;
 pub const WOOD_COST_DEFAULT: u16 = 4;
 
 /// Training wood costs by target person subtype.
@@ -116,6 +119,9 @@ pub fn construction_wood_cost(building_subtype: u8) -> u16 {
         4 => WOOD_COST_DRUM_TOWER,
         5 => WOOD_COST_TEMPLE,
         6 | 7 | 8 => WOOD_COST_TRAINING,
+        9 => WOOD_COST_RECONVERSION,
+        13 => WOOD_COST_BOAT_HUT,
+        14 => WOOD_COST_AIRSHIP_HUT,
         _ => WOOD_COST_DEFAULT,
     }
 }
@@ -149,12 +155,12 @@ mod tests {
 
     #[test]
     fn test_construction_wood_cost_medium_hut() {
-        assert_eq!(construction_wood_cost(2), 5);
+        assert_eq!(construction_wood_cost(2), 3);
     }
 
     #[test]
     fn test_construction_wood_cost_large_hut() {
-        assert_eq!(construction_wood_cost(3), 7);
+        assert_eq!(construction_wood_cost(3), 3);
     }
 
     #[test]
@@ -164,14 +170,21 @@ mod tests {
 
     #[test]
     fn test_construction_wood_cost_temple() {
-        assert_eq!(construction_wood_cost(5), 6);
+        assert_eq!(construction_wood_cost(5), 8);
     }
 
     #[test]
     fn test_construction_wood_cost_training() {
-        assert_eq!(construction_wood_cost(6), 5);
-        assert_eq!(construction_wood_cost(7), 5);
-        assert_eq!(construction_wood_cost(8), 5);
+        assert_eq!(construction_wood_cost(6), 8);
+        assert_eq!(construction_wood_cost(7), 8);
+        assert_eq!(construction_wood_cost(8), 8);
+    }
+
+    #[test]
+    fn test_construction_wood_cost_special_buildings() {
+        assert_eq!(construction_wood_cost(9), 3);
+        assert_eq!(construction_wood_cost(13), 5);
+        assert_eq!(construction_wood_cost(14), 8);
     }
 
     #[test]

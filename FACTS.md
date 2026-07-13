@@ -1,6 +1,6 @@
 # Populous Gameplay Facts
 
-This file records gameplay behavior confirmed by the project owner, an experienced player of the original game. Implementation plans should follow these facts. The open questions mark details that still need an answer.
+This file records gameplay behavior confirmed by the project owner, an experienced player of the original game, plus facts verified against the legally owned original data and executable. Implementation plans should follow these facts. The open questions mark details that still need an answer.
 
 ## Input and selection
 
@@ -89,15 +89,30 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 - After some time, that brave may enter the hut if it has a free occupant slot.
 - When the hut is full, the brave remains outside and idles near the hut.
 - A brave counts as an occupant only while physically inside the hut. Braves standing outside do not consume occupant slots.
-- Physical hut occupancy has the same limit as its housing value: three people at stage one, four at stage two, and five at stage three.
+- Physical hut occupancy has the same limit as its housing value: three people at stage one, five at stage two, and seven at stage three.
 - A hut becomes eligible for an upgrade after a period of time.
 - Braves living in the hut collect the three additional wood pieces needed for the upgrade, one piece at a time.
 - Once the hut is ready and has all three pieces, every occupant exits before renovation starts.
 - The hut accepts no occupants while renovation is in progress.
 - Braves may enter the hut again after renovation finishes.
-- A stage-two hut houses four people.
+- A stage-two hut houses five people.
 - The stage-two hut follows the same readiness, wood collection, evacuation, and construction process for its next upgrade.
-- A stage-three hut houses five people.
+- A stage-three hut houses seven people.
+
+## Original-game verification
+
+- `LEVELS/constant.dat` is XOR-obfuscated text. The original loader decrypts it at `0x0041EB50` and converts percent values to 8.8 fixed point with integer truncation.
+- `constant.dat` sets hut wood costs to `300/300/300`. A carried piece contributes `100`, so initial construction and each renovation require three pieces.
+- `constant.dat` sets hut housing limits to `3/5/7`.
+- `constant.dat` sets base follower-growth thresholds to `4000/3000/2000` for hut stages one through three.
+- `Building_UpdatePopGrowth` at `0x00430020` adds `2 * (occupants + 1)` to a hut's follower-growth progress on each update.
+- `Building_CalcPopGrowthRate` at `0x00426220` selects one of 20 population bands. Braves contribute weight 15; warriors, preachers, spies, and firewarriors contribute weight 4; shamans and wild people do not contribute. The band percentages run from 30 through 200 percent and are applied with the loader's 8.8 fixed-point conversion.
+- Hut stages one and two both use a renovation-readiness threshold of `2400`. Their readiness counter advances by `8 * occupant_count` per update, so an empty hut does not advance toward renovation.
+- The stage-one type record upgrades to stage two, and the stage-two record upgrades to stage three. Stage three has no next subtype.
+- `Building_UpdateWoodConsumption` at `0x00430430` creates the next hut subtype and destroys the old hut when renovation begins. The final completed shape is applied by `Building_OnConstructionComplete` at `0x0042FD70`.
+- Completed hut assets are separate models: OBJS indices 145, 146, and 147 for the blue tribe, with three consecutive indices per tribe. Construction and renovation visuals must therefore remain distinct from the final hut models.
+- Computer-player construction runs through `AI_ExecuteBuildingPriorities` at `0x0041B8D0`. It has ten command slots, evaluates twelve building-priority handlers, orders their candidate records by urgency, and dispatches work through an available command slot.
+- `AI_CommandBuildHut` at `0x00448360` is a multi-state command. It retains the selected plan/object, revalidates that object and its position, and returns to plan selection when the target disappears or becomes invalid.
 
 ## Open questions
 
@@ -106,5 +121,4 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 - What slope range counts as valid uneven terrain, and what slope blocks placement?
 - How does the game break ties between plans with the same priority and similar distance?
 - How long do partial and fully removed trees take to regrow?
-- How long does each hut stage wait before becoming eligible for an upgrade?
 - Does dismantling return wood, and can the player cancel a dismantling order?

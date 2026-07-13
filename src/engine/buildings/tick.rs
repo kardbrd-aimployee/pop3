@@ -3,6 +3,7 @@ use super::spawning::{tick_spawn, SpawnAction};
 use super::state_machine::*;
 use super::training::{tick_convert, ConvertAction};
 use super::types::*;
+use crate::engine::economy::wood::construction_wood_cost;
 use crate::engine::objects::{ObjectHandle, ObjectHeader};
 
 /// Aggregated actions emitted by a single building tick.
@@ -30,6 +31,16 @@ pub fn tick_building(
     header: &mut ObjectHeader,
     handle: ObjectHandle,
 ) -> BuildingTickActions {
+    tick_building_with_population(building, header, handle, 0, true)
+}
+
+pub fn tick_building_with_population(
+    building: &mut BuildingData,
+    header: &mut ObjectHeader,
+    handle: ObjectHandle,
+    weighted_population: u32,
+    has_population_capacity: bool,
+) -> BuildingTickActions {
     // 1. Damage cooldown decrement
     if building.damage_cooldown > 0 {
         building.damage_cooldown -= 1;
@@ -50,7 +61,13 @@ pub fn tick_building(
             transition_building_state(building, BuildingState::Active);
             BuildingTickActions::none()
         }
-        BuildingState::Active => tick_active(building, header, handle),
+        BuildingState::Active => tick_active(
+            building,
+            header,
+            handle,
+            weighted_population,
+            has_population_capacity,
+        ),
         BuildingState::Destroying => {
             tick_destroying(building, header);
             BuildingTickActions::none()
@@ -79,8 +96,10 @@ fn tick_active(
     building: &mut BuildingData,
     _header: &mut ObjectHeader,
     handle: ObjectHandle,
+    weighted_population: u32,
+    has_population_capacity: bool,
 ) -> BuildingTickActions {
-    let spawn = tick_spawn(building);
+    let spawn = tick_spawn(building, weighted_population, has_population_capacity);
     let convert = tick_convert(building);
     let combat = tick_building_combat(building, handle);
     BuildingTickActions {
@@ -106,19 +125,10 @@ fn tick_sinking(building: &mut BuildingData, _header: &mut ObjectHeader) {
 }
 
 /// Wood units needed to complete construction, by subtype.
-/// Values approximate the original binary's wood cost configuration.
+/// A carried wood piece is 100 original units. Hut upgrades each consume three
+/// pieces; other values come from the same original constant.dat file.
 pub fn construction_target(subtype: BuildingSubtype) -> u16 {
-    match subtype {
-        BuildingSubtype::SmallHut => 3,
-        BuildingSubtype::MediumHut => 5,
-        BuildingSubtype::LargeHut => 7,
-        BuildingSubtype::DrumTower => 5,
-        BuildingSubtype::Temple => 6,
-        BuildingSubtype::SpyTrain
-        | BuildingSubtype::WarriorTrain
-        | BuildingSubtype::SuperWarriorTrain => 5,
-        _ => 4,
-    }
+    construction_wood_cost(subtype as u8)
 }
 
 #[cfg(test)]
@@ -254,11 +264,11 @@ mod tests {
     #[test]
     fn construction_target_values() {
         assert_eq!(construction_target(BuildingSubtype::SmallHut), 3);
-        assert_eq!(construction_target(BuildingSubtype::MediumHut), 5);
-        assert_eq!(construction_target(BuildingSubtype::LargeHut), 7);
+        assert_eq!(construction_target(BuildingSubtype::MediumHut), 3);
+        assert_eq!(construction_target(BuildingSubtype::LargeHut), 3);
         assert_eq!(construction_target(BuildingSubtype::DrumTower), 5);
-        assert_eq!(construction_target(BuildingSubtype::Temple), 6);
-        assert_eq!(construction_target(BuildingSubtype::WarriorTrain), 5);
+        assert_eq!(construction_target(BuildingSubtype::Temple), 8);
+        assert_eq!(construction_target(BuildingSubtype::WarriorTrain), 8);
         assert_eq!(construction_target(BuildingSubtype::WallPiece), 4); // default
     }
 
