@@ -1091,6 +1091,7 @@ pub struct App {
 
     // Level object markers
     objects_marker_pipeline: Option<wgpu::RenderPipeline>,
+    construction_site_pipeline: Option<wgpu::RenderPipeline>,
     model_objects: Option<ModelEnvelop<ColorModel>>,
 
     // Shadow mapping
@@ -1140,7 +1141,8 @@ pub struct App {
     model_unit_markers: Option<ModelEnvelop<ColorModel>>,
     model_selection_outlines: Option<ModelEnvelop<ColorModel>>,
     model_walkability: Option<ModelEnvelop<ColorModel>>,
-    model_construction_sites: Option<ModelEnvelop<ColorModel>>,
+    model_construction_footprints: Option<ModelEnvelop<ColorModel>>,
+    model_construction_entrances: Option<ModelEnvelop<ColorModel>>,
     walkability_pipeline: Option<wgpu::RenderPipeline>,
 
     // Render flag
@@ -1285,6 +1287,7 @@ impl App {
             building_bind_group_0: None,
             lighting_buffer: None,
             objects_marker_pipeline: None,
+            construction_site_pipeline: None,
             model_objects: None,
             building_pipeline: None,
             building_bind_group_1: None,
@@ -1307,7 +1310,8 @@ impl App {
             model_unit_markers: None,
             model_selection_outlines: None,
             model_walkability: None,
-            model_construction_sites: None,
+            model_construction_footprints: None,
+            model_construction_entrances: None,
             walkability_pipeline: None,
             do_render: true,
             debug_log,
@@ -2262,7 +2266,8 @@ impl App {
         } else {
             0.0
         };
-        let mut model: ColorModel = MeshModel::new();
+        let mut footprint_model: ColorModel = MeshModel::new();
+        let mut entrance_model: ColorModel = MeshModel::new();
 
         for site in sites {
             let color = match site.tribe.min(3) {
@@ -2290,7 +2295,7 @@ impl App {
                     let vx = gx - center;
                     let vy = gy - center;
                     let curvature = (vx * vx + vy * vy) * curvature_scale;
-                    model.push_vertex(ColorVertex {
+                    footprint_model.push_vertex(ColorVertex {
                         coord: Vector3::new(gx, gy, height - curvature + 0.003),
                         color,
                     });
@@ -2322,19 +2327,27 @@ impl App {
                 let vx = gx - center;
                 let vy = gy - center;
                 let curvature = (vx * vx + vy * vy) * curvature_scale;
-                model.push_vertex(ColorVertex {
+                entrance_model.push_vertex(ColorVertex {
                     coord: Vector3::new(gx, gy, height - curvature + 0.004),
                     color: Vector3::new(1.0, 1.0, 1.0),
                 });
             }
         }
 
-        self.model_construction_sites = if model.vertices.is_empty() {
+        self.model_construction_footprints = if footprint_model.vertices.is_empty() {
             None
         } else {
             Some(ModelEnvelop::<ColorModel>::new(
                 &gpu.device,
-                vec![(RenderType::Triangles, model)],
+                vec![(RenderType::Triangles, footprint_model)],
+            ))
+        };
+        self.model_construction_entrances = if entrance_model.vertices.is_empty() {
+            None
+        } else {
+            Some(ModelEnvelop::<ColorModel>::new(
+                &gpu.device,
+                vec![(RenderType::Triangles, entrance_model)],
             ))
         };
     }
@@ -3546,7 +3559,21 @@ impl App {
                 if let Some(ref model) = self.model_selection_outlines {
                     model.draw(&mut render_pass);
                 }
-                if let Some(ref model) = self.model_construction_sites {
+                if let Some(ref model) = self.model_construction_entrances {
+                    model.draw(&mut render_pass);
+                }
+            }
+
+            // Construction footprints tint the existing terrain instead of
+            // replacing it with an opaque owner-color surface.
+            if let Some(ref construction_pipeline) = self.construction_site_pipeline {
+                render_pass.set_pipeline(construction_pipeline);
+                render_pass.set_bind_group(
+                    0,
+                    self.objects_group0_bind_group.as_ref().unwrap(),
+                    &[],
+                );
+                if let Some(ref model) = self.model_construction_footprints {
                     model.draw(&mut render_pass);
                 }
             }
@@ -4125,6 +4152,21 @@ impl ApplicationHandler for App {
             "level_objects_pipeline",
         );
 
+        // Construction footprints are deliberately much lighter than the
+        // debug overlay so the underlying terrain texture remains legible.
+        let construction_site_shader = include_str!("../../shaders/construction_site.wgsl");
+        let construction_site_pipeline = create_pipeline_blended(
+            device,
+            construction_site_shader,
+            &objects_marker_layouts,
+            &[&objects_group0_layout],
+            gpu.surface_format(),
+            true,
+            wgpu::PrimitiveTopology::TriangleList,
+            "construction_site_pipeline",
+            wgpu::BlendState::ALPHA_BLENDING,
+        );
+
         // Walkability overlay pipeline (alpha blended)
         let walkability_shader = include_str!("../../shaders/walkability_overlay.wgsl");
         let walkability_layouts = ColorModel::vertex_buffer_layouts();
@@ -4545,6 +4587,7 @@ impl ApplicationHandler for App {
         self.building_bind_group_0 = Some(lit_group0_bind_group);
         self.lighting_buffer = Some(lighting_buffer);
         self.objects_marker_pipeline = Some(objects_marker_pipeline);
+        self.construction_site_pipeline = Some(construction_site_pipeline);
         self.walkability_pipeline = Some(walkability_pipeline);
         self.engine.building_objects = building_objects;
         self.engine.scenery_objects = scenery_objects;
