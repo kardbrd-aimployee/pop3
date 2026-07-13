@@ -71,7 +71,7 @@ pub struct PersonData {
     pub gather_target: Option<ObjectHandle>,
     /// True while this person owns one reserved wood trip for its building.
     pub construction_wood_reserved: bool,
-    /// Original wood units contributed from the current carried piece (0..=100).
+    /// Reserved for construction work accounting; discrete deliveries leave it at zero.
     pub construction_work_progress: u16,
 }
 

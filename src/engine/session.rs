@@ -50,8 +50,8 @@ pub struct TickReport {
 pub struct PersonSystem;
 
 impl PersonSystem {
-    pub fn tick(&mut self, world: &mut World) {
-        world.tick_persons();
+    pub fn tick(&mut self, world: &mut World, rng: &mut GameRng) {
+        world.tick_persons(rng);
     }
 }
 
@@ -137,7 +137,7 @@ impl GameSession {
             });
         }
         // Queued terrain work is committed atomically by actions above.
-        self.person_system.tick(&mut self.world);
+        self.person_system.tick(&mut self.world, &mut self.rng);
         self.world.tick_buildings();
         // Projectile and water systems are intentionally empty for this slice.
         self.world.synchronize_tribes();
