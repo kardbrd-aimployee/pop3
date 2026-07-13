@@ -24,7 +24,7 @@ const BRAVE_SUBTYPE: u8 = 2;
 const TREE_MAX_SUBTYPE: u8 = 8;
 const TREE_WOOD_PIECES: u8 = 4;
 const PERSON_MOVE_STEP: i16 = 32;
-const FOUNDATION_RATE: u16 = 16;
+const FOUNDATION_STROKE_HEIGHT: u16 = 16;
 const ORIGINAL_TICKS_PER_SECOND: u16 = 14;
 const WORLD_TICKS_PER_SECOND: u16 = 30;
 const CHOP_TICKS: u16 = original_ticks_to_world_ticks(20);
@@ -116,24 +116,45 @@ impl TerrainState {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
-    fn flatten_step(&mut self, cell: (i32, i32), footprint: &[(i16, i16)], target: u16) -> bool {
-        let mut changed = false;
-        for &(dx, dy) in footprint {
-            let x = ((cell.0 + dx as i32) & 127) as usize;
-            let y = ((cell.1 + dy as i32) & 127) as usize;
-            let height = &mut self.heights[y][x];
-            let next = if *height < target {
-                height.saturating_add(FOUNDATION_RATE).min(target)
-            } else {
-                height.saturating_sub(FOUNDATION_RATE).max(target)
-            };
-            changed |= next != *height;
-            *height = next;
+    fn flatten_one_step(
+        &mut self,
+        cell: (i32, i32),
+        footprint: &[(i16, i16)],
+        target: u16,
+        selector: u32,
+    ) -> bool {
+        let uneven_count = footprint
+            .iter()
+            .filter(|&&(dx, dy)| {
+                let x = ((cell.0 + dx as i32) & 127) as usize;
+                let y = ((cell.1 + dy as i32) & 127) as usize;
+                self.heights[y][x] != target
+            })
+            .count();
+        if uneven_count == 0 {
+            return false;
         }
-        if changed {
-            self.revision = self.revision.wrapping_add(1).max(1);
-        }
-        changed
+
+        let selected = selector as usize % uneven_count;
+        let &(dx, dy) = footprint
+            .iter()
+            .filter(|&&(dx, dy)| {
+                let x = ((cell.0 + dx as i32) & 127) as usize;
+                let y = ((cell.1 + dy as i32) & 127) as usize;
+                self.heights[y][x] != target
+            })
+            .nth(selected)
+            .expect("uneven footprint count changed without a terrain mutation");
+        let x = ((cell.0 + dx as i32) & 127) as usize;
+        let y = ((cell.1 + dy as i32) & 127) as usize;
+        let height = &mut self.heights[y][x];
+        *height = if *height < target {
+            height.saturating_add(FOUNDATION_STROKE_HEIGHT).min(target)
+        } else {
+            height.saturating_sub(FOUNDATION_STROKE_HEIGHT).max(target)
+        };
+        self.revision = self.revision.wrapping_add(1).max(1);
+        true
     }
 
     fn footprint_is_flat(&self, cell: (i32, i32), footprint: &[(i16, i16)], target: u16) -> bool {
@@ -732,8 +753,24 @@ impl World {
                     .footprint_is_flat(site_cell, &footprint, foundation_height)
                 {
                     self.set_person_animation(handle, 115);
-                    self.terrain
-                        .flatten_step(site_cell, &footprint, foundation_height);
+                    if self.person_timer(handle) == 0 {
+                        self.set_person_timer(handle, next_site_work_ticks(rng));
+                        return;
+                    }
+                    if self.decrement_person_timer(handle) == 0 {
+                        self.terrain.flatten_one_step(
+                            site_cell,
+                            &footprint,
+                            foundation_height,
+                            rng.next(),
+                        );
+                        if !self
+                            .terrain
+                            .footprint_is_flat(site_cell, &footprint, foundation_height)
+                        {
+                            self.set_person_timer(handle, next_site_work_ticks(rng));
+                        }
+                    }
                     return;
                 }
                 self.start_wood_trip(handle, building_handle);
@@ -1036,9 +1073,7 @@ impl World {
                 person.wood_carried = 0;
                 person.construction_wood_reserved = false;
                 person.state_counter = BUILD_PHASE_SITE_WORK;
-                let original_ticks =
-                    SITE_WORK_MIN_ORIGINAL_TICKS + (rng.next() & SITE_WORK_RANDOM_MASK) as u16;
-                person.state_timer = original_ticks_to_world_ticks(original_ticks);
+                person.state_timer = next_site_work_ticks(rng);
                 person.construction_work_progress = 0;
                 set_animation(person, 120);
             }
@@ -1150,6 +1185,24 @@ impl World {
                 _ => None,
             })
             .unwrap_or(0)
+    }
+
+    fn person_timer(&self, handle: ObjectHandle) -> u16 {
+        self.pool
+            .get(handle)
+            .and_then(|object| match &object.data {
+                GameObjectData::Person(person) => Some(person.state_timer),
+                _ => None,
+            })
+            .unwrap_or(0)
+    }
+
+    fn set_person_timer(&mut self, handle: ObjectHandle, timer: u16) {
+        if let Some(object) = self.pool.get_mut(handle) {
+            if let GameObjectData::Person(person) = &mut object.data {
+                person.state_timer = timer;
+            }
+        }
     }
 
     fn set_person_animation(&mut self, handle: ObjectHandle, animation: u16) {
@@ -1397,6 +1450,11 @@ fn approach(value: i16, target: i16, step: i16) -> i16 {
 fn toroidal_world_distance(a: i16, b: i16) -> u32 {
     let direct = a.wrapping_sub(b).unsigned_abs() as u32;
     direct.min(65536 - direct)
+}
+
+fn next_site_work_ticks(rng: &mut GameRng) -> u16 {
+    let original_ticks = SITE_WORK_MIN_ORIGINAL_TICKS + (rng.next() & SITE_WORK_RANDOM_MASK) as u16;
+    original_ticks_to_world_ticks(original_ticks)
 }
 
 fn idle_animation(subtype: u8) -> u16 {
@@ -1734,6 +1792,54 @@ mod tests {
     }
 
     #[test]
+    fn foundation_changes_only_after_a_discrete_work_stroke() {
+        let mut rng = GameRng::new(0);
+        let mut world = World::from_level(
+            definition(vec![object(
+                0,
+                ModelType::Person,
+                BRAVE_SUBTYPE,
+                0,
+                (12, 12),
+            )]),
+            catalog(),
+        )
+        .unwrap();
+        world.terrain.heights[12][13] = 132;
+        world.terrain.heights[13][12] = 68;
+        let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
+        let hut = world
+            .place_building(BuildingSubtype::SmallHut, 0, (12, 12), 0)
+            .unwrap();
+        world.assign_construction(&[brave], hut).unwrap();
+
+        world.tick_persons(&mut rng);
+        let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
+            unreachable!()
+        };
+        let first_stroke_ticks = person.state_timer;
+        assert!(first_stroke_ticks >= original_ticks_to_world_ticks(32));
+        assert!(first_stroke_ticks <= original_ticks_to_world_ticks(95));
+        assert_eq!(world.terrain.heights[12][13], 132);
+        assert_eq!(world.terrain.heights[13][12], 68);
+
+        for _ in 0..first_stroke_ticks - 1 {
+            world.tick_persons(&mut rng);
+        }
+        assert_eq!(world.terrain.heights[12][13], 132);
+        assert_eq!(world.terrain.heights[13][12], 68);
+
+        world.tick_persons(&mut rng);
+        let changed = [world.terrain.heights[12][13], world.terrain.heights[13][12]]
+            .into_iter()
+            .filter(|height| !matches!(height, 132 | 68))
+            .count();
+        assert_eq!(changed, 1, "one work stroke must change exactly one cell");
+        assert!(matches!(world.terrain.heights[12][13], 132 | 116));
+        assert!(matches!(world.terrain.heights[13][12], 68 | 84));
+    }
+
+    #[test]
     fn one_brave_hut_construction_has_original_minimum_work_time() {
         let mut rng = GameRng::new(0);
         let mut world = World::from_level(
@@ -1744,14 +1850,16 @@ mod tests {
             catalog(),
         )
         .unwrap();
+        world.terrain.heights[12][13] = 164;
         let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
         let hut = world
             .place_building(BuildingSubtype::SmallHut, 0, (12, 12), 0)
             .unwrap();
         world.assign_construction(&[brave], hut).unwrap();
 
-        let minimum_work_ticks = 3
-            * (CHOP_TICKS
+        let minimum_foundation_ticks = 4 * original_ticks_to_world_ticks(32);
+        let minimum_work_ticks = minimum_foundation_ticks
+            + 3 * (CHOP_TICKS
                 + DELIVERY_TICKS
                 + original_ticks_to_world_ticks(SITE_WORK_MIN_ORIGINAL_TICKS));
         let mut completed_at = None;
