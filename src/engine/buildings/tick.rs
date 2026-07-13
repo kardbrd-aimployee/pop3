@@ -6,6 +6,9 @@ use super::types::*;
 use crate::engine::economy::wood::construction_wood_cost;
 use crate::engine::objects::{ObjectHandle, ObjectHeader};
 
+pub const CONSTRUCTION_UNITS_PER_WOOD: u16 = 100;
+const DESTRUCTION_UNITS_PER_TICK: u16 = 4;
+
 /// Aggregated actions emitted by a single building tick.
 #[derive(Debug)]
 pub struct BuildingTickActions {
@@ -98,8 +101,12 @@ fn tick_active(
 }
 
 fn tick_destroying(building: &mut BuildingData, _header: &mut ObjectHeader) {
-    // Decrement health toward 0, transition to sinking
-    if building.damage_accumulated >= 100 {
+    building.construction_progress = building
+        .construction_progress
+        .saturating_sub(DESTRUCTION_UNITS_PER_TICK);
+    let target = construction_progress_target(building.building_subtype);
+    building.construction_phase = construction_phase(building.construction_progress, target);
+    if building.construction_progress == 0 {
         transition_building_state(building, BuildingState::Sinking);
     }
 }
@@ -117,6 +124,22 @@ fn tick_sinking(building: &mut BuildingData, _header: &mut ObjectHeader) {
 /// pieces; other values come from the same original constant.dat file.
 pub fn construction_target(subtype: BuildingSubtype) -> u16 {
     construction_wood_cost(subtype as u8)
+}
+
+pub fn construction_progress_target(subtype: BuildingSubtype) -> u16 {
+    construction_target(subtype).saturating_mul(CONSTRUCTION_UNITS_PER_WOOD)
+}
+
+/// Original shared phase calculation at 0x00491B40. Construction and
+/// destruction both use this normalized 0..=4 phase value.
+pub fn construction_phase(progress: u16, total: u16) -> u8 {
+    if progress == 0 || total <= 1 {
+        0
+    } else if progress >= total {
+        4
+    } else {
+        (((4 * progress as u32 - 1) / (total as u32 - 1)).min(3)) as u8
+    }
 }
 
 #[cfg(test)]
@@ -224,9 +247,12 @@ mod tests {
         let mut b = BuildingData::default();
         b.state = BuildingState::Destroying;
         b.damage_accumulated = 50;
+        b.construction_progress = 100;
+        b.construction_phase = 1;
         let mut h = make_header();
         tick_building(&mut b, &mut h, DUMMY_HANDLE);
         assert_eq!(b.state, BuildingState::Destroying);
+        assert_eq!(b.construction_progress, 96);
     }
 
     #[test]
@@ -259,6 +285,21 @@ mod tests {
         assert_eq!(construction_target(BuildingSubtype::Temple), 8);
         assert_eq!(construction_target(BuildingSubtype::WarriorTrain), 8);
         assert_eq!(construction_target(BuildingSubtype::WallPiece), 4); // default
+    }
+
+    #[test]
+    fn normalized_construction_phases_match_original_thresholds() {
+        let total = construction_progress_target(BuildingSubtype::SmallHut);
+        assert_eq!(total, 300);
+        assert_eq!(construction_phase(0, total), 0);
+        assert_eq!(construction_phase(74, total), 0);
+        assert_eq!(construction_phase(75, total), 1);
+        assert_eq!(construction_phase(149, total), 1);
+        assert_eq!(construction_phase(150, total), 2);
+        assert_eq!(construction_phase(224, total), 2);
+        assert_eq!(construction_phase(225, total), 3);
+        assert_eq!(construction_phase(299, total), 3);
+        assert_eq!(construction_phase(300, total), 4);
     }
 
     #[test]

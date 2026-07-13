@@ -123,19 +123,28 @@ impl BinDeserializer for TribeConfigRaw {
 /// Huts use 3 consecutive indices per tribe (Small/Medium/Large).
 /// Other buildings use 1 index per tribe in blocks of 4.
 pub fn building_obj_index(subtype: u8, tribe_index: u8) -> Option<usize> {
+    building_obj_index_with_variant(subtype, tribe_index, 0)
+}
+
+/// Returns the OBJS object index for a building while preserving the selected
+/// hut visual family. The original picks one of three hut families and keeps
+/// that same mesh throughout construction, completion, and destruction.
+pub fn building_obj_index_with_variant(
+    subtype: u8,
+    tribe_index: u8,
+    visual_variant: u8,
+) -> Option<usize> {
     let tribe = tribe_index.min(3) as usize;
     match subtype {
-        1 => Some(145 + tribe * 3), // Small Hut
-        2 => Some(146 + tribe * 3), // Medium Hut
-        3 => Some(147 + tribe * 3), // Large Hut
-        4 => Some(117 + tribe),     // Guard Tower (DrumTower)
-        5 => Some(133 + tribe),     // Temple (Preacher Training)
-        6 => Some(129 + tribe),     // Spy Training
-        7 => Some(141 + tribe),     // Warrior Training
-        8 => Some(137 + tribe),     // Firewarrior Training
-        13 => Some(121 + tribe),    // Boat Hut
-        15 => Some(125 + tribe),    // Balloon Hut (Airship)
-        18 => Some(190),            // Vault of Knowledge
+        1..=3 => Some(145 + visual_variant.min(2) as usize * 12 + tribe * 3 + subtype as usize - 1), // Three hut families, each containing Small/Medium/Large per tribe.
+        4 => Some(117 + tribe),  // Guard Tower (DrumTower)
+        5 => Some(133 + tribe),  // Temple (Preacher Training)
+        6 => Some(129 + tribe),  // Spy Training
+        7 => Some(141 + tribe),  // Warrior Training
+        8 => Some(137 + tribe),  // Firewarrior Training
+        13 => Some(121 + tribe), // Boat Hut
+        15 => Some(125 + tribe), // Balloon Hut (Airship)
+        18 => Some(190),         // Vault of Knowledge
         _ => None,
     }
 }
@@ -176,3 +185,19 @@ pub fn object_3d_index(model_type: &ModelType, subtype: u8, tribe_index: u8) -> 
 }
 
 /******************************************************************************/
+
+#[cfg(test)]
+mod tests {
+    use super::building_obj_index_with_variant;
+
+    #[test]
+    fn hut_visual_families_preserve_subtype_and_tribe_layout() {
+        assert_eq!(building_obj_index_with_variant(1, 0, 0), Some(145));
+        assert_eq!(building_obj_index_with_variant(2, 0, 0), Some(146));
+        assert_eq!(building_obj_index_with_variant(3, 0, 0), Some(147));
+        assert_eq!(building_obj_index_with_variant(1, 1, 0), Some(148));
+        assert_eq!(building_obj_index_with_variant(1, 0, 1), Some(157));
+        assert_eq!(building_obj_index_with_variant(1, 0, 2), Some(169));
+        assert_eq!(building_obj_index_with_variant(1, 0, 9), Some(169));
+    }
+}

@@ -215,7 +215,9 @@ pub struct LevelObject {
     pub tribe_index: u8,
     pub angle: u32,
     pub building_state: Option<BuildingState>,
+    pub construction_progress: u16,
     pub construction_phase: u8,
+    pub visual_variant: u8,
 }
 
 pub fn extract_level_objects(level_res: &LevelRes) -> Vec<LevelObject> {
@@ -250,7 +252,9 @@ pub fn extract_level_objects(level_res: &LevelRes) -> Vec<LevelObject> {
             tribe_index: unit.tribe_index(),
             angle: unit.angle(),
             building_state: None,
+            construction_progress: 0,
             construction_phase: 4,
+            visual_variant: 0,
         });
     }
     objects

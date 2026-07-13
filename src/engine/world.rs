@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use crate::data::level::{LevelDefinition, LevelObjectIndex};
 use crate::data::units::ModelType;
 use crate::engine::buildings::spawning::population_growth_weight;
-use crate::engine::buildings::tick::{construction_target, tick_building_with_population};
+use crate::engine::buildings::tick::{
+    construction_phase, construction_progress_target, construction_target,
+    tick_building_with_population, CONSTRUCTION_UNITS_PER_WOOD,
+};
 use crate::engine::buildings::types::{building_behavior_flags, building_max_health};
 use crate::engine::buildings::{
     BuildingCatalog, BuildingState, BuildingSubtype, PlacementError, SpawnAction,
@@ -12,7 +15,7 @@ use crate::engine::economy::population::{calculate_housing_capacity, can_spawn};
 use crate::engine::movement::WorldCoord;
 use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
 use crate::engine::state::tribe::TribeArray;
-use crate::engine::units::coords::{cell_to_world, world_to_render_pos};
+use crate::engine::units::coords::{cell_to_world, world_to_cell, world_to_render_pos};
 use crate::engine::units::person_state::{person_type_defaults, PersonState};
 
 const WORLD_SIZE: usize = 128;
@@ -188,7 +191,9 @@ pub struct WorldObjectRenderRecord {
     pub health: u16,
     pub max_health: u16,
     pub building_state: Option<BuildingState>,
+    pub construction_progress: u16,
     pub construction_phase: u8,
+    pub visual_variant: u8,
     pub footprint: Vec<(i16, i16)>,
 }
 
@@ -292,6 +297,7 @@ impl World {
                     building.building_subtype = subtype;
                     building.state = BuildingState::Active;
                     building.behavior_flags = building_behavior_flags(subtype);
+                    building.wood_consumed = construction_target(subtype);
                     building.construction_progress = 0;
                     building.construction_phase = 4;
                     building.foundation_height =
@@ -433,6 +439,7 @@ impl World {
                     person.building_handle = Some(building);
                     person.gather_target = None;
                     person.construction_wood_reserved = false;
+                    person.construction_work_progress = 0;
                     person.wood_carried = 0;
                     person.prev_state = person.state;
                     person.state = PersonState::Building;
@@ -489,6 +496,7 @@ impl World {
                 person.building_handle = None;
                 person.gather_target = None;
                 person.construction_wood_reserved = false;
+                person.construction_work_progress = 0;
                 person.wood_carried = 0;
                 person.prev_state = person.state;
                 person.state = PersonState::Idle;
@@ -546,8 +554,10 @@ impl World {
             building.behavior_flags = 0;
             building.wood_stored = 0;
             building.wood_reserved = 0;
+            building.wood_consumed = 0;
             building.construction_progress = 0;
             building.construction_phase = 0;
+            building.visual_variant = (handle.slot() % 3) as u8;
             building.foundation_height = foundation_height;
             building.population_timer_enabled = true;
         }
@@ -692,6 +702,7 @@ impl World {
 
                 if state_counter == BUILD_PHASE_CONSTRUCT {
                     self.set_person_animation(handle, 120);
+                    self.advance_construction_work(handle, building_handle);
                     let timer = self.decrement_person_timer(handle);
                     if timer == 0 {
                         self.finish_construction_work(handle, building_handle);
@@ -740,7 +751,7 @@ impl World {
                             person.state_timer = CHOP_TICKS;
                             person.movement.flags1 &= !0x1000;
                             person.movement.speed = 0;
-                            set_animation(person, 115);
+                            set_animation(person, 73);
                         }
                     }
                 } else {
@@ -748,7 +759,7 @@ impl World {
                 }
             }
             PersonState::GatheringWood => {
-                self.set_person_animation(handle, 115);
+                self.set_person_animation(handle, 73);
                 if self.decrement_person_timer(handle) == 0 {
                     self.finish_chopping(handle, building_handle, site_position);
                 }
@@ -791,7 +802,7 @@ impl World {
         let needs_wood = self.pool.get(building_handle).is_some_and(|object| {
             matches!(&object.data, GameObjectData::Building(building)
                 if building.state == BuildingState::Init
-                    && building.construction_progress
+                    && building.wood_consumed
                         + building.wood_stored
                         + building.wood_reserved
                         < construction_target(building.building_subtype))
@@ -954,6 +965,7 @@ impl World {
                 person.state = PersonState::Building;
                 person.state_counter = BUILD_PHASE_CONSTRUCT;
                 person.state_timer = BUILD_TICKS;
+                person.construction_work_progress = 0;
                 person.movement.flags1 &= !0x1000;
                 person.movement.speed = 0;
                 set_animation(person, 120);
@@ -966,6 +978,14 @@ impl World {
         person_handle: ObjectHandle,
         building_handle: ObjectHandle,
     ) {
+        let work_progress = self
+            .pool
+            .get(person_handle)
+            .and_then(|object| match &object.data {
+                GameObjectData::Person(person) => Some(person.construction_work_progress),
+                _ => None,
+            })
+            .unwrap_or(0);
         let mut completed = false;
         if let Some(object) = self.pool.get_mut(building_handle) {
             if let GameObjectData::Building(building) = &mut object.data {
@@ -974,11 +994,16 @@ impl World {
                     return;
                 }
                 building.wood_stored -= 1;
-                building.construction_progress = building.construction_progress.saturating_add(1);
-                let target = construction_target(building.building_subtype);
-                building.construction_phase = building.construction_progress.min(3) as u8;
+                building.wood_consumed = building.wood_consumed.saturating_add(1);
+                let target = construction_progress_target(building.building_subtype);
+                let remainder = CONSTRUCTION_UNITS_PER_WOOD.saturating_sub(work_progress);
+                building.construction_progress = building
+                    .construction_progress
+                    .saturating_add(remainder)
+                    .min(target);
+                building.construction_phase =
+                    construction_phase(building.construction_progress, target);
                 if building.construction_progress >= target {
-                    building.construction_phase = 4;
                     building.state = BuildingState::ConstructionDone;
                     completed = true;
                 }
@@ -990,11 +1015,59 @@ impl World {
             if let Some(object) = self.pool.get_mut(person_handle) {
                 if let GameObjectData::Person(person) = &mut object.data {
                     person.state_counter = BUILD_PHASE_TRAVEL_OR_FLATTEN;
+                    person.construction_work_progress = 0;
                 }
             }
             self.start_wood_trip(person_handle, building_handle);
         }
         self.object_revision = self.object_revision.wrapping_add(1).max(1);
+    }
+
+    fn advance_construction_work(
+        &mut self,
+        person_handle: ObjectHandle,
+        building_handle: ObjectHandle,
+    ) {
+        let work_progress = self
+            .pool
+            .get(person_handle)
+            .and_then(|object| match &object.data {
+                GameObjectData::Person(person) => Some(person.construction_work_progress),
+                _ => None,
+            })
+            .unwrap_or(CONSTRUCTION_UNITS_PER_WOOD);
+        let increment = 4.min(CONSTRUCTION_UNITS_PER_WOOD.saturating_sub(work_progress));
+        if increment == 0 {
+            return;
+        }
+
+        let mut applied = 0;
+        if let Some(object) = self.pool.get_mut(building_handle) {
+            if let GameObjectData::Building(building) = &mut object.data {
+                if building.state != BuildingState::Init || building.wood_stored == 0 {
+                    return;
+                }
+                let target = construction_progress_target(building.building_subtype);
+                let next = building
+                    .construction_progress
+                    .saturating_add(increment)
+                    .min(target);
+                applied = next.saturating_sub(building.construction_progress);
+                building.construction_progress = next;
+                building.construction_phase = construction_phase(next, target);
+            }
+        }
+        if applied > 0 {
+            if let Some(object) = self.pool.get_mut(person_handle) {
+                if let GameObjectData::Person(person) = &mut object.data {
+                    person.construction_work_progress = person
+                        .construction_work_progress
+                        .saturating_add(applied)
+                        .min(CONSTRUCTION_UNITS_PER_WOOD);
+                }
+            }
+            self.object_revision = self.object_revision.wrapping_add(1).max(1);
+        }
     }
 
     fn release_wood_trip(
@@ -1221,19 +1294,27 @@ impl World {
             let handle = object.header.object_index;
             debug_assert_eq!(handle.slot() as usize, i);
             let (cell_x, cell_y) = world_to_render_pos(&object.header.position, 128.0);
-            let (building_state, construction_phase, footprint) = match &object.data {
+            let (
+                building_state,
+                construction_progress,
+                construction_phase,
+                visual_variant,
+                footprint,
+            ) = match &object.data {
                 GameObjectData::Building(building) => {
                     let rotation = ((object.header.angle / 512) & 3) as u8;
                     (
                         Some(building.state),
+                        building.construction_progress,
                         building.construction_phase,
+                        building.visual_variant,
                         self.catalog
                             .footprint(building.building_subtype, rotation)
                             .map(ToOwned::to_owned)
                             .unwrap_or_default(),
                     )
                 }
-                _ => (None, 0, Vec::new()),
+                _ => (None, 0, 0, 0, Vec::new()),
             };
             objects.push(WorldObjectRenderRecord {
                 handle,
@@ -1246,7 +1327,9 @@ impl World {
                 health: object.header.health,
                 max_health: object.header.max_health,
                 building_state,
+                construction_progress,
                 construction_phase,
+                visual_variant,
                 footprint,
             });
         }
@@ -1275,7 +1358,7 @@ impl World {
 }
 
 fn render_cell(position: WorldCoord) -> (i32, i32) {
-    let (x, y) = world_to_render_pos(&position, 128.0);
+    let (x, y) = world_to_cell(&position, 128.0);
     (x.floor() as i32, y.floor() as i32)
 }
 
@@ -1325,6 +1408,12 @@ fn set_animation(person: &mut crate::engine::objects::PersonData, animation: u16
         person.anim.frame_index = 0;
         person.anim.tick_counter = 0;
         person.anim.flags = 0x03;
+        person.anim.frame_count = match animation {
+            73 | 88 => 6,
+            115 => 8,
+            120 => 5,
+            _ => 1,
+        };
         person.anim.ticks_per_frame = 3;
     }
 }
@@ -1404,6 +1493,10 @@ mod tests {
         let hut = world
             .place_building(BuildingSubtype::SmallHut, 0, (12, 12), 0)
             .unwrap();
+        assert_eq!(
+            render_cell(world.get(hut).unwrap().header.position),
+            (12, 12)
+        );
         assert!(world.terrain.revision() > before);
         let count = world.pool.active_count();
         assert_eq!(
@@ -1458,6 +1551,7 @@ mod tests {
             catalog(),
         )
         .unwrap();
+        world.terrain.heights[12][13] = 140;
         let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
         let tree = world.source_handle(LevelObjectIndex(1)).unwrap();
         let hut = world
@@ -1466,6 +1560,8 @@ mod tests {
         world.assign_construction(&[brave], hut).unwrap();
 
         let mut observed_animations = std::collections::HashSet::new();
+        let mut observed_animation_frames = std::collections::HashSet::new();
+        let mut observed_phases = std::collections::HashSet::new();
         for _ in 0..5_000 {
             world.tick_persons();
             world.tick_buildings();
@@ -1474,6 +1570,12 @@ mod tests {
                 unreachable!()
             };
             observed_animations.insert(person.anim.animation_id);
+            observed_animation_frames.insert((person.anim.animation_id, person.anim.frame_index));
+            if let Some(object) = world.get(hut) {
+                if let GameObjectData::Building(building) = &object.data {
+                    observed_phases.insert(building.construction_phase);
+                }
+            }
             let active = world.get(hut).is_some_and(|object| {
                 matches!(&object.data, GameObjectData::Building(building) if building.state == BuildingState::Active)
             });
@@ -1487,9 +1589,18 @@ mod tests {
         assert_eq!(building.state, BuildingState::Active);
         assert_eq!(building.construction_phase, 4);
         assert_eq!(building.construction_progress, 0);
+        assert!(observed_animations.contains(&73));
         assert!(observed_animations.contains(&115));
         assert!(observed_animations.contains(&88));
         assert!(observed_animations.contains(&120));
+        for animation in [73, 88, 115, 120] {
+            assert!(observed_animation_frames
+                .iter()
+                .any(|&(id, frame)| id == animation && frame > 0));
+        }
+        for phase in 0..=3 {
+            assert!(observed_phases.contains(&phase));
+        }
         let GameObjectData::Scenery(tree_data) = &world.get(tree).unwrap().data else {
             unreachable!()
         };
@@ -1582,7 +1693,7 @@ mod tests {
                 unreachable!()
             };
             assert!(
-                building.construction_progress + building.wood_stored + building.wood_reserved
+                building.wood_consumed + building.wood_stored + building.wood_reserved
                     <= construction_target(BuildingSubtype::SmallHut)
             );
             let GameObjectData::Scenery(tree) = &world.get(tree).unwrap().data else {
@@ -1597,6 +1708,10 @@ mod tests {
             unreachable!()
         };
         assert_eq!(building.state, BuildingState::Active);
+        assert_eq!(
+            building.wood_consumed,
+            construction_target(BuildingSubtype::SmallHut)
+        );
     }
 
     #[test]

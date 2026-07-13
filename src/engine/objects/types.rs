@@ -71,6 +71,8 @@ pub struct PersonData {
     pub gather_target: Option<ObjectHandle>,
     /// True while this person owns one reserved wood trip for its building.
     pub construction_wood_reserved: bool,
+    /// Original wood units contributed from the current carried piece (0..=100).
+    pub construction_work_progress: u16,
 }
 
 impl Default for PersonData {
@@ -99,6 +101,7 @@ impl Default for PersonData {
             guard_position: None,
             gather_target: None,
             construction_wood_reserved: false,
+            construction_work_progress: 0,
         }
     }
 }

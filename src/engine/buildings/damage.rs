@@ -1,4 +1,5 @@
-use super::state_machine::transition_building_state;
+use super::state_machine::{on_destroy, transition_building_state};
+use super::tick::construction_progress_target;
 use super::types::*;
 use crate::engine::objects::ObjectHeader;
 
@@ -23,6 +24,9 @@ pub fn apply_building_damage(
 
     if header.health <= damage {
         header.health = 0;
+        on_destroy(building);
+        building.construction_progress = construction_progress_target(building.building_subtype);
+        building.construction_phase = 4;
         transition_building_state(building, BuildingState::Destroying);
         true
     } else {

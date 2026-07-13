@@ -231,14 +231,17 @@ pub struct Face {
     pub texture_index: i16,
     pub vertex_num: usize,
     pub vertex: [Vertex; 4],
+    /// Construction-phase visibility/material mask from the 60-byte face record.
+    pub flags2: u8,
 }
 
 impl Face {
-    pub fn new(texture_index: i16, vertex_num: usize) -> Self {
+    pub fn new(texture_index: i16, vertex_num: usize, flags2: u8) -> Self {
         Face {
             texture_index,
             vertex_num,
             vertex: [Vertex::default(); 4],
+            flags2,
         }
     }
 }
@@ -376,7 +379,7 @@ where
         match self.iter.next() {
             Some(f) => {
                 let num_points = std::cmp::min(f.num_points as usize, 4);
-                let mut face_3d = Face::new(f.tex_index, num_points);
+                let mut face_3d = Face::new(f.tex_index, num_points, f.flags2);
                 face_3d.vertex[0].from_point(
                     &self.points[f.point_1 as usize],
                     f.point_1_u,
@@ -417,8 +420,22 @@ pub fn mk_tex_vertex(tex_index: i16, v: &Vertex) -> TexVertex {
 }
 
 pub fn mk_pop_object(object: &Object3D) -> TexModel {
+    mk_pop_object_for_phase(object, None)
+}
+
+pub fn construction_face_visible(flags2: u8, phase: u8) -> bool {
+    flags2 & (1 << phase.min(4)) != 0
+}
+
+/// Builds the original construction/demolition view of an OBJS mesh. A normal
+/// building ignores the face masks; render type 10 shows only faces whose
+/// phase bit is enabled.
+pub fn mk_pop_object_for_phase(object: &Object3D, phase: Option<u8>) -> TexModel {
     let mut model: TexModel = MeshModel::new();
     for face in object.iter_face() {
+        if phase.is_some_and(|phase| !construction_face_visible(face.flags2, phase)) {
+            continue;
+        }
         if face.vertex_num == 3 {
             model.push_vertex(mk_tex_vertex(face.texture_index, &face.vertex[0]));
             model.push_vertex(mk_tex_vertex(face.texture_index, &face.vertex[1]));
@@ -433,4 +450,18 @@ pub fn mk_pop_object(object: &Object3D) -> TexModel {
         }
     }
     model
+}
+
+#[cfg(test)]
+mod tests {
+    use super::construction_face_visible;
+
+    #[test]
+    fn construction_face_masks_select_the_current_phase_bit() {
+        assert!(construction_face_visible(0b0000_0001, 0));
+        assert!(!construction_face_visible(0b0000_0001, 1));
+        assert!(construction_face_visible(0b0001_0100, 2));
+        assert!(construction_face_visible(0b0001_0100, 4));
+        assert!(!construction_face_visible(0b0000_0100, 4));
+    }
 }

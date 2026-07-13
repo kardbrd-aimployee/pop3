@@ -79,11 +79,15 @@ pub struct BuildingData {
     pub wood_stored: u16,
     /// Wood trips currently reserved by assigned builders.
     pub wood_reserved: u16,
+    /// Wood pieces whose full construction-work cycle has completed.
+    pub wood_consumed: u16,
     pub occupant_slots: [Option<ObjectHandle>; MAX_OCCUPANTS],
     pub occupant_count: u8,
     pub construction_progress: u16,
     /// Original building construction phase at object offset +0x78 (0..=4).
     pub construction_phase: u8,
+    /// Stable visual family selected when a hut plan is created (0..=2).
+    pub visual_variant: u8,
     /// Height the reserved footprint converges to while builders prepare it.
     pub foundation_height: u16,
     pub conversion_countdown: u16,
@@ -107,10 +111,12 @@ impl Default for BuildingData {
             building_subtype: BuildingSubtype::SmallHut,
             wood_stored: 0,
             wood_reserved: 0,
+            wood_consumed: 0,
             occupant_slots: [None; MAX_OCCUPANTS],
             occupant_count: 0,
             construction_progress: 0,
             construction_phase: 0,
+            visual_variant: 0,
             foundation_height: 0,
             conversion_countdown: 0,
             training_countdown: 0,

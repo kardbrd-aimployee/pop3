@@ -1066,6 +1066,55 @@ impl GameEngine {
     }
 }
 
+fn placement_entrance_direction(rotation: u8) -> (f32, f32) {
+    match rotation & 3 {
+        0 => (0.0, -1.0),
+        1 => (-1.0, 0.0),
+        2 => (0.0, 1.0),
+        _ => (1.0, 0.0),
+    }
+}
+
+fn build_placement_entrance_model(
+    device: &wgpu::Device,
+    landscape: &LandscapeMesh<128>,
+    curvature_scale: f32,
+    cell_x: f32,
+    cell_y: f32,
+    rotation: u8,
+) -> ModelEnvelop<ColorModel> {
+    let step = landscape.step();
+    let width = landscape.width() as f32;
+    let shift = landscape.get_shift_vector();
+    let center = (width - 1.0) * step / 2.0;
+    let (forward_x, forward_y) = placement_entrance_direction(rotation);
+    let right_x = -forward_y;
+    let right_y = forward_x;
+    let base_x = cell_x + forward_x * 1.25;
+    let base_y = cell_y + forward_y * 1.25;
+    let arrow = [
+        (base_x + forward_x * 0.55, base_y + forward_y * 0.55),
+        (base_x + right_x * 0.35, base_y + right_y * 0.35),
+        (base_x - right_x * 0.35, base_y - right_y * 0.35),
+    ];
+    let mut model: ColorModel = MeshModel::new();
+    for (x, y) in arrow {
+        let visible_x = ((x - shift.x as f32) % width + width) % width;
+        let visible_y = ((y - shift.y as f32) % width + width) % width;
+        let gx = visible_x * step;
+        let gy = visible_y * step;
+        let height = landscape.interpolate_height_at(x, y);
+        let vx = gx - center;
+        let vy = gy - center;
+        let curvature = (vx * vx + vy * vy) * curvature_scale;
+        model.push_vertex(ColorVertex {
+            coord: Vector3::new(gx, gy, height - curvature + 0.004),
+            color: Vector3::new(1.0, 1.0, 1.0),
+        });
+    }
+    ModelEnvelop::<ColorModel>::new(device, vec![(RenderType::Triangles, model)])
+}
+
 pub struct App {
     engine: GameEngine,
     input: InputState,
@@ -1117,6 +1166,7 @@ pub struct App {
     ghost_bind_group: Option<wgpu::BindGroup>,
     ghost_building_pipeline: Option<wgpu::RenderPipeline>,
     ghost_model: Option<ModelEnvelop<TexModel>>,
+    ghost_entrance_model: Option<ModelEnvelop<ColorModel>>,
     ghost_last_key: Option<(u8, i32, i32, u8)>,
 
     // Sky
@@ -1142,7 +1192,6 @@ pub struct App {
     model_selection_outlines: Option<ModelEnvelop<ColorModel>>,
     model_walkability: Option<ModelEnvelop<ColorModel>>,
     model_construction_footprints: Option<ModelEnvelop<ColorModel>>,
-    model_construction_entrances: Option<ModelEnvelop<ColorModel>>,
     walkability_pipeline: Option<wgpu::RenderPipeline>,
 
     // Render flag
@@ -1296,6 +1345,7 @@ impl App {
             ghost_bind_group: None,
             ghost_building_pipeline: None,
             ghost_model: None,
+            ghost_entrance_model: None,
             ghost_last_key: None,
             sky_pipeline: None,
             sky_bind_group: None,
@@ -1311,7 +1361,6 @@ impl App {
             model_selection_outlines: None,
             model_walkability: None,
             model_construction_footprints: None,
-            model_construction_entrances: None,
             walkability_pipeline: None,
             do_render: true,
             debug_log,
@@ -2207,7 +2256,9 @@ impl App {
                         tribe_index: object.tribe,
                         angle: object.angle as u32,
                         building_state: object.building_state,
+                        construction_progress: object.construction_progress,
                         construction_phase: object.construction_phase,
+                        visual_variant: object.visual_variant,
                     })
                     .collect::<Vec<_>>()
             });
@@ -2267,7 +2318,6 @@ impl App {
             0.0
         };
         let mut footprint_model: ColorModel = MeshModel::new();
-        let mut entrance_model: ColorModel = MeshModel::new();
 
         for site in sites {
             let color = match site.tribe.min(3) {
@@ -2301,37 +2351,6 @@ impl App {
                     });
                 }
             }
-
-            // Small white entrance arrow aligned with the plan rotation.
-            let (forward_x, forward_y) = match (site.angle / 512) & 3 {
-                0 => (0.0, -1.0),
-                1 => (1.0, 0.0),
-                2 => (0.0, 1.0),
-                _ => (-1.0, 0.0),
-            };
-            let right_x = -forward_y;
-            let right_y = forward_x;
-            let base_x = site.cell_x + forward_x * 1.25;
-            let base_y = site.cell_y + forward_y * 1.25;
-            let arrow = [
-                (base_x + forward_x * 0.55, base_y + forward_y * 0.55),
-                (base_x + right_x * 0.35, base_y + right_y * 0.35),
-                (base_x - right_x * 0.35, base_y - right_y * 0.35),
-            ];
-            for (cx, cy) in arrow {
-                let visible_x = ((cx - shift.x as f32) % width + width) % width;
-                let visible_y = ((cy - shift.y as f32) % width + width) % width;
-                let gx = visible_x * step;
-                let gy = visible_y * step;
-                let height = landscape.interpolate_height_at(cx, cy);
-                let vx = gx - center;
-                let vy = gy - center;
-                let curvature = (vx * vx + vy * vy) * curvature_scale;
-                entrance_model.push_vertex(ColorVertex {
-                    coord: Vector3::new(gx, gy, height - curvature + 0.004),
-                    color: Vector3::new(1.0, 1.0, 1.0),
-                });
-            }
         }
 
         self.model_construction_footprints = if footprint_model.vertices.is_empty() {
@@ -2340,14 +2359,6 @@ impl App {
             Some(ModelEnvelop::<ColorModel>::new(
                 &gpu.device,
                 vec![(RenderType::Triangles, footprint_model)],
-            ))
-        };
-        self.model_construction_entrances = if entrance_model.vertices.is_empty() {
-            None
-        } else {
-            Some(ModelEnvelop::<ColorModel>::new(
-                &gpu.device,
-                vec![(RenderType::Triangles, entrance_model)],
             ))
         };
     }
@@ -3345,10 +3356,23 @@ impl App {
                         0.0
                     },
                 );
+                self.ghost_entrance_model = Some(build_placement_entrance_model(
+                    &gpu.device,
+                    &self.engine.landscape_mesh,
+                    if self.engine.curvature_enabled {
+                        self.engine.curvature_scale
+                    } else {
+                        0.0
+                    },
+                    ghost.cell_x as f32,
+                    ghost.cell_y as f32,
+                    ghost.rotation,
+                ));
                 self.ghost_last_key = Some(ghost_key);
             }
         } else if self.ghost_last_key.is_some() {
             self.ghost_model = None;
+            self.ghost_entrance_model = None;
             self.ghost_last_key = None;
         }
 
@@ -3559,7 +3583,7 @@ impl App {
                 if let Some(ref model) = self.model_selection_outlines {
                     model.draw(&mut render_pass);
                 }
-                if let Some(ref model) = self.model_construction_entrances {
+                if let Some(ref model) = self.ghost_entrance_model {
                     model.draw(&mut render_pass);
                 }
             }
@@ -5152,5 +5176,13 @@ mod tests {
             now + QUIT_CONFIRM_TIMEOUT + Duration::from_millis(2),
         ));
         assert!(deadline.is_none());
+    }
+
+    #[test]
+    fn placement_arrow_matches_original_building_quadrants() {
+        assert_eq!(placement_entrance_direction(0), (0.0, -1.0));
+        assert_eq!(placement_entrance_direction(1), (-1.0, 0.0));
+        assert_eq!(placement_entrance_direction(2), (0.0, 1.0));
+        assert_eq!(placement_entrance_direction(3), (1.0, 0.0));
     }
 }

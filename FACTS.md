@@ -15,6 +15,7 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 
 - Selecting a building attaches its placement footprint to the cursor.
 - The footprint uses a white ground overlay and an arrow that shows the entrance direction.
+- The entrance arrow is only part of the placement preview. It disappears after the plan is placed.
 - Pressing Space rotates the building clockwise so the player can choose the entrance direction.
 - An ordinary left click places one building plan and exits placement mode.
 - Shift + Left Click places a building plan and keeps the same building attached to the cursor, allowing the player to place more plans.
@@ -62,6 +63,7 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 ## Construction and terrain work
 
 - Braves flatten valid uneven ground by jumping on the building footprint.
+- A placed plan subtly tints its footprint without hiding the ground texture.
 - Braves fetch construction wood from trees.
 - A brave walks to a tree, chops one piece of wood, carries it to the plan, and contributes it to construction.
 - Several assigned braves can split the work. Some can flatten the footprint while others collect wood.
@@ -104,9 +106,14 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 - A placed building plan is a live building object with model type `2`, subtype `1` for a small hut, and construction state `1`. The pre-placement cursor overlay is separate from this object.
 - `Building_InitFromType` at `0x0042E980` links the plan into the cell grid and reserves its footprint. The completed hut mesh must not be used merely because the live object already has hut subtype `1`.
 - Assigned workers retain the live plan handle and use person states `Building` (`0x0D`), `Gathering` (`0x13`), `GatheringWood` (`0x15`), and `CarryingWood` (`0x16`). Relevant entry points include `Person_EnterBuildingState` at `0x00501750`, `Person_EnterGatheringState` at `0x005021C0`, and `Person_StartWoodGathering` at `0x00502F70`.
-- Verified brave animations are carry `88`, dig/work `115`, and building `120`.
-- Blue small-hut construction selects shape/sprite ID `214`, `226`, or `238`. These are not OBJS indices. Construction phase at object offset `+0x78` raises the selected construction asset from below the ground through phases zero to four.
-- Completion replaces the construction shape with the final subtype shape and sets construction phase four in `Building_OnConstructionComplete` at `0x0042FD70`. The remake currently uses a foundation overlay until the original construction-sprite composition is decoded.
+- Verified brave animations are chopping `73`, carrying `88`, terrain work `115`, and building `120`. Their original frame counts are six, six, eight, and five respectively.
+- The values `214`, `226`, and `238` used while selecting a blue hut are doubled word offsets into the building-type table, not construction sprite IDs.
+- A blue small hut selects one of three OBJS mesh families. Their small-hut indices are `145`, `157`, and `169`; each family keeps the same tribe/subtype layout and remains selected throughout construction, completion, and destruction.
+- Construction render type `10` uses the selected hut mesh. A face is visible in construction phase `p` when its secondary face flags contain bit `1 << p`.
+- Construction phase at object offset `+0x78` runs from zero through four. The hut mesh stays fixed; phase changes reveal different face sets rather than translating the mesh vertically.
+- `Building_OnConstructionComplete` at `0x0042FD70` sets phase four and switches to the normal building renderer, which draws the complete selected mesh. It does not replace a separate scaffold sprite with OBJS `145`.
+- Building destruction runs the same face-mask phases in reverse before the remaining object sinks and is removed.
+- Building angle quadrants are stored directly as `0`, `512`, `1024`, and `1536`; rendering adds no fixed quarter turn. The corresponding entrance directions are `-Z`, `-X`, `+Z`, and `+X`.
 - `LEVELS/constant.dat` is XOR-obfuscated text. The original loader decrypts it at `0x0041EB50` and converts percent values to 8.8 fixed point with integer truncation.
 - `constant.dat` sets hut wood costs to `300/300/300`. A carried piece contributes `100`, so initial construction and each renovation require three pieces.
 - `constant.dat` sets hut housing limits to `3/5/7`.
@@ -116,7 +123,7 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 - Hut stages one and two both use a renovation-readiness threshold of `2400`. Their readiness counter advances by `8 * occupant_count` per update, so an empty hut does not advance toward renovation.
 - The stage-one type record upgrades to stage two, and the stage-two record upgrades to stage three. Stage three has no next subtype.
 - `Building_UpdateWoodConsumption` at `0x00430430` creates the next hut subtype and destroys the old hut when renovation begins. The final completed shape is applied by `Building_OnConstructionComplete` at `0x0042FD70`.
-- Completed hut assets are separate models: OBJS indices 145, 146, and 147 for the blue tribe, with three consecutive indices per tribe. Construction and renovation visuals must therefore remain distinct from the final hut models.
+- OBJS indices `145`, `146`, and `147` are the first blue hut family's small, medium, and large meshes. Construction and renovation reveal the selected family mesh by phase masks rather than using separate scaffold models.
 - Computer-player construction runs through `AI_ExecuteBuildingPriorities` at `0x0041B8D0`. It has ten command slots, evaluates twelve building-priority handlers, orders their candidate records by urgency, and dispatches work through an available command slot.
 - `AI_CommandBuildHut` at `0x00448360` is a multi-state command. It retains the selected plan/object, revalidates that object and its position, and returns to plan selection when the target disappears or becomes invalid.
 
