@@ -6,8 +6,6 @@
 **.spv
 **.swp
 /data/*
-!/data/screencuts/
-!/data/screencuts/**
 .mcp.json
 .worktrees/
 tmp
