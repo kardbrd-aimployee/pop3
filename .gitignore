@@ -5,7 +5,7 @@
 /results
 **.spv
 **.swp
-/data
+/data/*
 .mcp.json
 .worktrees/
 tmp
