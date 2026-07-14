@@ -196,6 +196,37 @@ cargo run --release --bin pop_extract -- \
   --tribe blue
 ```
 
+To extract the original construction-panel glyphs, use the named POINT sprite
+catalog. Unlike `structure-icons`, these are the exact 35-by-32-era images used
+by the original build menu rather than newly rendered 3D building previews:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  building-panel-icons \
+  --output data/extracted/building-panel-icons \
+  --landscape 0
+```
+
+The output contains native-size transparent PNGs for the Small Hut, Drum Tower,
+Temple, training huts, Boat Hut, and Airship Hut. The manifest records their
+canonical building subtypes and original `POINT0-0.DAT` sprite indices `58..65`.
+
+To inspect other native in-game HUD artwork, generate an indexed catalog from
+the complete primary HSPR bank:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  hud-sprite-candidates \
+  --output data/extracted/hud-sprite-candidates \
+  --bank primary \
+  --landscape 0
+```
+
+Use `--bank extension` to inspect `HSPR0-1.DAT` / `HSPR0-1.TAB`. Every PNG
+filename and manifest item retains the original HSPR sprite index.
+
 The unit-icon catalog composes the original sprite bank and animation tables for
 Braves, Warriors, Preachers, Spies, and Firewarriors, and uses the direct tribal
 Shaman sprites. It writes transparent PNG files under `icons/`, a labeled contact

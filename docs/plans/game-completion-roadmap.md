@@ -258,7 +258,7 @@ Superseded historical inventories and phase checklists disagree about completion
 
 - Reconstruct the native left-side building tab and wire its pictographic building cells to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation. Spell and follower tabs remain inert and out of scope for this milestone.
 - Wire building-panel clicks to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation.
-- Replace the debug/F1 construction controls with the native construction tab, using structure previews produced by `pop_extract` rather than committed original assets.
+- Replace the debug/F1 construction controls with the native construction tab. Load the original build-menu glyphs from `POINT0-0.DAT` sprites `58..65` (or output from `pop_extract building-panel-icons`) rather than using generated 3D structure previews; original assets remain extracted from the user's game data and are not committed.
 - Render the shoreline as animated water overlapping the land edge with the original-style beach transition instead of a static boundary.
 - Wire unit orders for building, entering/exiting, training, gathering, guarding, and attacking.
 - Make trees live scenery objects with wood depletion and removal/update behavior.
