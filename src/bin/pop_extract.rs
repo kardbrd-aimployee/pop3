@@ -3,7 +3,10 @@ use std::io;
 use std::path::PathBuf;
 
 use clap::{Arg, Command};
-use pop3::extract::structures::{export_structure_icons, StructureIconRequest, Tribe};
+use pop3::extract::structures::{
+    export_structure_icons, StructureIconRequest, Tribe as StructureTribe,
+};
+use pop3::extract::units::{export_unit_icons, Tribe as UnitTribe, UnitIconRequest};
 
 fn cli() -> Command {
     Command::new("pop_extract")
@@ -56,6 +59,42 @@ fn cli() -> Command {
                         .help("Width and height of each transparent PNG icon"),
                 ),
         )
+        .subcommand(
+            Command::new("unit-icons")
+                .about("Render named idle unit icons from the original sprite and animation data")
+                .arg(
+                    Arg::new("output")
+                        .long("output")
+                        .short('o')
+                        .value_name("DIR")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .required(true)
+                        .help("Destination directory for icons, contact sheet, and manifest"),
+                )
+                .arg(
+                    Arg::new("landscape")
+                        .long("landscape")
+                        .value_name("KEY")
+                        .default_value("0")
+                        .help("One-character landscape/palette bank key"),
+                )
+                .arg(
+                    Arg::new("tribe")
+                        .long("tribe")
+                        .value_name("TRIBE")
+                        .value_parser(["blue", "red", "yellow", "green"])
+                        .default_value("blue")
+                        .help("Tribal palette and sprite set to render"),
+                )
+                .arg(
+                    Arg::new("size")
+                        .long("size")
+                        .value_name("PIXELS")
+                        .value_parser(clap::value_parser!(u32).range(64..=1024))
+                        .default_value("160")
+                        .help("Width and height of each transparent PNG icon"),
+                ),
+        )
 }
 
 fn main() {
@@ -74,7 +113,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     match matches.subcommand() {
         Some(("structure-icons", args)) => {
             let tribe_value = args.get_one::<String>("tribe").expect("defaulted by clap");
-            let tribe = Tribe::parse(tribe_value)
+            let tribe = StructureTribe::parse(tribe_value)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unsupported tribe"))?;
             let request = StructureIconRequest {
                 base,
@@ -91,6 +130,28 @@ fn run() -> Result<(), Box<dyn Error>> {
             };
             let result = export_structure_icons(&request)?;
             println!("Extracted {} structure icons", result.icon_count);
+            println!("Manifest: {}", result.manifest_path.display());
+            println!("Contact sheet: {}", result.contact_sheet_path.display());
+        }
+        Some(("unit-icons", args)) => {
+            let tribe_value = args.get_one::<String>("tribe").expect("defaulted by clap");
+            let tribe = UnitTribe::parse(tribe_value)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unsupported tribe"))?;
+            let request = UnitIconRequest {
+                base,
+                output: args
+                    .get_one::<PathBuf>("output")
+                    .expect("required by clap")
+                    .clone(),
+                landscape: args
+                    .get_one::<String>("landscape")
+                    .expect("defaulted by clap")
+                    .to_ascii_lowercase(),
+                tribe,
+                size: *args.get_one::<u32>("size").expect("defaulted by clap"),
+            };
+            let result = export_unit_icons(&request)?;
+            println!("Extracted {} unit icons", result.icon_count);
             println!("Manifest: {}", result.manifest_path.display());
             println!("Contact sheet: {}", result.contact_sheet_path.display());
         }

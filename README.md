@@ -185,6 +185,23 @@ a labeled `contact-sheet.png`, and `manifest.json` containing subtype, tribe,
 visual variant, source object index, and mesh counts. Planned catalog families
 include raw/construction-phase meshes, landscape textures, and person animations.
 
+To extract the idle unit catalog for one tribe:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  unit-icons \
+  --output data/extracted/unit-icons \
+  --landscape 0 \
+  --tribe blue
+```
+
+The unit-icon catalog composes the original sprite bank and animation tables for
+Braves, Warriors, Preachers, Spies, and Firewarriors, and uses the direct tribal
+Shaman sprites. It writes transparent PNG files under `icons/`, a labeled contact
+sheet, and a manifest recording animation IDs, sprite-layer combinations, and
+source files.
+
 ## Project structure
 
 ```

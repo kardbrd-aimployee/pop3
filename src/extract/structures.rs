@@ -465,7 +465,7 @@ fn edge(a: ProjectedVertex, b: ProjectedVertex, x: f32, y: f32) -> f32 {
     (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x)
 }
 
-fn make_contact_sheet(icons: &[(String, RgbaImage)], icon_size: u32) -> RgbaImage {
+pub(crate) fn make_contact_sheet(icons: &[(String, RgbaImage)], icon_size: u32) -> RgbaImage {
     let columns = 4u32;
     let rows = (icons.len() as u32).div_ceil(columns);
     let tile_width = icon_size + 20;
