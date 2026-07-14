@@ -255,11 +255,13 @@ Superseded historical inventories and phase checklists disagree about completion
 
 **Outcome:** the player can perform the complete non-spell RTS loop on one map.
 
-- Wire building-panel clicks to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation.
+- Reconstruct the native left-side building tab and wire its pictographic building cells to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation. Spell and follower tabs remain inert and out of scope for this milestone.
 - Wire unit orders for building, entering/exiting, training, gathering, guarding, and attacking.
 - Make trees live scenery objects with wood depletion and removal/update behavior.
 - Synchronize tribe population, housing capacity, mana, wood, kills, and reincarnation state.
 - Complete construction, hut growth/upgrades, brave spawning, training, building damage, occupant ejection, and teardown.
+- Preserve animated shore water and blend the adjacent land texture over it with the original-style pixel transition instead of raising zero-height shore cells.
+- After construction completion, rendezvous assigned workers outside the entrance in groups capped at six; implement exact slot placement with the later occupancy/exit behavior.
 - Render dynamic buildings, projectiles, building/unit health, and gameplay-critical effects.
 - Make victory and defeat operate on authoritative tribe/object state.
 

@@ -101,6 +101,13 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 - The stage-two hut follows the same readiness, wood collection, evacuation, and construction process for its next upgrade.
 - A stage-three hut houses seven people.
 
+## Interface and landscape presentation
+
+- The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, a population bar, and a two-column pictographic command grid.
+- The current remake slice recreates only the building tab. Spell and follower tabs remain out of scope until their gameplay systems are implemented.
+- Shore water remains animated. Near the coast, small pixels of the land texture overlap the moving water in a stippled transition; the shore is not a raised strip of static terrain.
+- After construction completes, assigned workers regroup outside the entrance in one or more groups of at most six. Exact rendezvous slots, spacing, and idle transitions are deferred until building occupancy work.
+
 ## Original-game verification
 
 - A placed building plan is a live building object with model type `2`, subtype `1` for a small hut, and construction state `1`. The pre-placement cursor overlay is separate from this object.
