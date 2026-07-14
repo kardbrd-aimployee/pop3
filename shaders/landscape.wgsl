@@ -184,7 +184,68 @@ fn get_disp_2(x: i32, y: i32) -> i32 {
     return disp[x1 + y1];
 }
 
-fn land_tex(coord: vec3<f32>, height_in: f32, brightness: f32) -> vec3<f32> {
+struct ShoreSample {
+    coverage: f32,
+    land_offset: vec2<f32>,
+};
+
+fn wrap_cell(value: i32) -> u32 {
+    let width = params.width;
+    return u32(((value % width) + width) % width);
+}
+
+fn is_land(x: i32, y: i32) -> f32 {
+    let index = wrap_cell(y) * u32(params.width) + wrap_cell(x);
+    if (heights[index] > 0u) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+fn shore_hash(pixel: vec2<f32>) -> f32 {
+    return fract(sin(dot(pixel, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+}
+
+fn sample_shore(coord: vec2<f32>) -> ShoreSample {
+    let grid = coord / params.step
+        + vec2<f32>(f32(params.level_shift.x), f32(params.level_shift.y));
+    let cell = vec2<i32>(floor(grid));
+    let local = fract(grid);
+
+    let land00 = is_land(cell.x, cell.y);
+    let land10 = is_land(cell.x + 1, cell.y);
+    let land01 = is_land(cell.x, cell.y + 1);
+    let land11 = is_land(cell.x + 1, cell.y + 1);
+    let land_count = land00 + land10 + land01 + land11;
+
+    if (land_count < 0.5 || land_count > 3.5) {
+        return ShoreSample(0.0, vec2<f32>(0.0));
+    }
+
+    let top = mix(land00, land10, local.x);
+    let bottom = mix(land01, land11, local.x);
+    let coverage = smoothstep(0.08, 0.92, mix(top, bottom, local.y));
+    let centroid = (
+        vec2<f32>(0.0, 0.0) * land00
+        + vec2<f32>(1.0, 0.0) * land10
+        + vec2<f32>(0.0, 1.0) * land01
+        + vec2<f32>(1.0, 1.0) * land11
+    ) / land_count;
+    let toward_land = centroid - local;
+    var land_offset = vec2<f32>(0.0);
+    if (length(toward_land) > 0.001) {
+        land_offset = normalize(toward_land);
+    }
+
+    // Work at the original 32 texture pixels per landscape cell. The thresholded
+    // noise preserves the game's stippled land/water transition without obscuring
+    // the animated water surface below it.
+    let pixel = floor(grid * 32.0);
+    let pattern = select(0.0, 1.0, shore_hash(pixel) < coverage);
+    return ShoreSample(pattern, land_offset);
+}
+
+fn land_tex_static(coord: vec3<f32>, height_in: f32, brightness: f32) -> vec3<f32> {
     let height = mk_height(height_in);
 
     let disp_val = get_disp(i32(coord.x), i32(coord.y) + 32);
@@ -204,7 +265,11 @@ fn land_tex(coord: vec3<f32>, height_in: f32, brightness: f32) -> vec3<f32> {
     let index = static_component + height_component + disp_param;
 
     let bigf_index = min(bigf[index], 128u);
-    let res_color = mk_tex(bigf_index);
+    return mk_tex(bigf_index);
+}
+
+fn land_tex(coord: vec3<f32>, height_in: f32, brightness: f32) -> vec3<f32> {
+    let res_color = land_tex_static(coord, height_in, brightness);
     let wat_color = get_wat_color(height_in, coord.z);
     return res_color + wat_color;
 }
@@ -220,7 +285,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         in.coord3d_out.y / 8.0 * 4096.0,
         in.coord3d_out.z,
     );
-    let c = land_tex(coordi, in.height_out, in.brightness);
+    var c = land_tex(coordi, in.height_out, in.brightness);
+
+    let shore = sample_shore(in.coord3d_out.xy);
+    if (shore.coverage > 0.0) {
+        var coast_coordi = coordi;
+        coast_coordi.x += shore.land_offset.x * 20.0;
+        coast_coordi.y += shore.land_offset.y * 20.0;
+        let coast = land_tex_static(coast_coordi, max(in.height_out, 1.0), in.brightness);
+        let low_ground = 1.0 - smoothstep(0.0, 20.0, in.height_out);
+        c = mix(c, coast, shore.coverage * low_ground * 0.88);
+    }
 
     // Shadow mapping
     let shadow_world = transforms1.m_transform1 * vec4<f32>(in.curved_pos, 1.0);

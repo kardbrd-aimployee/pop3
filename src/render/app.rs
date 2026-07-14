@@ -84,26 +84,133 @@ const APP_TITLE: &str = "Populous: The Beginning — Faithful";
 const QUIT_CONFIRM_TITLE: &str = "Press Escape again to quit — Populous: The Beginning";
 const QUIT_CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
 
-/******************************************************************************/
-// Overlay text rendering — minimal bitmap font
+const HUD_PANEL: [f32; 4] = [0.82, 0.45, 0.06, 0.97];
+const HUD_PANEL_LIGHT: [f32; 4] = [1.0, 0.66, 0.06, 1.0];
+const HUD_PANEL_DARK: [f32; 4] = [0.37, 0.20, 0.05, 1.0];
+const HUD_INK: [f32; 4] = [0.12, 0.09, 0.07, 1.0];
 
-fn help_text() -> &'static str {
-    concat!(
-        "Q/E:    Rotate\n",
-        "Up/Dn:  Tilt\n",
-        "WASD:   Pan terrain\n",
-        "Space:  Center blue / rotate building\n",
-        "B/V:    Next/Prev level\n",
-        "N/M:    Next/Prev shader\n",
-        "C:      Toggle curvature\n",
-        "[/]:    Curvature +/-\n",
-        "O:      Toggle objects\n",
-        "G:      Toggle shadows+lighting\n",
-        "U:      Toggle unit markers\n",
-        "F1:     Toggle HUD\n",
-        "Scroll: Zoom\n",
-        "Esc:    Cancel / confirm quit",
-    )
+fn draw_circle_outline(
+    hud: &mut HudRenderer,
+    center: [f32; 2],
+    radius: f32,
+    thickness: f32,
+    color: [f32; 4],
+) {
+    let segments = 24;
+    for i in 0..segments {
+        let a0 = i as f32 / segments as f32 * std::f32::consts::TAU;
+        let a1 = (i + 1) as f32 / segments as f32 * std::f32::consts::TAU;
+        hud.draw_line(
+            [center[0] + radius * a0.cos(), center[1] + radius * a0.sin()],
+            [center[0] + radius * a1.cos(), center[1] + radius * a1.sin()],
+            thickness,
+            color,
+        );
+    }
+}
+
+fn draw_hut_icon(hud: &mut HudRenderer, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
+    let left = x + w * 0.22;
+    let right = x + w * 0.78;
+    let wall_top = y + h * 0.45;
+    let bottom = y + h * 0.82;
+    hud.draw_triangle(
+        [
+            [x + w * 0.12, wall_top],
+            [x + w * 0.50, y + h * 0.14],
+            [x + w * 0.88, wall_top],
+        ],
+        color,
+    );
+    hud.draw_rect(left, wall_top, right - left, bottom - wall_top, color);
+    hud.draw_rect(
+        x + w * 0.44,
+        y + h * 0.59,
+        w * 0.15,
+        h * 0.23,
+        HUD_PANEL_LIGHT,
+    );
+}
+
+fn draw_person_icon(hud: &mut HudRenderer, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
+    let head = w * 0.19;
+    hud.draw_rect(x + (w - head) * 0.5, y + h * 0.08, head, head, color);
+    hud.draw_line(
+        [x + w * 0.5, y + h * 0.29],
+        [x + w * 0.5, y + h * 0.66],
+        w * 0.12,
+        color,
+    );
+    hud.draw_line(
+        [x + w * 0.50, y + h * 0.38],
+        [x + w * 0.23, y + h * 0.54],
+        w * 0.09,
+        color,
+    );
+    hud.draw_line(
+        [x + w * 0.50, y + h * 0.38],
+        [x + w * 0.77, y + h * 0.54],
+        w * 0.09,
+        color,
+    );
+    hud.draw_line(
+        [x + w * 0.48, y + h * 0.64],
+        [x + w * 0.28, y + h * 0.90],
+        w * 0.10,
+        color,
+    );
+    hud.draw_line(
+        [x + w * 0.52, y + h * 0.64],
+        [x + w * 0.72, y + h * 0.90],
+        w * 0.10,
+        color,
+    );
+}
+
+fn draw_star_icon(hud: &mut HudRenderer, x: f32, y: f32, w: f32, h: f32) {
+    let center = [x + w * 0.5, y + h * 0.5];
+    for i in 0..8 {
+        let angle = i as f32 / 8.0 * std::f32::consts::TAU;
+        hud.draw_line(
+            [
+                center[0] + angle.cos() * w * 0.10,
+                center[1] + angle.sin() * h * 0.10,
+            ],
+            [
+                center[0] + angle.cos() * w * 0.36,
+                center[1] + angle.sin() * h * 0.36,
+            ],
+            (w * 0.055).max(1.0),
+            HUD_INK,
+        );
+    }
+}
+
+fn draw_followers_icon(hud: &mut HudRenderer, x: f32, y: f32, w: f32, h: f32) {
+    for offset in [0.06, 0.34, 0.62] {
+        draw_person_icon(
+            hud,
+            x + w * offset,
+            y + h * 0.12,
+            w * 0.32,
+            h * 0.78,
+            HUD_INK,
+        );
+    }
+}
+
+fn draw_construction_icon(hud: &mut HudRenderer, x: f32, y: f32, w: f32, h: f32) {
+    let center = [x + w * 0.5, y + h * 0.54];
+    draw_circle_outline(hud, center, w.min(h) * 0.34, (w * 0.045).max(1.0), HUD_INK);
+    hud.draw_triangle(
+        [
+            [x + w * 0.18, y + h * 0.36],
+            [x + w * 0.50, y + h * 0.16],
+            [x + w * 0.82, y + h * 0.36],
+        ],
+        HUD_INK,
+    );
+    draw_person_icon(hud, x + w * 0.34, y + h * 0.36, w * 0.32, h * 0.47, HUD_INK);
 }
 
 fn preferred_window_size(
@@ -985,10 +1092,11 @@ impl GameEngine {
                 println!("game speed: {} ticks/sec", self.game_world.game_speed);
                 false
             }
-            GameCommand::SetHudTab(tab) => {
-                self.hud_tab = *tab;
+            GameCommand::SetHudTab(HudTab::Buildings) => {
+                self.hud_tab = HudTab::Buildings;
                 true
             }
+            GameCommand::SetHudTab(_) => false,
             GameCommand::ToggleHud => {
                 self.hud_visible = !self.hud_visible;
                 true
@@ -1285,7 +1393,7 @@ impl App {
                 sprite_z_offset: 0.005,
                 sprite_scale: 0.65,
                 hud_tab: HudTab::Buildings,
-                hud_visible: false,
+                hud_visible: true,
                 compass_visible: false,
                 walkability_visible: false,
                 hud_panel_sprite_count: 0,
@@ -1470,14 +1578,15 @@ impl App {
                 }),
         );
 
-        let shores = level_res.landscape.make_shores();
-        self.engine.landscape_mesh.set_heights(&shores.height);
+        self.engine
+            .landscape_mesh
+            .set_heights(&level_res.landscape.height);
 
         {
             let gpu = self.gpu.as_ref().unwrap();
 
             // Update heights buffer
-            let heights_vec = shores.to_vec();
+            let heights_vec = level_res.landscape.to_vec();
             let heights_bytes: &[u8] = bytemuck::cast_slice(&heights_vec);
             let heights_buffer =
                 GpuBuffer::new_storage(&gpu.device, heights_bytes, "heights_buffer");
@@ -1502,9 +1611,10 @@ impl App {
         self.engine.level_objects = extract_level_objects(&level_res);
 
         // Extract person units into the coordinator (they become live entities)
+        let movement_shores = level_res.landscape.make_shores();
         self.engine.unit_coordinator.load_level(
             &level_res.units,
-            &shores.height,
+            &movement_shores.height,
             level_res.landscape.land_size(),
         );
         // Remove persons from static markers — they're now rendered by the coordinator
@@ -2524,260 +2634,157 @@ impl App {
         hud.begin_frame();
 
         // === Left Sidebar Background ===
-        hud.draw_rect(
-            0.0,
-            0.0,
-            layout.sidebar_w,
-            layout.screen_h,
-            [0.08, 0.08, 0.12, 0.92],
-        );
+        hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.screen_h, HUD_PANEL);
 
-        // === Minimap border ===
+        // === Native circular minimap ===
         hud.draw_rect(
             layout.mm_x - 1.0,
             layout.mm_y - 1.0,
-            layout.mm_size + 2.0,
-            layout.mm_size + 2.0,
-            [0.3, 0.3, 0.4, 1.0],
+            layout.mm_w + 2.0,
+            layout.mm_h + 2.0,
+            HUD_PANEL_DARK,
         );
-        let minimap_rect = Some((layout.mm_x, layout.mm_y, layout.mm_size, layout.mm_size));
+        let minimap_rect = Some((layout.mm_x, layout.mm_y, layout.mm_w, layout.mm_h));
 
-        // === Minimap Viewport Rectangle ===
-        {
-            let vp = &hud_state.camera_viewport;
-            let cell_to_px = layout.mm_size / 128.0;
-            let rx =
-                layout.mm_x + vp.cam_cell_x * cell_to_px - vp.view_width_cells * cell_to_px / 2.0;
-            let ry =
-                layout.mm_y + vp.cam_cell_y * cell_to_px - vp.view_height_cells * cell_to_px / 2.0;
-            let rw = vp.view_width_cells * cell_to_px;
-            let rh = vp.view_height_cells * cell_to_px;
-            let border = 1.0;
-            let vp_color = [1.0, 1.0, 1.0, 0.8];
-            hud.draw_rect(rx, ry, rw, border, vp_color); // top
-            hud.draw_rect(rx, ry + rh - border, rw, border, vp_color); // bottom
-            hud.draw_rect(rx, ry, border, rh, vp_color); // left
-            hud.draw_rect(rx + rw - border, ry, border, rh, vp_color); // right
-        }
-
-        // === Tab Icons (sprites 7=Buildings, 8=Spells, 9=Units) ===
-        let tab_sprites = [
-            (7, HudTab::Buildings),
-            (8, HudTab::Spells),
-            (9, HudTab::Units),
-        ];
-        let has_sprites = self.engine.hud_panel_sprite_count > 9;
-        for (i, (sprite_idx, tab_id)) in tab_sprites.iter().enumerate() {
+        // === Native mode tabs ===
+        let tabs = [HudTab::Buildings, HudTab::Spells, HudTab::Units];
+        for (i, tab_id) in tabs.iter().enumerate() {
             let tx = layout.mm_pad + i as f32 * layout.tab_w;
             let is_active = hud_state.active_tab == *tab_id;
             let bg = if is_active {
-                [0.35, 0.30, 0.20, 1.0]
+                HUD_PANEL_LIGHT
             } else {
-                [0.18, 0.15, 0.10, 1.0]
+                [0.72, 0.32, 0.03, 1.0]
             };
             hud.draw_rect(tx, layout.tab_y, layout.tab_w - 1.0, layout.tab_h, bg);
-            if has_sprites {
-                let si = hud.panel_sprite_index(*sprite_idx);
-                let icon_scale = layout.tab_h / 29.0; // normalize to tab height
-                let icon_x = tx + (layout.tab_w - 1.0 - 31.0 * icon_scale) / 2.0; // center
-                let icon_y = layout.tab_y + (layout.tab_h - 29.0 * icon_scale) / 2.0;
-                hud.draw_sprite(si, icon_x, icon_y, icon_scale, icon_scale);
-            } else {
-                // Fallback text if sprites not loaded
-                let labels = ["Build", "Spells", "Units"];
-                let text_color = if is_active {
-                    [1.0, 1.0, 1.0, 1.0]
-                } else {
-                    [0.6, 0.6, 0.6, 1.0]
-                };
-                hud.draw_text(
-                    labels[i],
-                    tx + 3.0,
-                    layout.tab_y + 3.0 * layout.scale_y,
-                    layout.small_font,
-                    text_color,
-                );
+            match tab_id {
+                HudTab::Buildings => {
+                    draw_hut_icon(hud, tx, layout.tab_y, layout.tab_w, layout.tab_h, HUD_INK)
+                }
+                HudTab::Spells => draw_star_icon(hud, tx, layout.tab_y, layout.tab_w, layout.tab_h),
+                HudTab::Units => {
+                    draw_followers_icon(hud, tx, layout.tab_y, layout.tab_w, layout.tab_h)
+                }
             }
         }
 
         // === Panel Content ===
         match hud_state.active_tab {
-            HudTab::Spells => {
-                // 4x4 grid of spell icons (sprites 13-28)
-                let grid_cols = 4;
-                let grid_pad = layout.mm_pad;
-                let available_w = layout.sidebar_w - grid_pad * 2.0;
-                let cell_size = available_w / grid_cols as f32;
-                let icon_size = cell_size * 0.7; // 70% of cell for icon, rest for dots
-                let dot_size = 3.0 * layout.scale_x;
-
-                for i in 0..16usize {
-                    let col = i % grid_cols;
-                    let row = i / grid_cols;
-                    let cx = grid_pad + col as f32 * cell_size;
-                    let cy = layout.panel_y + row as f32 * cell_size;
-
-                    // Cell background
-                    let cell_bg = [0.22, 0.18, 0.12, 0.8];
-                    hud.draw_rect(
-                        cx + 1.0,
-                        cy + 1.0,
-                        cell_size - 2.0,
-                        cell_size - 2.0,
-                        cell_bg,
-                    );
-
-                    // Spell icon sprite (indices 13-28 in plspanel.spr)
-                    if has_sprites && (13 + i) < self.engine.hud_panel_sprite_count {
-                        let si = hud.panel_sprite_index(13 + i);
-                        let icon_scale = icon_size / 16.0; // sprites are 16x16
-                        let ix = cx + (cell_size - 16.0 * icon_scale) / 2.0;
-                        let iy = cy + 2.0;
-                        hud.draw_sprite(si, ix, iy, icon_scale, icon_scale);
-                    }
-
-                    // Charge dots below icon
-                    let charges = hud_state.spell_charges[i];
-                    let dots_y = cy + icon_size + 4.0;
-                    let total_dots_w = charges as f32 * (dot_size + 1.0);
-                    let dots_x = cx + (cell_size - total_dots_w) / 2.0;
-                    for d in 0..charges {
-                        let dx = dots_x + d as f32 * (dot_size + 1.0);
-                        hud.draw_rect(dx, dots_y, dot_size, dot_size, [0.3, 0.5, 1.0, 0.9]);
+            HudTab::Buildings => {
+                for row in 0..5 {
+                    for col in 0..2 {
+                        let x = layout.mm_pad + col as f32 * layout.construction_cell_w;
+                        let y = layout.panel_y + row as f32 * layout.construction_cell_h;
+                        hud.draw_rect(
+                            x,
+                            y,
+                            layout.construction_cell_w - 1.0,
+                            layout.construction_cell_h - 1.0,
+                            [0.94, 0.54, 0.06, 0.92],
+                        );
                     }
                 }
+                let hut_selected = matches!(self.input.placement, Some(BuildingSubtype::SmallHut));
+                let tile_color = if hut_selected {
+                    [1.0, 0.78, 0.14, 1.0]
+                } else {
+                    HUD_PANEL_LIGHT
+                };
+                hud.draw_rect(
+                    layout.mm_pad + 1.0,
+                    layout.panel_y + 1.0,
+                    layout.construction_cell_w - 3.0,
+                    layout.construction_cell_h - 3.0,
+                    tile_color,
+                );
+                draw_construction_icon(
+                    hud,
+                    layout.mm_pad,
+                    layout.panel_y,
+                    layout.construction_cell_w,
+                    layout.construction_cell_h,
+                );
             }
-            _ => {
-                // Buildings and Units tabs: text list (same as before)
-                for (i, entry) in hud_state.panel_entries.iter().enumerate() {
-                    let sy = layout.panel_y + i as f32 * layout.line_h;
-                    hud.draw_text(
-                        &entry.label,
-                        layout.mm_pad,
-                        sy,
-                        layout.small_font,
-                        entry.color,
-                    );
-                }
-            }
+            _ => {}
         }
 
-        // === Viewport Info ===
-        let vp_x = layout.sidebar_w + 8.0;
-        hud.draw_text(
-            help_text(),
-            vp_x,
-            8.0,
-            layout.font_scale,
-            [1.0, 1.0, 1.0, 0.7],
+        // === Native status and resource block ===
+        hud.draw_rect(
+            layout.mm_pad,
+            layout.status_y,
+            layout.sidebar_w - layout.mm_pad * 2.0,
+            layout.status_h,
+            [0.88, 0.48, 0.05, 0.96],
         );
-
-        let info = format!(
-            "Level: {}  Frame: {}",
-            hud_state.level_num, hud_state.frame_count
-        );
-        hud.draw_text(
-            &info,
-            vp_x,
-            layout.screen_h - layout.font_scale - 4.0,
-            layout.font_scale,
-            [1.0, 1.0, 0.5, 0.7],
-        );
-
-        // === Vertical Mana Bar (left edge of sidebar, matching original) ===
         let mana_frac = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-        let mana_bar_x = 1.0;
-        let mana_bar_w = 4.0 * layout.scale_x;
-        let mana_bar_top = layout.mana_bar_y;
-        let mana_bar_full_h = layout.tab_y - mana_bar_top - 2.0; // spans from below minimap to above tabs
-                                                                 // Background (dark red)
+        let mana_bar_x = layout.mm_pad + 2.0 * layout.scale_x;
+        let mana_bar_w = 10.0 * layout.scale_x;
         hud.draw_rect(
             mana_bar_x,
-            mana_bar_top,
+            layout.mana_bar_y,
             mana_bar_w,
-            mana_bar_full_h,
-            [0.15, 0.05, 0.05, 0.8],
+            layout.mana_bar_h,
+            [0.94, 0.94, 0.82, 1.0],
         );
-        // Fill from bottom (red, grows upward)
-        let fill_h = mana_bar_full_h * mana_frac;
+        let fill_h = layout.mana_bar_h * mana_frac;
         hud.draw_rect(
             mana_bar_x,
-            mana_bar_top + mana_bar_full_h - fill_h,
+            layout.mana_bar_y + layout.mana_bar_h - fill_h,
             mana_bar_w,
             fill_h,
-            [0.8, 0.15, 0.15, 0.9],
+            [0.05, 0.64, 0.28, 1.0],
+        );
+        let globe_center = [
+            layout.sidebar_w * 0.32,
+            layout.status_y + layout.status_h * 0.45,
+        ];
+        let globe_radius = layout.status_h.min(layout.sidebar_w) * 0.23;
+        draw_circle_outline(
+            hud,
+            globe_center,
+            globe_radius,
+            (1.5 * layout.scale_x).max(1.0),
+            [0.08, 0.22, 0.66, 1.0],
+        );
+        hud.draw_line(
+            [globe_center[0] - globe_radius * 0.8, globe_center[1]],
+            [globe_center[0] + globe_radius * 0.8, globe_center[1]],
+            layout.scale_y.max(1.0),
+            [0.18, 0.68, 0.36, 1.0],
+        );
+        let selected_color = hud_state
+            .selected_info
+            .as_ref()
+            .map_or([0.35, 0.25, 0.14, 0.75], |_| [0.10, 0.13, 0.18, 1.0]);
+        draw_person_icon(
+            hud,
+            layout.sidebar_w * 0.49,
+            layout.status_y + layout.status_h * 0.09,
+            layout.sidebar_w * 0.25,
+            layout.status_h * 0.75,
+            selected_color,
         );
 
-        // === Population Display (compact, below minimap right of mana bar) ===
-        let pop_text = format!(
-            "{}/{}",
-            hud_state.player_population, hud_state.player_max_population
+        let pop_frac = if hud_state.player_max_population == 0 {
+            0.0
+        } else {
+            (hud_state.player_population as f32 / hud_state.player_max_population as f32)
+                .clamp(0.0, 1.0)
+        };
+        hud.draw_rect(
+            layout.mm_pad,
+            layout.pop_y,
+            layout.sidebar_w - layout.mm_pad * 2.0,
+            layout.pop_h,
+            [0.12, 0.13, 0.12, 1.0],
         );
-        hud.draw_text(
-            &pop_text,
-            layout.mm_pad + mana_bar_w + 4.0,
-            layout.mana_bar_y + 1.0,
-            layout.small_font * 0.8,
-            [0.7, 1.0, 0.7, 0.9],
+        hud.draw_rect(
+            layout.mm_pad + 2.0 * layout.scale_x,
+            layout.pop_y + 2.0 * layout.scale_y,
+            (layout.sidebar_w - 2.0 * layout.mm_pad - 4.0 * layout.scale_x) * pop_frac,
+            (layout.pop_h - 4.0 * layout.scale_y).max(1.0),
+            [0.10, 0.55, 0.40, 1.0],
         );
-
-        // === Selection Info Panel ===
-        if let Some(ref info) = hud_state.selected_info {
-            let info_y = layout.panel_y
-                + hud_state.panel_entries.len() as f32 * layout.line_h
-                + layout.line_h;
-            // Separator line
-            hud.draw_rect(
-                layout.mm_pad,
-                info_y,
-                layout.sidebar_w - layout.mm_pad * 2.0,
-                1.0,
-                [0.4, 0.4, 0.5, 0.6],
-            );
-            // Name
-            let name_y = info_y + 4.0;
-            hud.draw_text(
-                &info.name,
-                layout.mm_pad,
-                name_y,
-                layout.font_scale,
-                [1.0, 1.0, 0.8, 1.0],
-            );
-            // Health bar
-            let hp_y = name_y + layout.font_scale + 2.0;
-            let hp_w = layout.sidebar_w - layout.mm_pad * 2.0;
-            let hp_h = 6.0 * layout.scale_y;
-            let hp_frac = info.health as f32 / info.max_health.max(1) as f32;
-            let hp_color = if hp_frac > 0.5 {
-                [0.2, 0.8, 0.2, 0.9]
-            } else if hp_frac > 0.25 {
-                [0.8, 0.8, 0.2, 0.9]
-            } else {
-                [0.8, 0.2, 0.2, 0.9]
-            };
-            hud.draw_rect(layout.mm_pad, hp_y, hp_w, hp_h, [0.15, 0.15, 0.15, 0.8]);
-            hud.draw_rect(layout.mm_pad, hp_y, hp_w * hp_frac, hp_h, hp_color);
-            let hp_text = format!("HP: {}/{}", info.health, info.max_health);
-            hud.draw_text(
-                &hp_text,
-                layout.mm_pad + 2.0,
-                hp_y,
-                layout.small_font * 0.8,
-                [1.0, 1.0, 1.0, 0.9],
-            );
-            // Extra lines
-            let mut ey = hp_y + hp_h + 2.0;
-            for line in &info.extra_lines {
-                hud.draw_text(
-                    line,
-                    layout.mm_pad,
-                    ey,
-                    layout.small_font,
-                    [0.8, 0.8, 0.8, 0.8],
-                );
-                ey += layout.line_h;
-            }
-        }
 
         // === World-Space Health Bars ===
         {
@@ -2798,14 +2805,6 @@ impl App {
                 };
                 hud.draw_rect(bx, by, bar_w * hb.health_fraction, bar_h, color);
             }
-        }
-
-        // === Tribe population (from HudState data contract) ===
-        let pop_x = layout.screen_w - 100.0 * layout.scale_x;
-        for tp in &hud_state.tribe_populations {
-            let py = 8.0 + tp.tribe_index as f32 * (layout.font_scale + 2.0);
-            let text = format!("T{}: {}", tp.tribe_index, tp.count);
-            hud.draw_text(&text, pop_x, py, layout.font_scale, tp.color);
         }
 
         // Render
@@ -3760,11 +3759,12 @@ impl ApplicationHandler for App {
         let level_type = self.engine.config.landtype.as_deref();
         let level_res = LevelRes::new(&base, self.engine.level_num, level_type);
 
-        let shores = level_res.landscape.make_shores();
-        self.engine.landscape_mesh.set_heights(&shores.height);
+        self.engine
+            .landscape_mesh
+            .set_heights(&level_res.landscape.height);
 
         // Heights storage buffer
-        let heights_vec = shores.to_vec();
+        let heights_vec = level_res.landscape.to_vec();
         let heights_bytes: &[u8] = bytemuck::cast_slice(&heights_vec);
         let heights_buffer = GpuBuffer::new_storage(device, heights_bytes, "heights_buffer");
 
@@ -4781,7 +4781,8 @@ impl ApplicationHandler for App {
                     self.engine.screen.width as f32,
                     self.engine.screen.height as f32,
                 );
-                let on_sidebar = self.input.mouse_pos.x < layout.sidebar_w;
+                let on_sidebar =
+                    self.engine.hud_visible && self.input.mouse_pos.x < layout.sidebar_w;
 
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
@@ -4790,16 +4791,17 @@ impl ApplicationHandler for App {
                             let mx = self.input.mouse_pos.x;
                             let my = self.input.mouse_pos.y;
                             if mx >= layout.mm_x
-                                && mx <= layout.mm_x + layout.mm_size
+                                && mx <= layout.mm_x + layout.mm_w
                                 && my >= layout.mm_y
-                                && my <= layout.mm_y + layout.mm_size
+                                && my <= layout.mm_y + layout.mm_h
                             {
                                 let (click_cell_x, click_cell_y) = hud::minimap_click_to_cell(
                                     mx,
                                     my,
                                     layout.mm_x,
                                     layout.mm_y,
-                                    layout.mm_size,
+                                    layout.mm_w,
+                                    layout.mm_h,
                                 );
                                 let shift_vec = self.engine.landscape_mesh.get_shift_vector();
                                 let current_x = (shift_vec.x as f32).rem_euclid(128.0);
@@ -4809,19 +4811,20 @@ impl ApplicationHandler for App {
                                 self.engine.landscape_mesh.shift_x(dx.round() as i32);
                                 self.engine.landscape_mesh.shift_y(dy.round() as i32);
                                 self.rebuild_spawn_model();
-                            } else if let Some(tab) = hud::detect_tab_click(
+                            } else if let Some(HudTab::Buildings) = hud::detect_tab_click(
                                 self.input.mouse_pos.x,
                                 self.input.mouse_pos.y,
                                 &layout,
                             ) {
-                                self.engine.apply_command(&GameCommand::SetHudTab(tab));
-                            } else if self.engine.hud_tab == HudTab::Buildings
-                                && self.input.mouse_pos.y >= layout.panel_y
-                            {
-                                let entry = ((self.input.mouse_pos.y - layout.panel_y)
-                                    / layout.line_h)
-                                    as usize;
-                                if entry == 0 {
+                                self.engine
+                                    .apply_command(&GameCommand::SetHudTab(HudTab::Buildings));
+                            } else if self.engine.hud_tab == HudTab::Buildings {
+                                if hud::detect_construction_slot_click(
+                                    self.input.mouse_pos.x,
+                                    self.input.mouse_pos.y,
+                                    &layout,
+                                ) == Some(0)
+                                {
                                     self.input.placement = Some(BuildingSubtype::SmallHut);
                                     self.input.placement_rotation = 0;
                                 }

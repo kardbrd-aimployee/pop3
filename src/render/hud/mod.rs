@@ -51,16 +51,22 @@ pub struct HudLayout {
     pub font_scale: f32,
     pub small_font: f32,
     pub mm_pad: f32,
-    pub mm_size: f32,
     pub mm_x: f32,
     pub mm_y: f32,
+    pub mm_w: f32,
+    pub mm_h: f32,
     pub mana_bar_y: f32,
     pub mana_bar_h: f32,
     pub pop_y: f32,
+    pub pop_h: f32,
     pub tab_y: f32,
     pub tab_h: f32,
     pub tab_w: f32,
+    pub status_y: f32,
+    pub status_h: f32,
     pub panel_y: f32,
+    pub construction_cell_w: f32,
+    pub construction_cell_h: f32,
     pub line_h: f32,
 }
 
@@ -196,10 +202,11 @@ pub fn minimap_click_to_cell(
     click_y: f32,
     mm_x: f32,
     mm_y: f32,
-    mm_size: f32,
+    mm_w: f32,
+    mm_h: f32,
 ) -> (f32, f32) {
-    let cell_x = ((click_x - mm_x) / mm_size * 128.0).clamp(0.0, 127.0);
-    let cell_y = ((click_y - mm_y) / mm_size * 128.0).clamp(0.0, 127.0);
+    let cell_x = ((click_x - mm_x) / mm_w * 128.0).clamp(0.0, 127.0);
+    let cell_y = ((click_y - mm_y) / mm_h * 128.0).clamp(0.0, 127.0);
     (cell_x, cell_y)
 }
 
@@ -462,8 +469,13 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
     // Terrain
     for y in 0..128usize {
         for x in 0..128usize {
-            let h = data.heights[y][x];
             let off = (y * 128 + x) * 4;
+            let dx = x as f32 + 0.5 - 64.0;
+            let dy = y as f32 + 0.5 - 64.0;
+            if dx * dx + dy * dy > 63.5 * 63.5 {
+                continue;
+            }
+            let h = data.heights[y][x];
             if h == 0 {
                 // Water
                 rgba[off] = 20;
@@ -484,6 +496,11 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
     for dot in &data.dots {
         let cx = (dot.cell_x as usize).min(127);
         let cy = (dot.cell_y as usize).min(127);
+        let dx = cx as f32 + 0.5 - 64.0;
+        let dy = cy as f32 + 0.5 - 64.0;
+        if dx * dx + dy * dy > 63.5 * 63.5 {
+            continue;
+        }
         let off = (cy * 128 + cx) * 4;
         let tc = &MINIMAP_TRIBE_COLORS[(dot.tribe_index as usize).min(3)];
         rgba[off] = tc[0];
@@ -498,21 +515,29 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
 pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     let scale_x = screen_w / 640.0;
     let scale_y = screen_h / 480.0;
-    let sidebar_w = (160.0 * scale_x).round();
-    let font_scale = (12.0 * scale_y).max(10.0).round();
+    // The original game reserves a 96x480 logical-pixel strip at the left.
+    // Widescreen patches scale X/Y independently, so preserve that behavior.
+    let sidebar_w = (96.0 * scale_x).round();
+    let font_scale = (8.0 * scale_y).max(8.0).round();
     let small_font = (font_scale * 0.75).round();
-    let mm_pad = 4.0 * scale_x;
-    let mm_size = sidebar_w - mm_pad * 2.0;
+    let mm_pad = 1.0 * scale_x;
     let mm_x = mm_pad;
-    let mm_y = mm_pad;
-    // Vertical order: minimap -> mana bar -> population -> tabs -> panel
-    let mana_bar_y = mm_y + mm_size + 4.0 * scale_y;
-    let mana_bar_h = (8.0 * scale_y).round();
-    let pop_y = mana_bar_y + mana_bar_h + 3.0 * scale_y;
-    let tab_y = pop_y + small_font + 4.0 * scale_y;
-    let tab_h = font_scale + 6.0 * scale_y;
+    let mm_y = 1.0 * scale_y;
+    let mm_w = sidebar_w - mm_pad * 2.0;
+    let mm_h = 78.0 * scale_y;
+    // Native order: minimap -> mode tabs -> selected/status block -> population -> panel.
+    let tab_y = 80.0 * scale_y;
+    let tab_h = 26.0 * scale_y;
     let tab_w = (sidebar_w - mm_pad * 2.0) / 3.0;
-    let panel_y = tab_y + tab_h + 2.0 * scale_y;
+    let status_y = tab_y + tab_h;
+    let status_h = 58.0 * scale_y;
+    let mana_bar_y = status_y + 3.0 * scale_y;
+    let mana_bar_h = 37.0 * scale_y;
+    let pop_y = status_y + status_h;
+    let pop_h = 12.0 * scale_y;
+    let panel_y = pop_y + pop_h + 2.0 * scale_y;
+    let construction_cell_w = (sidebar_w - mm_pad * 2.0) / 2.0;
+    let construction_cell_h = 48.0 * scale_y;
     let line_h = font_scale + 2.0;
     HudLayout {
         screen_w,
@@ -523,22 +548,30 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
         font_scale,
         small_font,
         mm_pad,
-        mm_size,
         mm_x,
         mm_y,
+        mm_w,
+        mm_h,
         mana_bar_y,
         mana_bar_h,
         pop_y,
+        pop_h,
         tab_y,
         tab_h,
         tab_w,
+        status_y,
+        status_h,
         panel_y,
+        construction_cell_w,
+        construction_cell_h,
         line_h,
     }
 }
 
-/// Detect which tab was clicked given mouse position and layout.
-/// Returns None if click is outside the tab bar.
+/// Detect the active building-tab silhouette.
+///
+/// Spell and follower silhouettes are presentation-only until their systems
+/// exist, so clicks on those positions deliberately return `None`.
 pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Option<HudTab> {
     if mouse_y < layout.tab_y || mouse_y >= layout.tab_y + layout.tab_h {
         return None;
@@ -546,12 +579,31 @@ pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Optio
     if mouse_x < layout.mm_pad || mouse_x >= layout.sidebar_w - layout.mm_pad {
         return None;
     }
-    let tab_idx = ((mouse_x - layout.mm_pad) / layout.tab_w) as usize;
-    Some(match tab_idx {
-        0 => HudTab::Buildings,
-        1 => HudTab::Spells,
-        _ => HudTab::Units,
-    })
+    if mouse_x < layout.mm_pad + layout.tab_w {
+        Some(HudTab::Buildings)
+    } else {
+        None
+    }
+}
+
+/// Return the native construction-grid slot under the pointer (two columns).
+pub fn detect_construction_slot_click(
+    mouse_x: f32,
+    mouse_y: f32,
+    layout: &HudLayout,
+) -> Option<usize> {
+    let x = mouse_x - layout.mm_pad;
+    let y = mouse_y - layout.panel_y;
+    if x < 0.0
+        || y < 0.0
+        || x >= layout.construction_cell_w * 2.0
+        || y >= layout.construction_cell_h * 5.0
+    {
+        return None;
+    }
+    let col = (x / layout.construction_cell_w) as usize;
+    let row = (y / layout.construction_cell_h) as usize;
+    Some(row * 2 + col)
 }
 
 /// Get the sprite region index for a PSFB panel sprite.
@@ -1004,6 +1056,37 @@ impl HudRenderer {
     pub fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4]) {
         let r = &self.sprite_regions[self.white_region_idx];
         self.push_quad(x, y, x + w, y + h, r.u0, r.v0, r.u1, r.v1, color);
+    }
+
+    /// Draw a solid triangle using the atlas' white pixel.
+    pub fn draw_triangle(&mut self, points: [[f32; 2]; 3], color: [f32; 4]) {
+        let r = &self.sprite_regions[self.white_region_idx];
+        let u = (r.u0 + r.u1) * 0.5;
+        let v = (r.v0 + r.v1) * 0.5;
+        self.vertices
+            .extend(points.into_iter().map(|position| HudVertex {
+                position,
+                uv: [u, v],
+                color,
+            }));
+    }
+
+    /// Draw a solid line segment with stable pixel thickness.
+    pub fn draw_line(&mut self, from: [f32; 2], to: [f32; 2], thickness: f32, color: [f32; 4]) {
+        let dx = to[0] - from[0];
+        let dy = to[1] - from[1];
+        let len = (dx * dx + dy * dy).sqrt();
+        if len < 0.001 {
+            return;
+        }
+        let nx = -dy / len * thickness * 0.5;
+        let ny = dx / len * thickness * 0.5;
+        let a = [from[0] + nx, from[1] + ny];
+        let b = [from[0] - nx, from[1] - ny];
+        let c = [to[0] - nx, to[1] - ny];
+        let d = [to[0] + nx, to[1] + ny];
+        self.draw_triangle([a, b, c], color);
+        self.draw_triangle([a, c, d], color);
     }
 
     /// Draw a sprite from the atlas at screen position (x, y) with scale.
@@ -1462,18 +1545,20 @@ mod tests {
         // Act
         let rgba = generate_minimap_rgba(&data);
 
-        // Assert: first pixel is water blue
-        assert_eq!(rgba[0], 20);
-        assert_eq!(rgba[1], 40);
-        assert_eq!(rgba[2], 80);
-        assert_eq!(rgba[3], 255);
+        // Assert: center is water blue and corners are transparent.
+        let center = (64 * 128 + 64) * 4;
+        assert_eq!(rgba[center], 20);
+        assert_eq!(rgba[center + 1], 40);
+        assert_eq!(rgba[center + 2], 80);
+        assert_eq!(rgba[center + 3], 255);
+        assert_eq!(rgba[3], 0);
     }
 
     #[test]
     fn generate_minimap_land_gradient() {
-        // Arrange: cell (0,0) height = 512
+        // Arrange: center cell height = 512
         let mut heights = [[0u16; 128]; 128];
-        heights[0][0] = 512;
+        heights[64][64] = 512;
         let data = MinimapData {
             heights,
             dots: vec![],
@@ -1484,19 +1569,20 @@ mod tests {
 
         // Assert: green channel should be higher than water (40)
         let v = ((512.0f32 / 1024.0) * 180.0).min(255.0) as u8;
-        assert_eq!(rgba[0], v / 4);
-        assert_eq!(rgba[1], 40 + v / 2);
-        assert_eq!(rgba[2], v / 6);
+        let off = (64 * 128 + 64) * 4;
+        assert_eq!(rgba[off], v / 4);
+        assert_eq!(rgba[off + 1], 40 + v / 2);
+        assert_eq!(rgba[off + 2], v / 6);
     }
 
     #[test]
     fn generate_minimap_unit_dot_overwrites_terrain() {
-        // Arrange: water terrain, one unit dot at (10, 20), tribe 1 (red)
+        // Arrange: water terrain, one centered unit dot, tribe 1 (red)
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
             dots: vec![MinimapDot {
-                cell_x: 10,
-                cell_y: 20,
+                cell_x: 64,
+                cell_y: 64,
                 tribe_index: 1,
             }],
         };
@@ -1504,8 +1590,8 @@ mod tests {
         // Act
         let rgba = generate_minimap_rgba(&data);
 
-        // Assert: cell (10, 20) should be red tribe color, not water
-        let off = (20 * 128 + 10) * 4;
+        // Assert: centered cell should be red tribe color, not water
+        let off = (64 * 128 + 64) * 4;
         assert_eq!(rgba[off], 255); // R
         assert_eq!(rgba[off + 1], 60); // G
         assert_eq!(rgba[off + 2], 60); // B
@@ -1521,11 +1607,13 @@ mod tests {
         let l = compute_hud_layout(640.0, 480.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 160.0);
+        assert_eq!(l.sidebar_w, 96.0);
         assert_eq!(l.scale_x, 1.0);
         assert_eq!(l.scale_y, 1.0);
-        assert_eq!(l.mm_pad, 4.0);
-        assert_eq!(l.mm_size, 152.0); // 160 - 4*2
+        assert_eq!(l.mm_pad, 1.0);
+        assert_eq!(l.mm_w, 94.0);
+        assert_eq!(l.mm_h, 78.0);
+        assert_eq!(l.panel_y, 178.0);
     }
 
     #[test]
@@ -1536,21 +1624,21 @@ mod tests {
         let l = compute_hud_layout(1280.0, 960.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 320.0);
+        assert_eq!(l.sidebar_w, 192.0);
         assert_eq!(l.scale_x, 2.0);
         assert_eq!(l.scale_y, 2.0);
-        assert_eq!(l.mm_pad, 8.0);
-        assert_eq!(l.mm_size, 304.0); // 320 - 8*2
+        assert_eq!(l.mm_pad, 2.0);
+        assert_eq!(l.mm_w, 188.0);
+        assert_eq!(l.mm_h, 156.0);
     }
 
     #[test]
     fn compute_hud_layout_font_scale_minimum() {
-        // Arrange: very small screen where 12*scale_y < 10
-        // scale_y = 200/480 ≈ 0.417, 12*0.417 = 5.0 → clamped to 10
+        // Arrange: very small screen where the native font would be unreadable.
         let l = compute_hud_layout(320.0, 200.0);
 
         // Assert
-        assert_eq!(l.font_scale, 10.0);
+        assert_eq!(l.font_scale, 8.0);
     }
 
     // -- detect_tab_click --
@@ -1571,31 +1659,18 @@ mod tests {
     }
 
     #[test]
-    fn detect_tab_click_spells() {
-        // Arrange
+    fn spell_and_follower_silhouettes_are_inert() {
         let layout = compute_hud_layout(640.0, 480.0);
-        let x = layout.mm_pad + layout.tab_w * 1.5;
         let y = layout.tab_y + layout.tab_h * 0.5;
 
-        // Act
-        let result = detect_tab_click(x, y, &layout);
-
-        // Assert
-        assert_eq!(result, Some(HudTab::Spells));
-    }
-
-    #[test]
-    fn detect_tab_click_units() {
-        // Arrange
-        let layout = compute_hud_layout(640.0, 480.0);
-        let x = layout.mm_pad + layout.tab_w * 2.5;
-        let y = layout.tab_y + layout.tab_h * 0.5;
-
-        // Act
-        let result = detect_tab_click(x, y, &layout);
-
-        // Assert
-        assert_eq!(result, Some(HudTab::Units));
+        assert_eq!(
+            detect_tab_click(layout.mm_pad + layout.tab_w * 1.5, y, &layout),
+            None
+        );
+        assert_eq!(
+            detect_tab_click(layout.mm_pad + layout.tab_w * 2.5, y, &layout),
+            None
+        );
     }
 
     #[test]
@@ -1618,6 +1693,26 @@ mod tests {
         assert_eq!(above, None);
         assert_eq!(below, None);
         assert_eq!(left, None);
+    }
+
+    #[test]
+    fn detect_first_construction_slot() {
+        let layout = compute_hud_layout(640.0, 480.0);
+        let result = detect_construction_slot_click(
+            layout.mm_pad + layout.construction_cell_w * 0.5,
+            layout.panel_y + layout.construction_cell_h * 0.5,
+            &layout,
+        );
+        assert_eq!(result, Some(0));
+    }
+
+    #[test]
+    fn construction_slot_click_outside_grid_is_ignored() {
+        let layout = compute_hud_layout(640.0, 480.0);
+        assert_eq!(
+            detect_construction_slot_click(layout.sidebar_w + 1.0, layout.panel_y + 1.0, &layout,),
+            None
+        );
     }
 
     // -- panel_sprite_index --
@@ -1673,21 +1768,21 @@ mod tests {
 
     #[test]
     fn click_to_cell_center() {
-        let (cx, cy) = minimap_click_to_cell(64.0, 64.0, 0.0, 0.0, 128.0);
+        let (cx, cy) = minimap_click_to_cell(64.0, 48.0, 0.0, 0.0, 128.0, 96.0);
         assert_eq!(cx, 64.0);
         assert_eq!(cy, 64.0);
     }
 
     #[test]
     fn click_to_cell_origin() {
-        let (cx, cy) = minimap_click_to_cell(10.0, 10.0, 10.0, 10.0, 128.0);
+        let (cx, cy) = minimap_click_to_cell(10.0, 10.0, 10.0, 10.0, 128.0, 96.0);
         assert_eq!(cx, 0.0);
         assert_eq!(cy, 0.0);
     }
 
     #[test]
     fn click_to_cell_clamped() {
-        let (cx, _) = minimap_click_to_cell(0.0, 0.0, 10.0, 10.0, 128.0);
+        let (cx, _) = minimap_click_to_cell(0.0, 0.0, 10.0, 10.0, 128.0, 96.0);
         assert_eq!(cx, 0.0); // clamped, not negative
     }
 
