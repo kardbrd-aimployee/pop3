@@ -163,6 +163,28 @@ Available subcommands: `globe`, `land`, `minimap`, `water`, `bl320`, `bl160`, `b
 
 See `scripts/` for usage examples.
 
+### pop_extract — Named original-data catalog
+
+`pop_extract` turns original game resources into stable, named assets with a
+machine-readable manifest. Unlike the low-level `pop_res` decoder, each command
+combines the source files needed for a gameplay concept.
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  structure-icons \
+  --output data/extracted/structure-icons \
+  --landscape 0 \
+  --tribe blue
+```
+
+The structure-icon catalog renders the three visual families of every hut stage
+and the seven other player construction structures from the original OBJS mesh,
+palette, and BL320 texture data. It writes transparent PNG files under `icons/`,
+a labeled `contact-sheet.png`, and `manifest.json` containing subtype, tribe,
+visual variant, source object index, and mesh counts. Planned catalog families
+include raw/construction-phase meshes, landscape textures, and person animations.
+
 ## Project structure
 
 ```
