@@ -230,6 +230,7 @@ Superseded historical inventories and phase checklists disagree about completion
 
 - Add a data-root configuration used by tests and development tools; do not commit copyrighted assets.
 - Add a level-inspection command that reports every parsed section and object count without opening a GPU window.
+- Grow `pop_extract` into the named, manifest-backed pipeline for inspecting original structures, construction phases, textures, and animations on demand.
 - Add golden summaries for at least levels 1, 5, 10, 15, 20, and 25.
 - Add an integration-test harness capable of ticking a loaded level headlessly.
 - Define a command replay format for deterministic scenarios.
@@ -256,6 +257,9 @@ Superseded historical inventories and phase checklists disagree about completion
 **Outcome:** the player can perform the complete non-spell RTS loop on one map.
 
 - Reconstruct the native left-side building tab and wire its pictographic building cells to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation. Spell and follower tabs remain inert and out of scope for this milestone.
+- Wire building-panel clicks to build mode, placement validation, ghost preview, resource deduction, and dynamic building creation.
+- Replace the debug/F1 construction controls with the native construction tab. Load the original build-menu glyphs from `POINT0-0.DAT` sprites `58..65` (or output from `pop_extract building-panel-icons`) rather than using generated 3D structure previews; original assets remain extracted from the user's game data and are not committed.
+- Render the shoreline as animated water overlapping the land edge with the original-style beach transition instead of a static boundary.
 - Wire unit orders for building, entering/exiting, training, gathering, guarding, and attacking.
 - Make trees live scenery objects with wood depletion and removal/update behavior.
 - Synchronize tribe population, housing capacity, mana, wood, kills, and reincarnation state.

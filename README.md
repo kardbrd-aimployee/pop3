@@ -163,6 +163,94 @@ Available subcommands: `globe`, `land`, `minimap`, `water`, `bl320`, `bl160`, `b
 
 See `scripts/` for usage examples.
 
+### pop_extract — Named original-data catalog
+
+`pop_extract` turns original game resources into stable, named assets with a
+machine-readable manifest. Unlike the low-level `pop_res` decoder, each command
+combines the source files needed for a gameplay concept.
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  structure-icons \
+  --output data/extracted/structure-icons \
+  --landscape 0 \
+  --tribe blue
+```
+
+The structure-icon catalog renders the three visual families of every hut stage
+and the seven other player construction structures from the original OBJS mesh,
+palette, and BL320 texture data. It writes transparent PNG files under `icons/`,
+a labeled `contact-sheet.png`, and `manifest.json` containing subtype, tribe,
+visual variant, source object index, and mesh counts. Planned catalog families
+include raw/construction-phase meshes, landscape textures, and person animations.
+
+To extract the idle unit catalog for one tribe:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  unit-icons \
+  --output data/extracted/unit-icons \
+  --landscape 0 \
+  --tribe blue
+```
+
+To extract the original construction-panel glyphs, use the named POINT sprite
+catalog. Unlike `structure-icons`, these are the exact 35-by-32-era images used
+by the original build menu rather than newly rendered 3D building previews:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  building-panel-icons \
+  --output data/extracted/building-panel-icons \
+  --landscape 0
+```
+
+The output contains native-size transparent PNGs for the Small Hut, Drum Tower,
+Temple, training huts, Boat Hut, and Airship Hut. The manifest records their
+canonical building subtypes and original `POINT0-0.DAT` sprite indices `58..65`.
+
+To inspect other native in-game HUD artwork, generate an indexed catalog from
+the complete primary HSPR bank:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  hud-sprite-candidates \
+  --output data/extracted/hud-sprite-candidates \
+  --bank primary \
+  --landscape 0
+```
+
+Use `--bank extension` to inspect `HSPR0-1.DAT` / `HSPR0-1.TAB`. Every PNG
+filename and manifest item retains the original HSPR sprite index.
+
+The unit-icon catalog composes the original sprite bank and animation tables for
+Braves, Warriors, Preachers, Spies, and Firewarriors, and uses the direct tribal
+Shaman sprites. It writes transparent PNG files under `icons/`, a labeled contact
+sheet, and a manifest recording animation IDs, sprite-layer combinations, and
+source files.
+
+To extract the full named unit animation catalog for the main rewrite:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  unit-animations \
+  --output data/extracted/unit-animations \
+  --landscape 0
+```
+
+This writes one atlas per unit animation under `animations/<unit>/`. Each atlas
+uses the renderer-compatible layout of four tribes by five stored directions by
+animation frame; the manifest records the original animation ID, VSTART base,
+frame size, frame count, compositing layer, and atlas path. The renderer can
+mirror the two omitted display directions using the layout metadata. The catalog
+includes idle, walk, work, carry, dig, build, combat, transport, sitting, and
+special sequences, plus direct Shaman idle and walk sprites.
+
 ## Project structure
 
 ```
