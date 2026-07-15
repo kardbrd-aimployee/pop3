@@ -15,6 +15,7 @@ use super::structures::make_contact_sheet;
 
 const SCHEMA_VERSION: u32 = 1;
 const POINT_BANK: &str = "POINT0-0.DAT";
+const POINT_PALETTE: &str = "PAL1-0.DAT";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildingPanelIconSpec {
@@ -111,7 +112,6 @@ struct Manifest {
 struct SourceManifest {
     sprite_bank: String,
     palette: String,
-    landscape: String,
 }
 
 #[derive(Serialize)]
@@ -132,7 +132,7 @@ pub fn export_building_panel_icons(
 
     let data_dir = request.base.join("data");
     let sprite_bank_path = data_dir.join(POINT_BANK);
-    let palette_path = data_dir.join(format!("pal0-{}.dat", request.landscape));
+    let palette_path = data_dir.join(POINT_PALETTE);
     ensure_file(&sprite_bank_path)?;
     ensure_file(&palette_path)?;
 
@@ -183,7 +183,6 @@ pub fn export_building_panel_icons(
         source: SourceManifest {
             sprite_bank: relative_source(&request.base, &sprite_bank_path),
             palette: relative_source(&request.base, &palette_path),
-            landscape: request.landscape.clone(),
         },
         items: manifest_items,
     };

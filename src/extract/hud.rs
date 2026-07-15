@@ -30,6 +30,14 @@ pub struct HudSpriteCandidateRequest {
 pub enum HudSpriteBank {
     Primary,
     Extension,
+    Hspr1,
+    Hspr2,
+    Mspr,
+    MsprExtension,
+    Point,
+    Point1,
+    Point2,
+    Panel,
 }
 
 impl HudSpriteBank {
@@ -37,6 +45,14 @@ impl HudSpriteBank {
         match value {
             "primary" => Some(Self::Primary),
             "extension" => Some(Self::Extension),
+            "hspr1" => Some(Self::Hspr1),
+            "hspr2" => Some(Self::Hspr2),
+            "mspr" => Some(Self::Mspr),
+            "mspr-extension" => Some(Self::MsprExtension),
+            "point" => Some(Self::Point),
+            "point1" => Some(Self::Point1),
+            "point2" => Some(Self::Point2),
+            "panel" => Some(Self::Panel),
             _ => None,
         }
     }
@@ -45,6 +61,14 @@ impl HudSpriteBank {
         match self {
             Self::Primary => "HSPR0-0.DAT",
             Self::Extension => "HSPR0-1.DAT",
+            Self::Hspr1 => "HSPR1-0.DAT",
+            Self::Hspr2 => "hspr2-0.dat",
+            Self::Mspr => "MSPR0-0.DAT",
+            Self::MsprExtension => "MSPR0-1.DAT",
+            Self::Point => "POINT0-0.DAT",
+            Self::Point1 => "POINT0-1.DAT",
+            Self::Point2 => "POINT0-2.DAT",
+            Self::Panel => "plspanel.spr",
         }
     }
 
@@ -52,6 +76,25 @@ impl HudSpriteBank {
         match self {
             Self::Primary => None,
             Self::Extension => Some("HSPR0-1.TAB"),
+            Self::MsprExtension => Some("MSPR0-1.TAB"),
+            Self::Hspr1
+            | Self::Hspr2
+            | Self::Mspr
+            | Self::Point
+            | Self::Point1
+            | Self::Point2
+            | Self::Panel => None,
+        }
+    }
+
+    fn palette_file(self, landscape: &str) -> String {
+        match self {
+            Self::Point | Self::Point1 | Self::Point2 => "PAL1-0.DAT".to_owned(),
+            Self::Panel => "plspal.dat".to_owned(),
+            Self::Hspr1 | Self::Hspr2 => "PAL1-0.DAT".to_owned(),
+            Self::Primary | Self::Extension | Self::Mspr | Self::MsprExtension => {
+                format!("pal0-{landscape}.dat")
+            }
         }
     }
 }
@@ -114,7 +157,7 @@ pub fn export_hud_sprite_candidates(
     let data_dir = request.base.join("data");
     let sprite_data_path = data_dir.join(request.bank.data_file());
     let sprite_table_path = request.bank.table_file().map(|name| data_dir.join(name));
-    let palette_path = data_dir.join(format!("pal0-{}.dat", request.landscape));
+    let palette_path = data_dir.join(request.bank.palette_file(&request.landscape));
     ensure_file(&sprite_data_path)?;
     if let Some(path) = &sprite_table_path {
         ensure_file(path)?;
@@ -152,9 +195,10 @@ pub fn export_hud_sprite_candidates(
 
         for sprite in chunk {
             let indexed = sprite_bank.decode(*sprite)?;
-            let icon = fit_icon(&indexed_to_rgba(&indexed, &palette), request.size);
+            let native = indexed_to_rgba(&indexed, &palette);
+            let icon = fit_icon(&native, request.size);
             let image_name = format!("{:03}.png", sprite.index);
-            icon.save(sprites_dir.join(&image_name))?;
+            native.save(sprites_dir.join(&image_name))?;
             rendered.push((
                 format!("#{} {}x{}", sprite.index, sprite.width, sprite.height),
                 icon,
@@ -203,7 +247,7 @@ pub fn export_hud_sprite_candidates(
 }
 
 enum LoadedSpriteBank {
-    Primary(ContainerPSFB),
+    Container(ContainerPSFB),
     Extension {
         data: Vec<u8>,
         sprites: Vec<TableSprite>,
@@ -213,7 +257,7 @@ enum LoadedSpriteBank {
 impl LoadedSpriteBank {
     fn sprites(&self) -> Vec<TableSprite> {
         match self {
-            Self::Primary(container) => container
+            Self::Container(container) => container
                 .sprites_info()
                 .iter()
                 .map(|sprite| TableSprite {
@@ -230,9 +274,9 @@ impl LoadedSpriteBank {
 
     fn decode(&self, sprite: TableSprite) -> Result<Image, io::Error> {
         match self {
-            Self::Primary(container) => container.get_image(sprite.index).ok_or_else(|| {
+            Self::Container(container) => container.get_image(sprite.index).ok_or_else(|| {
                 invalid_data(format!(
-                    "sprite {} is missing from primary bank",
+                    "sprite {} is missing from container bank",
                     sprite.index
                 ))
             }),
@@ -247,8 +291,15 @@ fn load_sprite_bank(
     table_path: Option<&Path>,
 ) -> Result<LoadedSpriteBank, Box<dyn Error>> {
     match bank {
-        HudSpriteBank::Primary => ContainerPSFB::from_file(data_path)
-            .map(LoadedSpriteBank::Primary)
+        HudSpriteBank::Primary
+        | HudSpriteBank::Hspr1
+        | HudSpriteBank::Hspr2
+        | HudSpriteBank::Mspr
+        | HudSpriteBank::Point
+        | HudSpriteBank::Point1
+        | HudSpriteBank::Point2
+        | HudSpriteBank::Panel => ContainerPSFB::from_file(data_path)
+            .map(LoadedSpriteBank::Container)
             .ok_or_else(|| {
                 invalid_data(format!(
                     "could not parse PSFB bank: {}",
@@ -256,7 +307,7 @@ fn load_sprite_bank(
                 ))
                 .into()
             }),
-        HudSpriteBank::Extension => {
+        HudSpriteBank::Extension | HudSpriteBank::MsprExtension => {
             let table_path =
                 table_path.ok_or_else(|| invalid_data("extension bank requires a table"))?;
             Ok(LoadedSpriteBank::Extension {
@@ -337,9 +388,9 @@ fn decode_table_sprite(sprite: TableSprite, data: &[u8]) -> Result<Image, io::Er
 }
 
 fn validate_request(request: &HudSpriteCandidateRequest) -> Result<(), io::Error> {
-    if !(48..=512).contains(&request.size) {
+    if !(48..=1024).contains(&request.size) {
         return Err(invalid_input(
-            "sprite size must be between 48 and 512 pixels",
+            "sprite size must be between 48 and 1024 pixels",
         ));
     }
     if request.min_dimension == 0 || request.min_dimension > request.max_dimension {
@@ -398,18 +449,22 @@ pub(crate) fn fit_icon(source: &RgbaImage, size: u32) -> RgbaImage {
 
 pub(crate) fn load_palette(path: &Path) -> Result<Vec<[u8; 4]>, io::Error> {
     let data = fs::read(path)?;
-    if data.len() < 1024 {
-        return Err(invalid_data(format!(
-            "palette is shorter than 1024 bytes: {}",
+    match data.len() {
+        768 => Ok(data
+            .chunks_exact(3)
+            .map(|color| [color[0], color[1], color[2], 255])
+            .collect()),
+        length if length >= 1024 => Ok((0..256)
+            .map(|index| {
+                let offset = index * 4;
+                [data[offset], data[offset + 1], data[offset + 2], 255]
+            })
+            .collect()),
+        _ => Err(invalid_data(format!(
+            "palette must contain 256 RGB or RGBA entries: {}",
             path.display()
-        )));
+        ))),
     }
-    Ok((0..256)
-        .map(|index| {
-            let offset = index * 4;
-            [data[offset], data[offset + 1], data[offset + 2], 255]
-        })
-        .collect())
 }
 
 pub(crate) fn ensure_file(path: &Path) -> Result<(), io::Error> {
@@ -495,5 +550,15 @@ mod tests {
         let image = indexed_to_rgba(&source, &palette);
         assert_eq!(image.get_pixel(0, 0).0, [10, 20, 30, 255]);
         assert_eq!(image.get_pixel(1, 0).0, [40, 50, 60, 0]);
+    }
+
+    #[test]
+    fn point_and_panel_banks_use_ui_specific_palettes() {
+        assert_eq!(HudSpriteBank::Point.palette_file("7"), "PAL1-0.DAT");
+        assert_eq!(HudSpriteBank::Point1.palette_file("7"), "PAL1-0.DAT");
+        assert_eq!(HudSpriteBank::Panel.palette_file("7"), "plspal.dat");
+        assert_eq!(HudSpriteBank::Hspr1.palette_file("7"), "PAL1-0.DAT");
+        assert_eq!(HudSpriteBank::Mspr.palette_file("7"), "pal0-7.dat");
+        assert_eq!(HudSpriteBank::Primary.palette_file("7"), "pal0-7.dat");
     }
 }

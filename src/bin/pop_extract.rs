@@ -137,7 +137,7 @@ fn cli() -> Command {
                         .long("landscape")
                         .value_name("KEY")
                         .default_value("0")
-                        .help("One-character palette bank key"),
+                        .help("Deprecated; POINT icons always use PAL1-0.DAT"),
                 )
                 .arg(
                     Arg::new("size")
@@ -164,9 +164,20 @@ fn cli() -> Command {
                     Arg::new("bank")
                         .long("bank")
                         .value_name("BANK")
-                        .value_parser(["primary", "extension"])
+                        .value_parser([
+                            "primary",
+                            "extension",
+                            "hspr1",
+                            "hspr2",
+                            "mspr",
+                            "mspr-extension",
+                            "point",
+                            "point1",
+                            "point2",
+                            "panel",
+                        ])
                         .default_value("primary")
-                        .help("Sprite bank to inspect: primary HSPR0-0 or extension HSPR0-1"),
+                        .help("Sprite bank to inspect: HSPR/MSPR variants, POINT, or panel"),
                 )
                 .arg(
                     Arg::new("landscape")
@@ -179,7 +190,7 @@ fn cli() -> Command {
                     Arg::new("size")
                         .long("size")
                         .value_name("PIXELS")
-                        .value_parser(clap::value_parser!(u32).range(48..=512))
+                        .value_parser(clap::value_parser!(u32).range(48..=1024))
                         .default_value("96")
                         .help("Width and height of each contact-sheet cell image"),
                 )
@@ -187,7 +198,7 @@ fn cli() -> Command {
                     Arg::new("min-dimension")
                         .long("min-dimension")
                         .value_name("PIXELS")
-                        .value_parser(clap::value_parser!(u16).range(1..=512))
+                        .value_parser(clap::value_parser!(u16).range(1..=1024))
                         .default_value("12")
                         .help("Minimum source sprite width and height"),
                 )
@@ -195,7 +206,7 @@ fn cli() -> Command {
                     Arg::new("max-dimension")
                         .long("max-dimension")
                         .value_name("PIXELS")
-                        .value_parser(clap::value_parser!(u16).range(1..=512))
+                        .value_parser(clap::value_parser!(u16).range(1..=1024))
                         .default_value("64")
                         .help("Maximum source sprite width and height"),
                 ),

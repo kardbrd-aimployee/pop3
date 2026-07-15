@@ -105,6 +105,10 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 
 - The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, a population bar, and a two-column pictographic command grid.
 - The current remake slice recreates only the building tab. Spell and follower tabs remain out of scope until their gameplay systems are implemented.
+- The eight construction-choice glyphs are `POINT0-0.DAT` sprites `58..65`. They use the fixed 768-byte RGB palette `PAL1-0.DAT`; interpreting them with a landscape `pal0-*.dat` palette produces the wrong teal/green colors.
+- `GUI_RenderTiledPanel` at `0x004936B0` composes panel surfaces from HSPR sprites `1450..1465`, choosing distinct corners, alternating edges, and four alternating interior pieces. These sprites use the active landscape palette rather than the POINT palette.
+- `plspanel.spr` is loaded by the planet-selection interface at `0x00419BF0`; it is not the source of the in-game construction sidebar texture.
+- The native house, spell, and follower mode silhouettes are not POINT sprites `56`, `41`, and `55`. Those IDs are unrelated gameplay symbols and must not be used as substitutes while the original mode-silhouette source is still being mapped.
 - Shore water remains animated. Near the coast, small pixels of the land texture overlap the moving water in a stippled transition; the shore is not a raised strip of static terrain.
 - After construction completes, assigned workers regroup outside the entrance in one or more groups of at most six. Exact rendezvous slots, spacing, and idle transitions are deferred until building occupancy work.
 
