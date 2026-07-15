@@ -233,6 +233,24 @@ Shaman sprites. It writes transparent PNG files under `icons/`, a labeled contac
 sheet, and a manifest recording animation IDs, sprite-layer combinations, and
 source files.
 
+To extract the full named unit animation catalog for the main rewrite:
+
+```bash
+cargo run --release --bin pop_extract -- \
+  --base /path/to/pop3 \
+  unit-animations \
+  --output data/extracted/unit-animations \
+  --landscape 0
+```
+
+This writes one atlas per unit animation under `animations/<unit>/`. Each atlas
+uses the renderer-compatible layout of four tribes by five stored directions by
+animation frame; the manifest records the original animation ID, VSTART base,
+frame size, frame count, compositing layer, and atlas path. The renderer can
+mirror the two omitted display directions using the layout metadata. The catalog
+includes idle, walk, work, carry, dig, build, combat, transport, sitting, and
+special sequences, plus direct Shaman idle and walk sprites.
+
 ## Project structure
 
 ```

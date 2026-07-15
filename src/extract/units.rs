@@ -417,7 +417,7 @@ fn tribe_name(tribe: Tribe) -> &'static str {
     }
 }
 
-fn unit_combo_for_animation(animation_id: u16) -> Option<(u16, u16)> {
+pub(crate) fn unit_combo_for_animation(animation_id: u16) -> Option<(u16, u16)> {
     match animation_id {
         15 => None,         // Brave: common body layer
         16 => Some((2, 2)), // Warrior

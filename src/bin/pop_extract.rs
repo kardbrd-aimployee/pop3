@@ -3,6 +3,7 @@ use std::io;
 use std::path::PathBuf;
 
 use clap::{Arg, Command};
+use pop3::extract::animations::{export_unit_animations, UnitAnimationRequest};
 use pop3::extract::building_panel::{export_building_panel_icons, BuildingPanelIconRequest};
 use pop3::extract::hud::{export_hud_sprite_candidates, HudSpriteBank, HudSpriteCandidateRequest};
 use pop3::extract::structures::{
@@ -59,6 +60,28 @@ fn cli() -> Command {
                         .value_parser(clap::value_parser!(u32).range(64..=1024))
                         .default_value("160")
                         .help("Width and height of each transparent PNG icon"),
+                ),
+        )
+        .subcommand(
+            Command::new("unit-animations")
+                .about("Export named unit animation atlases from the original sprite data")
+                .arg(
+                    Arg::new("output")
+                        .long("output")
+                        .short('o')
+                        .value_name("DIR")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .required(true)
+                        .help(
+                            "Destination directory for animation atlases, previews, and manifest",
+                        ),
+                )
+                .arg(
+                    Arg::new("landscape")
+                        .long("landscape")
+                        .value_name("KEY")
+                        .default_value("0")
+                        .help("One-character landscape/palette bank key"),
                 ),
         )
         .subcommand(
@@ -252,6 +275,26 @@ fn run() -> Result<(), Box<dyn Error>> {
             };
             let result = export_building_panel_icons(&request)?;
             println!("Extracted {} building-panel icons", result.icon_count);
+            println!("Manifest: {}", result.manifest_path.display());
+            println!("Contact sheet: {}", result.contact_sheet_path.display());
+        }
+        Some(("unit-animations", args)) => {
+            let request = UnitAnimationRequest {
+                base,
+                output: args
+                    .get_one::<PathBuf>("output")
+                    .expect("required by clap")
+                    .clone(),
+                landscape: args
+                    .get_one::<String>("landscape")
+                    .expect("defaulted by clap")
+                    .to_ascii_lowercase(),
+            };
+            let result = export_unit_animations(&request)?;
+            println!(
+                "Extracted {} unit animation atlases",
+                result.animation_count
+            );
             println!("Manifest: {}", result.manifest_path.display());
             println!("Contact sheet: {}", result.contact_sheet_path.display());
         }
