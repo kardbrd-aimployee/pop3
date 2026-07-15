@@ -53,6 +53,7 @@ pub struct HudLayout {
     pub mm_pad: f32,
     pub mm_x: f32,
     pub mm_y: f32,
+    pub mm_size: f32,
     pub mm_w: f32,
     pub mm_h: f32,
     pub mana_bar_y: f32,
@@ -508,36 +509,54 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
         rgba[off + 2] = tc[2];
         rgba[off + 3] = 255;
     }
+
+    // The original game presents the map through a circular aperture. Keep the
+    // texture square for the GPU, but make the corners transparent so the
+    // ochre panel frame remains visible around it.
+    let radius_sq = 63.0f32 * 63.0;
+    for y in 0..128usize {
+        for x in 0..128usize {
+            let dx = x as f32 + 0.5 - 64.0;
+            let dy = y as f32 + 0.5 - 64.0;
+            if dx * dx + dy * dy > radius_sq {
+                rgba[(y * 128 + x) * 4 + 3] = 0;
+            }
+        }
+    }
     rgba
 }
 
 /// Compute HUD layout dimensions from screen size.
 pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
-    let scale_x = screen_w / 640.0;
-    let scale_y = screen_h / 480.0;
-    // The original game reserves a 96x480 logical-pixel strip at the left.
-    // Widescreen patches scale X/Y independently, so preserve that behavior.
-    let sidebar_w = (96.0 * scale_x).round();
-    let font_scale = (8.0 * scale_y).max(8.0).round();
+    // Populous' native panel is 114 logical pixels wide on a 640x480 canvas.
+    // Scale it uniformly from height; independent X/Y scaling made the remake
+    // panel much wider than the original on widescreen displays.
+    let scale = screen_h / 480.0;
+    let scale_x = scale;
+    let scale_y = scale;
+    let sidebar_w = (114.0 * scale).round();
+    let font_scale = (8.0 * scale).max(8.0).round();
     let small_font = (font_scale * 0.75).round();
-    let mm_pad = 1.0 * scale_x;
-    let mm_x = mm_pad;
-    let mm_y = 1.0 * scale_y;
-    let mm_w = sidebar_w - mm_pad * 2.0;
-    let mm_h = 78.0 * scale_y;
-    // Native order: minimap -> mode tabs -> selected/status block -> population -> panel.
-    let tab_y = 80.0 * scale_y;
-    let tab_h = 26.0 * scale_y;
-    let tab_w = (sidebar_w - mm_pad * 2.0) / 3.0;
-    let status_y = tab_y + tab_h;
-    let status_h = 58.0 * scale_y;
-    let mana_bar_y = status_y + 3.0 * scale_y;
-    let mana_bar_h = 37.0 * scale_y;
-    let pop_y = status_y + status_h;
-    let pop_h = 12.0 * scale_y;
-    let panel_y = pop_y + pop_h + 2.0 * scale_y;
-    let construction_cell_w = (sidebar_w - mm_pad * 2.0) / 2.0;
-    let construction_cell_h = 48.0 * scale_y;
+    let mm_pad = 0.0;
+    let mm_size = 114.0 * scale;
+    let mm_x = 0.0;
+    let mm_y = -12.0 * scale;
+    let mm_w = mm_size;
+    let mm_h = mm_size;
+    let tab_y = 91.0 * scale;
+    let tab_h = 27.0 * scale;
+    let tab_w = 38.0 * scale;
+    // Retain these fields for the HUD data contract, but map them to the
+    // original compact status and population-meter bands.
+    let mana_bar_y = 118.0 * scale;
+    let mana_bar_h = 79.0 * scale;
+    let pop_y = 197.0 * scale;
+    let pop_h = 18.0 * scale;
+    let status_y = 118.0 * scale;
+    let status_h = 79.0 * scale;
+    let panel_y = 222.0 * scale;
+    let construction_cell_w = 57.0 * scale;
+    let construction_cell_h = 79.0 * scale;
     let line_h = font_scale + 2.0;
     HudLayout {
         screen_w,
@@ -550,6 +569,7 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
         mm_pad,
         mm_x,
         mm_y,
+        mm_size,
         mm_w,
         mm_h,
         mana_bar_y,
@@ -630,6 +650,10 @@ pub struct HudRenderer {
     white_region_idx: usize,
     /// Index where font glyphs start in sprite_regions
     font_region_start: usize,
+    /// Number of sprites loaded from plspanel.spr before the POINT bank.
+    panel_sprite_count: usize,
+    /// Index where POINT0-0.DAT sprites start in sprite_regions.
+    point_region_start: usize,
     vertices: Vec<HudVertex>,
     // Minimap texture (updated per-frame)
     minimap_bind_group: Option<wgpu::BindGroup>,
@@ -850,19 +874,22 @@ impl HudRenderer {
             sprite_regions,
             white_region_idx: 0,
             font_region_start: 1,
+            panel_sprite_count: 0,
+            point_region_start: 97,
             vertices: Vec::with_capacity(4096),
             minimap_bind_group: None,
             minimap_texture: None,
         }
     }
 
-    /// Build the HUD atlas from plspanel.spr sprites + font glyphs.
-    /// `panel_sprites` is the PSFB container, `palette` is 1024-byte BGRA palette.
+    /// Build the HUD atlas from plspanel.spr, POINT0-0.DAT, and font glyphs.
+    /// `palette` is the 1024-byte BGRA palette used by both sprite banks.
     pub fn build_atlas(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         panel_sprites: &ContainerPSFB,
+        point_sprites: Option<&ContainerPSFB>,
         palette: &[u8],
     ) {
         // Phase 1: Convert all sprites to RGBA
@@ -875,6 +902,19 @@ impl HudRenderer {
                 sprite_images.push((w, h, rgba));
             } else {
                 sprite_images.push((1, 1, vec![0, 0, 0, 0]));
+            }
+        }
+        let panel_sprite_count = sprite_images.len();
+        if let Some(point_sprites) = point_sprites {
+            for i in 0..point_sprites.len() {
+                if let Some(img) = point_sprites.get_image(i) {
+                    let w = img.width as u16;
+                    let h = img.height as u16;
+                    let rgba = convert_indexed_to_rgba(&img.data, palette, 255);
+                    sprite_images.push((w, h, rgba));
+                } else {
+                    sprite_images.push((1, 1, vec![0, 0, 0, 0]));
+                }
             }
         }
 
@@ -1020,6 +1060,8 @@ impl HudRenderer {
         self.sprite_regions = regions;
         self.white_region_idx = 0;
         self.font_region_start = font_start;
+        self.panel_sprite_count = panel_sprite_count;
+        self.point_region_start = font_start + 96 + panel_sprite_count;
 
         log::info!(
             "[hud] Atlas built: {}x{}, {} sprites, {} font glyphs, {} total regions",
@@ -1091,23 +1133,26 @@ impl HudRenderer {
 
     /// Draw a sprite from the atlas at screen position (x, y) with scale.
     pub fn draw_sprite(&mut self, sprite_idx: usize, x: f32, y: f32, scale_x: f32, scale_y: f32) {
+        self.draw_sprite_tinted(sprite_idx, x, y, scale_x, scale_y, [1.0; 4]);
+    }
+
+    /// Draw an atlas sprite with a color multiplier.
+    pub fn draw_sprite_tinted(
+        &mut self,
+        sprite_idx: usize,
+        x: f32,
+        y: f32,
+        scale_x: f32,
+        scale_y: f32,
+        color: [f32; 4],
+    ) {
         if sprite_idx >= self.sprite_regions.len() {
             return;
         }
         let r = self.sprite_regions[sprite_idx].clone();
         let w = r.width as f32 * scale_x;
         let h = r.height as f32 * scale_y;
-        self.push_quad(
-            x,
-            y,
-            x + w,
-            y + h,
-            r.u0,
-            r.v0,
-            r.u1,
-            r.v1,
-            [1.0, 1.0, 1.0, 1.0],
-        );
+        self.push_quad(x, y, x + w, y + h, r.u0, r.v0, r.u1, r.v1, color);
     }
 
     /// Draw text using the embedded bitmap font.
@@ -1164,6 +1209,17 @@ impl HudRenderer {
     /// Get the sprite region index for panel sprites (offset past white pixel + font glyphs).
     pub fn panel_sprite_index(&self, psfb_index: usize) -> usize {
         panel_sprite_index(self.font_region_start, psfb_index)
+    }
+
+    /// Get the sprite region index for POINT0-0.DAT sprites.
+    pub fn point_sprite_index(&self, psfb_index: usize) -> usize {
+        self.point_region_start + psfb_index
+    }
+
+    pub fn sprite_size(&self, sprite_idx: usize) -> Option<(u16, u16)> {
+        self.sprite_regions
+            .get(sprite_idx)
+            .map(|region| (region.width, region.height))
     }
 
     /// Update the minimap texture from pre-built MinimapData.
@@ -1607,13 +1663,15 @@ mod tests {
         let l = compute_hud_layout(640.0, 480.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 96.0);
+        assert_eq!(l.sidebar_w, 114.0);
         assert_eq!(l.scale_x, 1.0);
         assert_eq!(l.scale_y, 1.0);
-        assert_eq!(l.mm_pad, 1.0);
-        assert_eq!(l.mm_w, 94.0);
-        assert_eq!(l.mm_h, 78.0);
-        assert_eq!(l.panel_y, 178.0);
+        assert_eq!(l.mm_pad, 0.0);
+        assert_eq!(l.mm_size, 114.0);
+        assert_eq!(l.mm_w, 114.0);
+        assert_eq!(l.mm_h, 114.0);
+        assert_eq!(l.tab_y, 91.0);
+        assert_eq!(l.panel_y, 222.0);
     }
 
     #[test]
@@ -1624,17 +1682,16 @@ mod tests {
         let l = compute_hud_layout(1280.0, 960.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 192.0);
+        assert_eq!(l.sidebar_w, 228.0);
         assert_eq!(l.scale_x, 2.0);
         assert_eq!(l.scale_y, 2.0);
-        assert_eq!(l.mm_pad, 2.0);
-        assert_eq!(l.mm_w, 188.0);
-        assert_eq!(l.mm_h, 156.0);
+        assert_eq!(l.mm_pad, 0.0);
+        assert_eq!(l.mm_size, 228.0);
     }
 
     #[test]
     fn compute_hud_layout_font_scale_minimum() {
-        // Arrange: very small screen where the native font would be unreadable.
+        // Arrange: very small screen where the native font would be sub-pixel.
         let l = compute_hud_layout(320.0, 200.0);
 
         // Assert
@@ -1687,7 +1744,7 @@ mod tests {
             &layout,
         );
         // Click left of tabs
-        let left = detect_tab_click(0.0, layout.tab_y + 2.0, &layout);
+        let left = detect_tab_click(-1.0, layout.tab_y + 2.0, &layout);
 
         // Assert
         assert_eq!(above, None);

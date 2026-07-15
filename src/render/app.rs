@@ -304,6 +304,7 @@ pub struct GameEngine {
     compass_visible: bool,
     walkability_visible: bool,
     hud_panel_sprite_count: usize,
+    hud_point_sprite_count: usize,
 
     // Game simulation
     unit_coordinator: UnitCoordinator,
@@ -716,13 +717,13 @@ impl GameEngine {
             .collect(),
             HudTab::Buildings => [
                 "Hut",
-                "Guard Tower",
+                "Drum Tower",
                 "Temple",
                 "Spy Hut",
                 "Warrior Hut",
                 "Firewarrior Hut",
-                "Prison",
                 "Boat Hut",
+                "Airship Hut",
             ]
             .iter()
             .enumerate()
@@ -1397,6 +1398,7 @@ impl App {
                 compass_visible: false,
                 walkability_visible: false,
                 hud_panel_sprite_count: 0,
+                hud_point_sprite_count: 0,
                 unit_coordinator: UnitCoordinator::new(),
                 game_world: {
                     let mut w = GameWorld::new(20);
@@ -1636,14 +1638,19 @@ impl App {
 
         // Rebuild HUD atlas with new palette
         let panel_path = base.join("data").join("plspanel.spr");
+        let point_path = base.join("data").join("POINT0-0.DAT");
         if let Some(panel_container) = ContainerPSFB::from_file(&panel_path) {
             self.engine.hud_panel_sprite_count = panel_container.len();
+            let point_container = ContainerPSFB::from_file(&point_path);
+            self.engine.hud_point_sprite_count =
+                point_container.as_ref().map_or(0, ContainerPSFB::len);
             if let Some(ref mut hud) = self.hud {
                 let gpu = self.gpu.as_ref().unwrap();
                 hud.build_atlas(
                     &gpu.device,
                     &gpu.queue,
                     &panel_container,
+                    point_container.as_ref(),
                     &level_res.params.palette,
                 );
             }
@@ -2611,6 +2618,288 @@ impl App {
     }
 
     fn draw_hud(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        let gpu = match self.gpu.as_ref() {
+            Some(gpu) => gpu,
+            None => return,
+        };
+        let hud_state = self.engine.build_hud_state();
+        let layout = hud::compute_hud_layout(
+            self.engine.screen.width as f32,
+            self.engine.screen.height as f32,
+        );
+        let hud = match self.hud.as_mut() {
+            Some(hud) => hud,
+            None => return,
+        };
+
+        hud.update_minimap(&gpu.device, &gpu.queue, &hud_state.minimap);
+        hud.begin_frame();
+
+        let scale = layout.scale_y;
+        let ochre = [0.82, 0.45, 0.035, 1.0];
+        let ochre_light = [0.96, 0.60, 0.055, 1.0];
+        let ochre_dark = [0.45, 0.20, 0.025, 1.0];
+        let ink = [0.16, 0.06, 0.08, 1.0];
+
+        // The native panel is a mottled ochre surface. Use small deterministic
+        // color variations so it reads like the original material rather than
+        // a modern flat rectangle.
+        let tile = 6.0 * scale;
+        let columns = (layout.sidebar_w / tile).ceil() as usize;
+        let rows = ((layout.screen_h - layout.tab_y) / tile).ceil() as usize;
+        for row in 0..rows {
+            for col in 0..columns {
+                let seed = (row * 37 + col * 19 + row * col * 3) % 9;
+                let shade = match seed {
+                    0 | 1 => [0.90, 0.51, 0.045, 1.0],
+                    2 => [0.73, 0.36, 0.025, 1.0],
+                    _ => ochre,
+                };
+                hud.draw_rect(
+                    col as f32 * tile,
+                    layout.tab_y + row as f32 * tile,
+                    tile + 0.5,
+                    tile + 0.5,
+                    shade,
+                );
+            }
+        }
+
+        // Fill only the corners around the circular minimap; the minimap itself
+        // is rendered first and remains visible through this aperture.
+        let top_rows = (layout.tab_y / tile).ceil() as usize;
+        let center_x = layout.sidebar_w * 0.5;
+        let center_y = (layout.mm_y + layout.mm_size * 0.5).max(0.0);
+        let aperture = 54.5 * scale;
+        for row in 0..top_rows {
+            for col in 0..columns {
+                let x = col as f32 * tile;
+                let y = row as f32 * tile;
+                let dx = x + tile * 0.5 - center_x;
+                let dy = y + tile * 0.5 - center_y;
+                if dx * dx + dy * dy >= aperture * aperture {
+                    let seed = (row * 23 + col * 11) % 7;
+                    let shade = if seed == 0 { ochre_dark } else { ochre };
+                    hud.draw_rect(x, y, tile + 0.5, tile + 0.5, shade);
+                }
+            }
+        }
+
+        // Native three-mode strip. Only Buildings is active in this slice;
+        // Spells and Followers remain visible but intentionally inert.
+        let tab_icons = [56usize, 41usize, 55usize];
+        for (index, sprite) in tab_icons.iter().enumerate() {
+            let x = index as f32 * layout.tab_w;
+            let background = if index == 0 { ochre_light } else { ochre };
+            hud.draw_rect(
+                x + scale,
+                layout.tab_y,
+                layout.tab_w - 2.0 * scale,
+                layout.tab_h,
+                background,
+            );
+            hud.draw_rect(x, layout.tab_y, scale, layout.tab_h, ochre_dark);
+            hud.draw_rect(
+                x + layout.tab_w - scale,
+                layout.tab_y,
+                scale,
+                layout.tab_h,
+                ochre_dark,
+            );
+
+            if self.engine.hud_point_sprite_count > *sprite {
+                let sprite_index = hud.point_sprite_index(*sprite);
+                if let Some((width, height)) = hud.sprite_size(sprite_index) {
+                    let target_w = 24.0 * scale;
+                    let target_h = 22.0 * scale;
+                    let icon_scale = (target_w / width as f32).min(target_h / height as f32);
+                    let icon_w = width as f32 * icon_scale;
+                    let icon_h = height as f32 * icon_scale;
+                    hud.draw_sprite_tinted(
+                        sprite_index,
+                        x + (layout.tab_w - icon_w) * 0.5,
+                        layout.tab_y + (layout.tab_h - icon_h) * 0.5,
+                        icon_scale,
+                        icon_scale,
+                        ink,
+                    );
+                }
+            }
+        }
+
+        // Compact tribe/status block. It deliberately stays visual-only while
+        // construction is the sole implemented panel mode.
+        let status_y = 118.0 * scale;
+        let status_h = 79.0 * scale;
+        hud.draw_rect(0.0, status_y, layout.sidebar_w, scale, ochre_dark);
+        hud.draw_rect(
+            0.0,
+            status_y + status_h - scale,
+            layout.sidebar_w,
+            scale,
+            ochre_dark,
+        );
+        hud.draw_rect(37.0 * scale, status_y, scale, status_h, ochre_dark);
+        hud.draw_rect(76.0 * scale, status_y, scale, status_h, ochre_dark);
+
+        let meter_x = 2.0 * scale;
+        let meter_y = 142.0 * scale;
+        let meter_w = 13.0 * scale;
+        let meter_h = 28.0 * scale;
+        hud.draw_rect(meter_x, meter_y, meter_w, meter_h, [0.93, 0.93, 0.86, 1.0]);
+        let mana_fraction = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
+        let fill_h = meter_h * mana_fraction;
+        hud.draw_rect(
+            meter_x,
+            meter_y + meter_h - fill_h,
+            meter_w,
+            fill_h,
+            [0.02, 0.62, 0.28, 1.0],
+        );
+
+        if self.engine.hud_point_sprite_count > 80 {
+            let brave = hud.point_sprite_index(80);
+            if let Some((width, height)) = hud.sprite_size(brave) {
+                let icon_scale = (29.0 * scale / height as f32).min(22.0 * scale / width as f32);
+                hud.draw_sprite_tinted(
+                    brave,
+                    18.0 * scale,
+                    138.0 * scale,
+                    icon_scale,
+                    icon_scale,
+                    ink,
+                );
+            }
+        }
+        hud.draw_text(
+            &format!("{}", hud_state.player_population),
+            80.0 * scale,
+            124.0 * scale,
+            6.0 * scale,
+            ink,
+        );
+
+        // Striped population band from the original construction HUD.
+        let population_y = 198.0 * scale;
+        let population_h = 18.0 * scale;
+        hud.draw_rect(
+            3.0 * scale,
+            population_y,
+            108.0 * scale,
+            population_h,
+            ochre_dark,
+        );
+        let inner_x = 5.0 * scale;
+        let inner_y = population_y + 2.0 * scale;
+        let inner_w = 104.0 * scale;
+        let inner_h = population_h - 4.0 * scale;
+        let population_fraction = (hud_state.player_population as f32
+            / hud_state.player_max_population.max(1) as f32)
+            .clamp(0.0, 1.0);
+        let stripe_w = scale.max(1.0);
+        let stripe_count = (inner_w / stripe_w).ceil() as usize;
+        for stripe in 0..stripe_count {
+            let filled = stripe as f32 / stripe_count as f32 >= 1.0 - population_fraction;
+            let color = if filled {
+                [0.05, 0.43, 0.36, 1.0]
+            } else if stripe % 2 == 0 {
+                [0.80, 0.80, 0.72, 1.0]
+            } else {
+                [0.20, 0.20, 0.19, 1.0]
+            };
+            hud.draw_rect(
+                inner_x + stripe as f32 * stripe_w,
+                inner_y,
+                stripe_w,
+                inner_h,
+                color,
+            );
+        }
+
+        // Construction grid: the first campaign state exposes only the Small
+        // Hut. Other tiles stay empty or locked, matching the captured HUD.
+        let grid_y = layout.panel_y;
+        let cell_w = 57.0 * scale;
+        let cell_h = 79.0 * scale;
+        for row in 0..3usize {
+            for col in 0..2usize {
+                let x = col as f32 * cell_w;
+                let y = grid_y + row as f32 * cell_h;
+                hud.draw_rect(x, y, cell_w, scale, [0.70, 0.32, 0.02, 1.0]);
+                hud.draw_rect(x, y, scale, cell_h, [0.70, 0.32, 0.02, 1.0]);
+                hud.draw_rect(
+                    x + cell_w - scale,
+                    y,
+                    scale,
+                    cell_h,
+                    [0.96, 0.59, 0.06, 1.0],
+                );
+                hud.draw_rect(
+                    x,
+                    y + cell_h - scale,
+                    cell_w,
+                    scale,
+                    [0.96, 0.59, 0.06, 1.0],
+                );
+            }
+        }
+
+        hud.draw_rect(
+            scale,
+            grid_y + scale,
+            cell_w - 2.0 * scale,
+            cell_h - 2.0 * scale,
+            ochre_light,
+        );
+        if self.engine.hud_point_sprite_count > 58 {
+            let hut = hud.point_sprite_index(58);
+            if let Some((width, height)) = hud.sprite_size(hut) {
+                let icon_scale = (48.0 * scale / width as f32).min(52.0 * scale / height as f32);
+                let icon_w = width as f32 * icon_scale;
+                let icon_h = height as f32 * icon_scale;
+                hud.draw_sprite_tinted(
+                    hut,
+                    (cell_w - icon_w) * 0.5,
+                    grid_y + (cell_h - icon_h) * 0.5,
+                    icon_scale,
+                    icon_scale,
+                    [0.34, 0.16, 0.20, 1.0],
+                );
+            }
+        }
+
+        hud.draw_text(
+            "?",
+            14.0 * scale,
+            grid_y + cell_h + 18.0 * scale,
+            31.0 * scale,
+            [0.25, 0.08, 0.32, 1.0],
+        );
+
+        // Viewport marker is drawn after the circular minimap texture.
+        let vp = &hud_state.camera_viewport;
+        let cell_to_px = layout.mm_size / 128.0;
+        let rx = layout.mm_x + vp.cam_cell_x * cell_to_px - vp.view_width_cells * cell_to_px * 0.5;
+        let ry = layout.mm_y + vp.cam_cell_y * cell_to_px - vp.view_height_cells * cell_to_px * 0.5;
+        let rw = vp.view_width_cells * cell_to_px;
+        let rh = vp.view_height_cells * cell_to_px;
+        hud.draw_rect(rx, ry, rw, scale, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx, ry + rh - scale, rw, scale, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx, ry, scale, rh, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx + rw - scale, ry, scale, rh, [0.85, 0.85, 1.0, 0.75]);
+
+        hud.render_full(
+            encoder,
+            view,
+            &gpu.queue,
+            layout.screen_w,
+            layout.screen_h,
+            Some((layout.mm_x, layout.mm_y, layout.mm_size, layout.mm_size)),
+        );
+    }
+
+    #[allow(dead_code)]
+    fn draw_legacy_hud(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let gpu = match self.gpu.as_ref() {
             Some(g) => g,
             None => return,
@@ -4682,23 +4971,29 @@ impl ApplicationHandler for App {
         self.rebuild_spawn_model();
         self.center_on_tribe0_shaman();
 
-        // Build HUD sprite atlas from plspanel.spr
+        // Build HUD sprite atlas from plspanel.spr and POINT0-0.DAT.
         {
             let panel_path = base2.join("data").join("plspanel.spr");
+            let point_path = base2.join("data").join("POINT0-0.DAT");
             if let Some(panel_container) = ContainerPSFB::from_file(&panel_path) {
                 self.engine.hud_panel_sprite_count = panel_container.len();
+                let point_container = ContainerPSFB::from_file(&point_path);
+                self.engine.hud_point_sprite_count =
+                    point_container.as_ref().map_or(0, ContainerPSFB::len);
                 if let Some(ref mut hud) = self.hud {
                     let gpu = self.gpu.as_ref().unwrap();
                     hud.build_atlas(
                         &gpu.device,
                         &gpu.queue,
                         &panel_container,
+                        point_container.as_ref(),
                         &level_res2.params.palette,
                     );
                 }
                 log::info!(
-                    "[hud] Loaded {} sprites from plspanel.spr",
-                    self.engine.hud_panel_sprite_count
+                    "[hud] Loaded {} panel sprites and {} POINT sprites",
+                    self.engine.hud_panel_sprite_count,
+                    self.engine.hud_point_sprite_count
                 );
             } else {
                 log::warn!(
@@ -4790,11 +5085,14 @@ impl ApplicationHandler for App {
                             // Check if click is on minimap for click-to-move
                             let mx = self.input.mouse_pos.x;
                             let my = self.input.mouse_pos.y;
-                            if mx >= layout.mm_x
-                                && mx <= layout.mm_x + layout.mm_w
-                                && my >= layout.mm_y
-                                && my <= layout.mm_y + layout.mm_h
-                            {
+                            let minimap_center_x = layout.mm_x + layout.mm_size * 0.5;
+                            let minimap_center_y = layout.mm_y + layout.mm_size * 0.5;
+                            let minimap_dx = mx - minimap_center_x;
+                            let minimap_dy = my - minimap_center_y;
+                            let in_minimap = my < layout.tab_y
+                                && minimap_dx * minimap_dx + minimap_dy * minimap_dy
+                                    <= (layout.mm_size * 0.49).powi(2);
+                            if in_minimap {
                                 let (click_cell_x, click_cell_y) = hud::minimap_click_to_cell(
                                     mx,
                                     my,
