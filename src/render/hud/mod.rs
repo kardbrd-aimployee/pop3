@@ -854,6 +854,17 @@ pub const HFX_PANEL_SURFACE_TILES: [u16; 16] = [
     1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 1462, 1463, 1464, 1465,
 ];
 
+/// Return the interior member of the native tiled-panel's 2×2 cycle.
+///
+/// `GUI_RenderTiledPanel` at `popTB.exe` `0x4936b0` increments its source
+/// row and column counters for the border cells too.  The first interior tile
+/// therefore uses the bottom-right member of the four-tile family, not the
+/// top-left member.  `row` and `column` here are relative to the first
+/// interior cell.
+fn panel_surface_interior_tile(tile_ids: &[u16; 16], row: usize, column: usize) -> u16 {
+    tile_ids[12 + ((row + 1) & 1) + 2 * ((column + 1) & 1)]
+}
+
 /// Verified original HFX art required by the construction HUD.
 pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_SHAMAN_WIDGET,
@@ -1976,7 +1987,11 @@ impl HudRenderer {
             let mut tile_x = inner_left;
             while tile_x < inner_right {
                 let draw_w = tile_w.min(inner_right - tile_x);
-                let interior = tile_ids[12 + (row % 2) * 2 + column % 2];
+                // The original loop counts the top/left border as tile zero,
+                // so the visible interior cycle is offset by one in both
+                // axes.  Keep that phase rather than starting a new pattern
+                // at the panel's inner corner.
+                let interior = panel_surface_interior_tile(tile_ids, row, column);
                 self.draw_hfx_clipped_scaled(
                     interior, tile_x, tile_y, draw_w, draw_h, scale_x, scale_y,
                 );
@@ -2778,6 +2793,21 @@ mod tests {
                 1464, 1465,
             ]
         );
+    }
+
+    #[test]
+    fn tiled_panel_interior_cycle_matches_native_border_offset() {
+        // GUI_RenderTiledPanel starts both counters at the top-left border.
+        // Its first interior cell is therefore source tile 1465, then the
+        // cycle proceeds 1463 / 1464 / 1462.  This protects the native
+        // mottled-panel texture from a visibly shifted checkerboard seam.
+        let cycle = [
+            panel_surface_interior_tile(&HFX_PANEL_SURFACE_TILES, 0, 0),
+            panel_surface_interior_tile(&HFX_PANEL_SURFACE_TILES, 0, 1),
+            panel_surface_interior_tile(&HFX_PANEL_SURFACE_TILES, 1, 0),
+            panel_surface_interior_tile(&HFX_PANEL_SURFACE_TILES, 1, 1),
+        ];
+        assert_eq!(cycle, [1465, 1463, 1464, 1462]);
     }
 
     #[test]
