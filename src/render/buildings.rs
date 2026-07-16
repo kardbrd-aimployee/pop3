@@ -10,7 +10,7 @@ use crate::render::terrain::LandscapeMesh;
 use crate::render::tex_model::{TexModel, TexVertex};
 
 fn building_angle_radians(angle: u32) -> f32 {
-    -(angle as f32) * std::f32::consts::TAU / 2048.0
+    -std::f32::consts::FRAC_PI_2 - (angle as f32) * std::f32::consts::TAU / 2048.0
 }
 
 use crate::render::sprites::LevelObject;
@@ -244,9 +244,11 @@ mod tests {
     use super::building_angle_radians;
 
     #[test]
-    fn building_rotation_has_no_fixed_quarter_turn() {
-        assert!(building_angle_radians(0).abs() < f32::EPSILON);
-        assert!((building_angle_radians(512) + std::f32::consts::FRAC_PI_2).abs() < 0.000_001);
-        assert!((building_angle_radians(1024) + std::f32::consts::PI).abs() < 0.000_001);
+    fn building_rotation_corrects_model_space_quarter_turn() {
+        assert!((building_angle_radians(0) + std::f32::consts::FRAC_PI_2).abs() < 0.000_001);
+        assert!((building_angle_radians(512) + std::f32::consts::PI).abs() < 0.000_001);
+        assert!(
+            (building_angle_radians(1024) + 3.0 * std::f32::consts::FRAC_PI_2).abs() < 0.000_001
+        );
     }
 }
