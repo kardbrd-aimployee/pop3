@@ -2943,17 +2943,37 @@ impl App {
                 scale_y,
             );
             if slot == 0 {
+                // The native meter is a white tiled field beneath the dynamic
+                // green level.  Leaving the button-frame centre exposed made
+                // an empty meter orange, unlike the captured original HUD.
+                // Its one logical-pixel inset is visible in the 800px source
+                // layout and remains correct under PopTB's independent scale.
+                let inset_x = scale_x;
+                let inset_y = scale_y;
+                let meter_x = cell_x + inset_x;
+                let meter_y = cell_y + inset_y;
+                let meter_w = cell_w - inset_x * 2.0;
+                let meter_h = cell_h - inset_y * 2.0;
+                hud.draw_hfx_tiled_scaled(
+                    hud::HFX_STATUS_WHITE_TEXTURE,
+                    meter_x,
+                    meter_y,
+                    meter_w,
+                    meter_h,
+                    scale_x,
+                    scale_y,
+                );
                 let mana_fraction =
                     compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-                let inset_x = 2.0 * scale_x;
-                let inset_y = 2.0 * scale_y;
-                let fill_h = (cell_h - inset_y * 2.0) * mana_fraction;
+                let fill_h = meter_h * mana_fraction;
                 hud.draw_rect(
-                    cell_x + inset_x,
-                    cell_y + cell_h - inset_y - fill_h,
-                    cell_w - inset_x * 2.0,
+                    meter_x,
+                    meter_y + meter_h - fill_h,
+                    meter_w,
                     fill_h,
-                    [0.02, 0.62, 0.28, 1.0],
+                    // Sampled from the non-antialiased native meter fill in
+                    // `pop3-original-native-hud.png`: RGB #00A451.
+                    [0.0, 164.0 / 255.0, 81.0 / 255.0, 1.0],
                 );
             }
             if slot == 1 {
