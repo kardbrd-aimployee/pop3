@@ -2907,10 +2907,10 @@ impl App {
             11.0 * scale_y,
         );
 
-        // Quick-row cells: only mana and the follower art are live in this
-        // construction-only implementation, but the other native frames stay
-        // visible exactly where the original places them.
-        for slot in 0..6 {
+        // The construction-only sidebar has only the two live quick-row
+        // controls seen in the native capture: mana and follower status.
+        // Empty spell slots are not rendered as invented button frames.
+        for slot in 0..2 {
             let cell_x = slot as f32 * 16.0 * scale_x;
             let cell_y = 153.0 * scale_y;
             let cell_w = 15.0 * scale_x;
