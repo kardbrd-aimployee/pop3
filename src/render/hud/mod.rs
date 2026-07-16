@@ -108,13 +108,26 @@ pub struct MinimapData {
     /// is populated when native resources are available; `heights` remains a
     /// portable fallback for test and no-asset runs.
     pub native_terrain_rgba: Option<Arc<[u8]>>,
+    /// The level palette that the original object pass uses for its marker
+    /// indices.  It stays separate from the expanded terrain so people and
+    /// buildings retain their distinct native palette colours.
+    pub native_palette: Option<Arc<[u8]>>,
     pub dots: Vec<MinimapDot>,
+}
+
+/// Object classes rendered by the original minimap object pass.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum MinimapMarkerKind {
+    Person,
+    Building,
+    WildPerson,
 }
 
 pub struct MinimapDot {
     pub cell_x: u8,
     pub cell_y: u8,
     pub tribe_index: u8,
+    pub kind: MinimapMarkerKind,
 }
 
 pub struct PanelEntry {
@@ -179,14 +192,28 @@ pub const FONT_ROWS: u32 = 6;
 pub const FONT_ATLAS_W: u32 = FONT_COLS * FONT_GLYPH_W; // 128
 pub const FONT_ATLAS_H: u32 = FONT_ROWS * FONT_GLYPH_H; // 48
 
-/// Tribe colors for minimap dots (RGB, 0-255).
-pub const MINIMAP_TRIBE_COLORS: [[u8; 3]; 4] = [
-    [80, 130, 255], // Blue
-    // The original HUD capture's unblended red minimap markers are #FF0000.
-    [255, 0, 0],    // Red
-    [255, 255, 60], // Yellow
-    [60, 255, 60],  // Green
+/// Palette indices loaded by the original `Minimap_RenderObjects` pass.
+/// The executable stores these as 5-byte tribe records at `0x5A17A9`:
+/// person at byte zero, building at byte one.
+pub const MINIMAP_PERSON_PALETTE_INDICES: [u8; 4] = [0xDF, 0xF6, 0xEF, 0xE5];
+pub const MINIMAP_BUILDING_PALETTE_INDICES: [u8; 4] = [0xDA, 0xF2, 0xEC, 0xE2];
+pub const MINIMAP_WILD_PERSON_PALETTE_INDEX: u8 = 0xBF;
+
+// The source palette is supplied at runtime.  These values are the matching
+// entries from the shipped level palettes and only cover no-asset/test runs.
+const MINIMAP_PERSON_FALLBACK_COLORS: [[u8; 3]; 4] = [
+    [0x87, 0x8B, 0xEB],
+    [0xC7, 0x73, 0x4B],
+    [0xFB, 0xD7, 0x5F],
+    [0x3F, 0xCF, 0x77],
 ];
+const MINIMAP_BUILDING_FALLBACK_COLORS: [[u8; 3]; 4] = [
+    [0x23, 0x33, 0x6F],
+    [0x5F, 0x07, 0x07],
+    [0xA3, 0x77, 0x13],
+    [0x17, 0x67, 0x3F],
+];
+const MINIMAP_WILD_PERSON_FALLBACK_COLOR: [u8; 3] = [0x7F, 0x77, 0x57];
 
 /// Native minimap water sampled from the uniform ocean in the owner's
 /// original-HUD capture: RGB `#00556B`. The minimap is dynamic, but its base
@@ -516,21 +543,28 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
             }
             fallback
         });
-    // Unit dots
+    // The original object pass draws normal people and buildings as 2x2
+    // palette-indexed blocks.  Wild people use its separate one-pixel path.
     for dot in &data.dots {
         let cx = (dot.cell_x as usize).min(127);
         let cy = (dot.cell_y as usize).min(127);
-        let dx = cx as f32 + 0.5 - 64.0;
-        let dy = cy as f32 + 0.5 - 64.0;
-        if dx * dx + dy * dy > 63.5 * 63.5 {
-            continue;
+        let color = minimap_marker_color(dot, data.native_palette.as_deref());
+        let pixels: &[(usize, usize)] = match dot.kind {
+            MinimapMarkerKind::WildPerson => &[(cx, cy)],
+            MinimapMarkerKind::Person | MinimapMarkerKind::Building => {
+                &[(cx, cy), (cx + 1, cy), (cx, cy + 1), (cx + 1, cy + 1)]
+            }
+        };
+        for &(x, y) in pixels {
+            if x >= 128 || y >= 128 {
+                continue;
+            }
+            let off = (y * 128 + x) * 4;
+            rgba[off] = color[0];
+            rgba[off + 1] = color[1];
+            rgba[off + 2] = color[2];
+            rgba[off + 3] = 255;
         }
-        let off = (cy * 128 + cx) * 4;
-        let tc = &MINIMAP_TRIBE_COLORS[(dot.tribe_index as usize).min(3)];
-        rgba[off] = tc[0];
-        rgba[off + 1] = tc[1];
-        rgba[off + 2] = tc[2];
-        rgba[off + 3] = 255;
     }
 
     // The original game presents the map through a circular aperture. Keep the
@@ -547,6 +581,32 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
         }
     }
     rgba
+}
+
+fn minimap_marker_color(dot: &MinimapDot, palette: Option<&[u8]>) -> [u8; 3] {
+    let tribe = (dot.tribe_index as usize).min(3);
+    let (palette_index, fallback) = match dot.kind {
+        MinimapMarkerKind::Person => (
+            MINIMAP_PERSON_PALETTE_INDICES[tribe],
+            MINIMAP_PERSON_FALLBACK_COLORS[tribe],
+        ),
+        MinimapMarkerKind::Building => (
+            MINIMAP_BUILDING_PALETTE_INDICES[tribe],
+            MINIMAP_BUILDING_FALLBACK_COLORS[tribe],
+        ),
+        MinimapMarkerKind::WildPerson => (
+            MINIMAP_WILD_PERSON_PALETTE_INDEX,
+            MINIMAP_WILD_PERSON_FALLBACK_COLOR,
+        ),
+    };
+    palette
+        .and_then(|entries| {
+            let offset = palette_index as usize * 4;
+            entries
+                .get(offset..offset + 3)
+                .map(|rgb| [rgb[0], rgb[1], rgb[2]])
+        })
+        .unwrap_or(fallback)
 }
 
 /// Compute the native panel geometry from Populous' 640×480 virtual canvas.
@@ -2397,6 +2457,7 @@ mod tests {
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
+            native_palette: None,
             dots: vec![],
         };
 
@@ -2420,6 +2481,7 @@ mod tests {
         let data = MinimapData {
             heights,
             native_terrain_rgba: None,
+            native_palette: None,
             dots: vec![],
         };
 
@@ -2435,26 +2497,72 @@ mod tests {
     }
 
     #[test]
-    fn generate_minimap_unit_dot_overwrites_terrain() {
-        // Arrange: water terrain, one centered unit dot, tribe 1 (red)
+    fn generate_minimap_person_marker_uses_native_fallback_colour_and_footprint() {
+        // Arrange: water terrain, one centered red-tribe person marker.
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
+            native_palette: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
                 tribe_index: 1,
+                kind: MinimapMarkerKind::Person,
             }],
         };
 
         // Act
         let rgba = generate_minimap_rgba(&data);
 
-        // Assert: centered cell should be red tribe color, not water
-        let off = (64 * 128 + 64) * 4;
-        assert_eq!(rgba[off], 255); // R
-        assert_eq!(rgba[off + 1], 0); // G
-        assert_eq!(rgba[off + 2], 0); // B
+        // Assert: the native person marker is a 2x2 #C7734B block.
+        for (x, y) in [(64, 64), (65, 64), (64, 65), (65, 65)] {
+            let off = (y * 128 + x) * 4;
+            assert_eq!(&rgba[off..off + 4], &[0xC7, 0x73, 0x4B, 0xFF]);
+        }
+    }
+
+    #[test]
+    fn generate_minimap_building_marker_uses_its_distinct_native_palette_entry() {
+        let mut palette = vec![0u8; 256 * 4];
+        palette[0xDA * 4..0xDA * 4 + 3].copy_from_slice(&[0x23, 0x33, 0x6F]);
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
+            native_palette: Some(palette.into()),
+            dots: vec![MinimapDot {
+                cell_x: 64,
+                cell_y: 64,
+                tribe_index: 0,
+                kind: MinimapMarkerKind::Building,
+            }],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+        for (x, y) in [(64, 64), (65, 64), (64, 65), (65, 65)] {
+            let off = (y * 128 + x) * 4;
+            assert_eq!(&rgba[off..off + 4], &[0x23, 0x33, 0x6F, 0xFF]);
+        }
+    }
+
+    #[test]
+    fn generate_minimap_wild_person_marker_is_a_single_native_palette_pixel() {
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
+            native_palette: None,
+            dots: vec![MinimapDot {
+                cell_x: 64,
+                cell_y: 64,
+                tribe_index: u8::MAX,
+                kind: MinimapMarkerKind::WildPerson,
+            }],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+        let center = (64 * 128 + 64) * 4;
+        let right = (64 * 128 + 65) * 4;
+        assert_eq!(&rgba[center..center + 4], &[0x7F, 0x77, 0x57, 0xFF]);
+        assert_eq!(&rgba[right..right + 4], &[0x00, 0x55, 0x6B, 0xFF]);
     }
 
     #[test]
@@ -2465,6 +2573,7 @@ mod tests {
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: Some(terrain.into()),
+            native_palette: None,
             dots: vec![],
         };
 

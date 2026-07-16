@@ -74,8 +74,8 @@ use crate::engine::{GameAction, GameSession};
 
 use crate::render::hud::{
     self, compute_mana_fraction, HealthBarEntry, HealthBarType, HudRenderer, HudState, HudTab,
-    MinimapData, MinimapDot, MinimapViewport, PanelEntry, SelectedEntityInfo, TribePopulation,
-    HUD_TRIBE_COLORS,
+    MinimapData, MinimapDot, MinimapMarkerKind, MinimapViewport, PanelEntry, SelectedEntityInfo,
+    TribePopulation, HUD_TRIBE_COLORS,
 };
 
 /******************************************************************************/
@@ -104,10 +104,9 @@ fn expand_native_minimap_indices(indices: &[u8], palette: &[u8]) -> Arc<[u8]> {
     let mut rgba = Vec::with_capacity(indices.len() * 4);
     for &index in indices {
         let palette_offset = index as usize * 4;
-        // The shipped palette files contain entries 0..=254.  `pop_res`
-        // leaves the unused 255th slot black when expanding an indexed map;
-        // preserve that native/extractor behavior instead of rejecting the
-        // whole minimap texture when a level uses index 255.
+        // Preserve the original palette's complete RGBA table.  A malformed
+        // palette falls back only for its missing entry rather than rejecting
+        // the complete minimap texture.
         let color = palette
             .get(palette_offset..palette_offset + 3)
             .unwrap_or(&[0, 0, 0]);
@@ -220,6 +219,7 @@ pub struct GameEngine {
     hud_panel_sprite_count: usize,
     hud_point_sprite_count: usize,
     native_minimap_terrain_rgba: Option<Arc<[u8]>>,
+    native_minimap_palette: Option<Arc<[u8]>>,
 
     // Game simulation
     unit_coordinator: UnitCoordinator,
@@ -580,15 +580,33 @@ impl GameEngine {
     fn build_hud_state(&self) -> HudState {
         let snapshot = self.session.as_ref().map(GameSession::snapshot);
         let dots: Vec<MinimapDot> = if let Some(snapshot) = &snapshot {
-            snapshot
+            let mut dots: Vec<_> = snapshot
                 .persons
                 .iter()
                 .map(|person| MinimapDot {
                     cell_x: (person.cell_x as u8).min(127),
                     cell_y: (person.cell_y as u8).min(127),
                     tribe_index: person.tribe,
+                    kind: if person.tribe == u8::MAX {
+                        MinimapMarkerKind::WildPerson
+                    } else {
+                        MinimapMarkerKind::Person
+                    },
                 })
-                .collect()
+                .collect();
+            dots.extend(
+                snapshot
+                    .objects
+                    .iter()
+                    .filter(|object| object.model_type == ModelType::Building)
+                    .map(|building| MinimapDot {
+                        cell_x: (building.cell_x as u8).min(127),
+                        cell_y: (building.cell_y as u8).min(127),
+                        tribe_index: building.tribe,
+                        kind: MinimapMarkerKind::Building,
+                    }),
+            );
+            dots
         } else {
             self.unit_coordinator
                 .units()
@@ -598,12 +616,18 @@ impl GameEngine {
                     cell_x: (u.cell_x as u8).min(127),
                     cell_y: (u.cell_y as u8).min(127),
                     tribe_index: u.tribe_index,
+                    kind: if u.tribe_index == u8::MAX {
+                        MinimapMarkerKind::WildPerson
+                    } else {
+                        MinimapMarkerKind::Person
+                    },
                 })
                 .collect()
         };
         let minimap = MinimapData {
             heights: *self.landscape_mesh.heights(),
             native_terrain_rgba: self.native_minimap_terrain_rgba.clone(),
+            native_palette: self.native_minimap_palette.clone(),
             dots,
         };
         let panel_entries = match self.hud_tab {
@@ -1319,6 +1343,7 @@ impl App {
                 hud_panel_sprite_count: 0,
                 hud_point_sprite_count: 0,
                 native_minimap_terrain_rgba: None,
+                native_minimap_palette: None,
                 unit_coordinator: UnitCoordinator::new(),
                 game_world: {
                     let mut w = GameWorld::new(20);
@@ -3085,6 +3110,7 @@ impl App {
 
     fn rebuild_landscape_variants(&mut self, level_res: &LevelRes) {
         self.engine.native_minimap_terrain_rgba = native_minimap_terrain_rgba(level_res);
+        self.engine.native_minimap_palette = Some(level_res.params.palette.clone().into());
 
         let gpu = self.gpu.as_ref().unwrap();
         let device = &gpu.device;
@@ -5373,7 +5399,7 @@ mod tests {
     }
 
     #[test]
-    fn native_minimap_palette_leaves_the_missing_255_slot_black() {
+    fn native_minimap_palette_falls_back_to_black_for_a_missing_entry() {
         let mut palette = vec![0u8; 255 * 4];
         palette[4..7].copy_from_slice(&[0x12, 0x34, 0x56]);
 
