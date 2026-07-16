@@ -2707,39 +2707,23 @@ impl App {
         let ochre_light = [0.96, 0.60, 0.055, 1.0];
         let ochre_dark = [0.45, 0.20, 0.025, 1.0];
 
-        // The original sidebar is composited from its 32px HFX repeat
-        // textures. Draw these before the minimap layer so the canvas masks
-        // the middle naturally instead of approximating its circular aperture.
-        if !hud.draw_hfx_tiled_scaled(
-            hud::HFX_MINIMAP_SURROUND_TEXTURE,
+        // The original renders two tiled UI panels: the full sidebar and the
+        // open construction page over its lower portion.  Each surface uses
+        // the 16 original corner/edge/interior sprites rather than a newly
+        // drawn or uniformly repeated background.
+        if !hud.draw_hfx_panel_surface_scaled(
+            &hud::HFX_PANEL_SURFACE_TILES,
             0.0,
             0.0,
             layout.sidebar_w,
-            layout.tab_y,
+            layout.screen_h,
             scale_x,
             scale_y,
         ) {
-            hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.tab_y, ochre_dark);
+            hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.screen_h, ochre_dark);
         }
-        if !hud.draw_hfx_tiled_scaled(
-            hud::HFX_STATUS_TEXTURE,
-            0.0,
-            layout.tab_y,
-            layout.sidebar_w,
-            layout.panel_y - layout.tab_y,
-            scale_x,
-            scale_y,
-        ) {
-            hud.draw_rect(
-                0.0,
-                layout.tab_y,
-                layout.sidebar_w,
-                layout.panel_y - layout.tab_y,
-                ochre,
-            );
-        }
-        if !hud.draw_hfx_tiled_scaled(
-            hud::HFX_CONSTRUCTION_TEXTURE,
+        if !hud.draw_hfx_panel_surface_scaled(
+            &hud::HFX_PANEL_SURFACE_TILES,
             0.0,
             layout.panel_y,
             layout.sidebar_w,
@@ -2774,9 +2758,9 @@ impl App {
             let x = layout.tab_xs[index];
             let selected = index == 0;
             let frame = if selected {
-                &hud::HFX_TAB_FRAME_SELECTED
-            } else {
                 &hud::HFX_TAB_FRAME
+            } else {
+                &hud::HFX_TAB_FRAME_SELECTED
             };
             let icon = if selected {
                 hud::HFX_TAB_ICON_BUILDINGS_SELECTED

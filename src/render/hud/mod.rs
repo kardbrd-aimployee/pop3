@@ -660,12 +660,15 @@ pub fn detect_construction_slot_click(
     Some(row * 3 + col)
 }
 
-/// In-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
+/// Depressed in-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
 /// `[top-left, top, top-right, left, center, right, bottom-left, bottom,
-/// bottom-right]`.
+/// bottom-right]`.  The native screencut uses this darker state for the open
+/// page, not the raised gold counterpart below.
 pub const HFX_TAB_FRAME: [u16; 9] = [740, 744, 741, 746, 748, 747, 742, 745, 743];
 
-/// Highlighted counterpart of [`HFX_TAB_FRAME`].
+/// Raised counterpart of [`HFX_TAB_FRAME`] for tabs whose page is not open.
+/// The historical asset order calls it "selected", but the observed native
+/// HUD uses the darker [`HFX_TAB_FRAME`] as the active/depressed state.
 pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760, 763, 761];
 
 /// In-game tab silhouettes in visual order: construction, spells, followers.
@@ -717,16 +720,19 @@ pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826
 /// `354..361` are spell glyphs and must not be substituted here.
 pub const POINT_CONSTRUCTION_ICONS: [usize; 8] = [58, 59, 60, 61, 62, 63, 64, 65];
 
-/// Native 32px repeat textures used by the panel compositor.
-pub const HFX_MINIMAP_SURROUND_TEXTURE: u16 = 700;
-pub const HFX_STATUS_TEXTURE: u16 = 706;
-pub const HFX_CONSTRUCTION_TEXTURE: u16 = 712;
+/// `GUI_RenderTiledPanel`'s native 16px surface family.  The original UI
+/// uses these as four corners, alternating horizontal/vertical edges, and a
+/// two-by-two interior cycle instead of stretching or repeating one generic
+/// background texture.
+///
+/// Order: top-left, top-right, bottom-left, bottom-right; top A/B, bottom
+/// A/B, left A/B, right A/B; interior AA/AB/BA/BB.
+pub const HFX_PANEL_SURFACE_TILES: [u16; 16] = [
+    1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 1462, 1463, 1464, 1465,
+];
 
 /// Verified original HFX art required by the construction HUD.
 pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
-    HFX_MINIMAP_SURROUND_TEXTURE,
-    HFX_STATUS_TEXTURE,
-    HFX_CONSTRUCTION_TEXTURE,
     HFX_SHAMAN_WIDGET,
     HFX_STATUS_AVATAR_COMPOSITE,
     713,
@@ -811,6 +817,22 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     676,
     678,
     680,
+    1450,
+    1451,
+    1452,
+    1453,
+    1454,
+    1455,
+    1456,
+    1457,
+    1458,
+    1459,
+    1460,
+    1461,
+    1462,
+    1463,
+    1464,
+    1465,
 ];
 
 /// Verified original HSPR art required by the construction HUD.
@@ -1645,6 +1667,171 @@ impl HudRenderer {
         true
     }
 
+    /// Compose a native `GUI_RenderTiledPanel` surface.  Unlike a nine-patch,
+    /// PopTB keeps the source texels at their native size and cycles the edge
+    /// and interior variants as the panel grows.  The final row/column is
+    /// source-clipped so a 100-unit sidebar never leaks a tile into the 3D
+    /// viewport.
+    pub fn draw_hfx_panel_surface_scaled(
+        &mut self,
+        tile_ids: &[u16; 16],
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
+        let Some((tile_w, tile_h)) = self.hfx_size(tile_ids[0]) else {
+            return false;
+        };
+        if width <= 0.0 || height <= 0.0 || scale_x <= 0.0 || scale_y <= 0.0 {
+            return false;
+        }
+        let tile_w = tile_w as f32 * scale_x;
+        let tile_h = tile_h as f32 * scale_y;
+        let corner_w = tile_w.min(width * 0.5);
+        let corner_h = tile_h.min(height * 0.5);
+        let right = x + width;
+        let bottom = y + height;
+        let inner_left = x + corner_w;
+        let inner_right = right - corner_w;
+        let inner_top = y + corner_h;
+        let inner_bottom = bottom - corner_h;
+
+        // Corners: top-left, top-right, bottom-left, bottom-right.
+        self.draw_hfx_clipped_scaled(tile_ids[0], x, y, corner_w, corner_h, scale_x, scale_y);
+        self.draw_hfx_clipped_scaled(
+            tile_ids[1],
+            inner_right,
+            y,
+            corner_w,
+            corner_h,
+            scale_x,
+            scale_y,
+        );
+        self.draw_hfx_clipped_scaled(
+            tile_ids[2],
+            x,
+            inner_bottom,
+            corner_w,
+            corner_h,
+            scale_x,
+            scale_y,
+        );
+        self.draw_hfx_clipped_scaled(
+            tile_ids[3],
+            inner_right,
+            inner_bottom,
+            corner_w,
+            corner_h,
+            scale_x,
+            scale_y,
+        );
+
+        let mut column = 0usize;
+        let mut tile_x = inner_left;
+        while tile_x < inner_right {
+            let draw_w = tile_w.min(inner_right - tile_x);
+            self.draw_hfx_clipped_scaled(
+                tile_ids[4 + column % 2],
+                tile_x,
+                y,
+                draw_w,
+                corner_h,
+                scale_x,
+                scale_y,
+            );
+            self.draw_hfx_clipped_scaled(
+                tile_ids[6 + column % 2],
+                tile_x,
+                inner_bottom,
+                draw_w,
+                corner_h,
+                scale_x,
+                scale_y,
+            );
+            column += 1;
+            tile_x += tile_w;
+        }
+
+        let mut row = 0usize;
+        let mut tile_y = inner_top;
+        while tile_y < inner_bottom {
+            let draw_h = tile_h.min(inner_bottom - tile_y);
+            self.draw_hfx_clipped_scaled(
+                tile_ids[8 + row % 2],
+                x,
+                tile_y,
+                corner_w,
+                draw_h,
+                scale_x,
+                scale_y,
+            );
+            self.draw_hfx_clipped_scaled(
+                tile_ids[10 + row % 2],
+                inner_right,
+                tile_y,
+                corner_w,
+                draw_h,
+                scale_x,
+                scale_y,
+            );
+
+            let mut column = 0usize;
+            let mut tile_x = inner_left;
+            while tile_x < inner_right {
+                let draw_w = tile_w.min(inner_right - tile_x);
+                let interior = tile_ids[12 + (row % 2) * 2 + column % 2];
+                self.draw_hfx_clipped_scaled(
+                    interior, tile_x, tile_y, draw_w, draw_h, scale_x, scale_y,
+                );
+                column += 1;
+                tile_x += tile_w;
+            }
+            row += 1;
+            tile_y += tile_h;
+        }
+        true
+    }
+
+    fn draw_hfx_clipped_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
+        let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        let region = self.sprite_regions[sprite_idx].clone();
+        let native_w = region.width as f32 * scale_x;
+        let native_h = region.height as f32 * scale_y;
+        if native_w <= 0.0 || native_h <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return false;
+        }
+        let draw_w = width.min(native_w);
+        let draw_h = height.min(native_h);
+        let u1 = region.u0 + (region.u1 - region.u0) * (draw_w / native_w);
+        let v1 = region.v0 + (region.v1 - region.v0) * (draw_h / native_h);
+        self.push_quad(
+            x,
+            y,
+            x + draw_w,
+            y + draw_h,
+            region.u0,
+            region.v0,
+            u1,
+            v1,
+            [1.0; 4],
+        );
+        true
+    }
+
     /// Draw only the border of an original nine-patch, preserving the native
     /// repeated panel texture underneath its transparent-looking center.
     pub fn draw_hfx_nine_patch_border(
@@ -2314,19 +2501,18 @@ mod tests {
             [821, 825, 822, 827, 829, 828, 823, 826, 824]
         );
         assert_eq!(
+            HFX_PANEL_SURFACE_TILES,
             [
-                HFX_MINIMAP_SURROUND_TEXTURE,
-                HFX_STATUS_TEXTURE,
-                HFX_CONSTRUCTION_TEXTURE,
-            ],
-            [700, 706, 712]
+                1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 1462, 1463,
+                1464, 1465,
+            ]
         );
     }
 
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 87);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 100);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -2338,14 +2524,6 @@ mod tests {
             .chain(HFX_STATUS_TALL_FRAME.iter())
             .chain(HFX_TAB_ICONS.iter())
             .chain(std::iter::once(&HFX_TAB_ICON_BUILDINGS_SELECTED))
-            .chain(
-                [
-                    HFX_MINIMAP_SURROUND_TEXTURE,
-                    HFX_STATUS_TEXTURE,
-                    HFX_CONSTRUCTION_TEXTURE,
-                ]
-                .iter(),
-            )
             .chain(
                 [
                     HFX_STATUS_AVATAR_COMPOSITE,
@@ -2360,6 +2538,7 @@ mod tests {
                 ]
                 .iter(),
             )
+            .chain(HFX_PANEL_SURFACE_TILES.iter())
         {
             assert!(
                 HFX_HUD_SPRITE_IDS.contains(sprite_id),
