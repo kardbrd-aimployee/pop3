@@ -30,6 +30,8 @@ pub struct HudSpriteCandidateRequest {
 pub enum HudSpriteBank {
     Primary,
     Extension,
+    Hfx,
+    Hfx1,
     Hspr1,
     Hspr2,
     Mspr,
@@ -45,6 +47,8 @@ impl HudSpriteBank {
         match value {
             "primary" => Some(Self::Primary),
             "extension" => Some(Self::Extension),
+            "hfx" => Some(Self::Hfx),
+            "hfx1" => Some(Self::Hfx1),
             "hspr1" => Some(Self::Hspr1),
             "hspr2" => Some(Self::Hspr2),
             "mspr" => Some(Self::Mspr),
@@ -61,6 +65,8 @@ impl HudSpriteBank {
         match self {
             Self::Primary => "HSPR0-0.DAT",
             Self::Extension => "HSPR0-1.DAT",
+            Self::Hfx => "hfx0-0.dat",
+            Self::Hfx1 => "hfx1-0.dat",
             Self::Hspr1 => "HSPR1-0.DAT",
             Self::Hspr2 => "hspr2-0.dat",
             Self::Mspr => "MSPR0-0.DAT",
@@ -77,7 +83,9 @@ impl HudSpriteBank {
             Self::Primary => None,
             Self::Extension => Some("HSPR0-1.TAB"),
             Self::MsprExtension => Some("MSPR0-1.TAB"),
-            Self::Hspr1
+            Self::Hfx
+            | Self::Hfx1
+            | Self::Hspr1
             | Self::Hspr2
             | Self::Mspr
             | Self::Point
@@ -92,7 +100,12 @@ impl HudSpriteBank {
             Self::Point | Self::Point1 | Self::Point2 => "PAL1-0.DAT".to_owned(),
             Self::Panel => "plspal.dat".to_owned(),
             Self::Hspr1 | Self::Hspr2 => "PAL1-0.DAT".to_owned(),
-            Self::Primary | Self::Extension | Self::Mspr | Self::MsprExtension => {
+            Self::Primary
+            | Self::Extension
+            | Self::Hfx
+            | Self::Hfx1
+            | Self::Mspr
+            | Self::MsprExtension => {
                 format!("pal0-{landscape}.dat")
             }
         }
@@ -292,6 +305,8 @@ fn load_sprite_bank(
 ) -> Result<LoadedSpriteBank, Box<dyn Error>> {
     match bank {
         HudSpriteBank::Primary
+        | HudSpriteBank::Hfx
+        | HudSpriteBank::Hfx1
         | HudSpriteBank::Hspr1
         | HudSpriteBank::Hspr2
         | HudSpriteBank::Mspr
@@ -560,5 +575,7 @@ mod tests {
         assert_eq!(HudSpriteBank::Hspr1.palette_file("7"), "PAL1-0.DAT");
         assert_eq!(HudSpriteBank::Mspr.palette_file("7"), "pal0-7.dat");
         assert_eq!(HudSpriteBank::Primary.palette_file("7"), "pal0-7.dat");
+        assert_eq!(HudSpriteBank::Hfx.palette_file("7"), "pal0-7.dat");
+        assert_eq!(HudSpriteBank::Hfx1.palette_file("7"), "pal0-7.dat");
     }
 }

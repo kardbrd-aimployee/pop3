@@ -167,6 +167,8 @@ fn cli() -> Command {
                         .value_parser([
                             "primary",
                             "extension",
+                            "hfx",
+                            "hfx1",
                             "hspr1",
                             "hspr2",
                             "mspr",

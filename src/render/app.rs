@@ -2702,49 +2702,62 @@ impl App {
         let ochre_dark = [0.45, 0.20, 0.025, 1.0];
         let ink = [0.16, 0.06, 0.08, 1.0];
 
-        // The native panel is a mottled ochre surface. Use small deterministic
-        // color variations so it reads like the original material rather than
-        // a modern flat rectangle.
-        let tile = 6.0 * scale;
-        let columns = (layout.sidebar_w / tile).ceil() as usize;
-        let rows = ((layout.screen_h - layout.tab_y) / tile).ceil() as usize;
-        for row in 0..rows {
-            for col in 0..columns {
-                let seed = (row * 37 + col * 19 + row * col * 3) % 9;
-                let shade = match seed {
-                    0 | 1 => [0.90, 0.51, 0.045, 1.0],
-                    2 => [0.73, 0.36, 0.025, 1.0],
-                    _ => ochre,
-                };
-                hud.draw_rect(
-                    col as f32 * tile,
-                    layout.tab_y + row as f32 * tile,
-                    tile + 0.5,
-                    tile + 0.5,
-                    shade,
-                );
-            }
+        // The original sidebar is composited from its 32px HFX repeat
+        // textures. Draw these before the minimap layer so the canvas masks
+        // the middle naturally instead of approximating its circular aperture.
+        if !hud.draw_hfx_tiled(
+            hud::HFX_MINIMAP_SURROUND_TEXTURE,
+            0.0,
+            0.0,
+            layout.sidebar_w,
+            layout.tab_y,
+            scale,
+        ) {
+            hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.tab_y, ochre_dark);
         }
+        if !hud.draw_hfx_tiled(
+            hud::HFX_STATUS_TEXTURE,
+            0.0,
+            layout.tab_y,
+            layout.sidebar_w,
+            layout.panel_y - layout.tab_y,
+            scale,
+        ) {
+            hud.draw_rect(
+                0.0,
+                layout.tab_y,
+                layout.sidebar_w,
+                layout.panel_y - layout.tab_y,
+                ochre,
+            );
+        }
+        if !hud.draw_hfx_tiled(
+            hud::HFX_CONSTRUCTION_TEXTURE,
+            0.0,
+            layout.panel_y,
+            layout.sidebar_w,
+            layout.screen_h - layout.panel_y,
+            scale,
+        ) {
+            hud.draw_rect(
+                0.0,
+                layout.panel_y,
+                layout.sidebar_w,
+                layout.screen_h - layout.panel_y,
+                ochre_light,
+            );
+        }
+        hud.mark_minimap_split();
 
-        // Fill only the corners around the circular minimap; the minimap itself
-        // is rendered first and remains visible through this aperture.
-        let top_rows = (layout.tab_y / tile).ceil() as usize;
-        let center_x = layout.sidebar_w * 0.5;
-        let center_y = (layout.mm_y + layout.mm_size * 0.5).max(0.0);
-        let aperture = 54.5 * scale;
-        for row in 0..top_rows {
-            for col in 0..columns {
-                let x = col as f32 * tile;
-                let y = row as f32 * tile;
-                let dx = x + tile * 0.5 - center_x;
-                let dy = y + tile * 0.5 - center_y;
-                if dx * dx + dy * dy >= aperture * aperture {
-                    let seed = (row * 23 + col * 11) % 7;
-                    let shade = if seed == 0 { ochre_dark } else { ochre };
-                    hud.draw_rect(x, y, tile + 0.5, tile + 0.5, shade);
-                }
-            }
-        }
+        // Native rock arch on top of the minimap canvas.
+        hud.draw_hfx_nine_patch_border(
+            &hud::HFX_MINIMAP_FRAME,
+            layout.mm_x,
+            layout.mm_y,
+            layout.mm_size,
+            layout.mm_size,
+            scale,
+        );
 
         // Native three-mode strip. Only Buildings is active in this slice;
         // Spells and Followers remain visible but intentionally inert.
@@ -2816,7 +2829,11 @@ impl App {
             [0.02, 0.62, 0.28, 1.0],
         );
 
-        if self.engine.hud_point_sprite_count > 80 {
+        if let Some((width, _)) = hud.hfx_size(hud::HFX_SHAMAN_WIDGET) {
+            let x = (layout.sidebar_w - width as f32 * scale) * 0.5;
+            hud.draw_hfx(hud::HFX_SHAMAN_WIDGET, x, 120.0 * scale, scale);
+        } else if self.engine.hud_point_sprite_count > 80 {
+            // Original-data fallback for an incomplete HFX bank.
             let brave = hud.point_sprite_index(80);
             if let Some((width, height)) = hud.sprite_size(brave) {
                 let icon_scale = (29.0 * scale / height as f32).min(22.0 * scale / width as f32);
@@ -2875,9 +2892,9 @@ impl App {
             );
         }
 
-        // Construction grid: POINT sprites 58 through 65 are the original
-        // Small Hut through Airship Hut glyphs. Keep the source pixels and
-        // palette intact rather than substituting hand-drawn icons.
+        // Construction grid: native HFX frames with original POINT building
+        // glyphs. The selected tile owns the frame center; idle tiles retain
+        // the repeated source texture beneath their native border.
         let grid_y = layout.panel_y;
         let cell_w = layout.construction_cell_w;
         let cell_h = layout.construction_cell_h;
@@ -2886,40 +2903,27 @@ impl App {
                 let x = col as f32 * cell_w;
                 let y = grid_y + row as f32 * cell_h;
                 let slot = row * 2 + col;
-                hud.draw_rect(x, y, cell_w, scale, [0.70, 0.32, 0.02, 1.0]);
-                hud.draw_rect(x, y, scale, cell_h, [0.70, 0.32, 0.02, 1.0]);
-                hud.draw_rect(
-                    x + cell_w - scale,
-                    y,
-                    scale,
-                    cell_h,
-                    [0.96, 0.59, 0.06, 1.0],
-                );
-                hud.draw_rect(
-                    x,
-                    y + cell_h - scale,
-                    cell_w,
-                    scale,
-                    [0.96, 0.59, 0.06, 1.0],
-                );
                 if slot == 0 {
-                    hud.draw_rect(
-                        x + scale,
-                        y + scale,
-                        cell_w - 2.0 * scale,
-                        cell_h - 2.0 * scale,
-                        ochre_light,
+                    hud.draw_hfx_nine_patch(&hud::HFX_BUILDING_FRAME, x, y, cell_w, cell_h, scale);
+                } else {
+                    hud.draw_hfx_nine_patch_border(
+                        &hud::HFX_BUILDING_FRAME,
+                        x,
+                        y,
+                        cell_w,
+                        cell_h,
+                        scale,
                     );
                 }
 
-                if let Some(point_sprite) = hud::construction_point_sprite(slot) {
-                    if self.engine.hud_point_sprite_count > point_sprite {
-                        let sprite_index = hud.point_sprite_index(point_sprite);
-                        if let Some((width, height)) = hud.sprite_size(sprite_index) {
+                if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
+                    if self.engine.hud_point_sprite_count > icon {
+                        let icon = hud.point_sprite_index(icon);
+                        if let Some((width, height)) = hud.sprite_size(icon) {
                             let icon_w = width as f32 * scale;
                             let icon_h = height as f32 * scale;
                             hud.draw_sprite(
-                                sprite_index,
+                                icon,
                                 x + (cell_w - icon_w) * 0.5,
                                 y + (cell_h - icon_h) * 0.5,
                                 scale,

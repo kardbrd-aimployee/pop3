@@ -633,14 +633,6 @@ pub fn detect_construction_slot_click(
     Some(row * 2 + col)
 }
 
-/// Native POINT0-0.DAT glyphs used by the construction tab, in display order.
-///
-/// The original game stores these separately from the model data: the
-/// construction tab is a fixed two-column grid of eight pictograms, followed
-/// by an empty fifth row. Keep this mapping in one place so the renderer and
-/// the Level 18 collection check cannot diverge.
-pub const CONSTRUCTION_POINT_SPRITES: [usize; 8] = [58, 59, 60, 61, 62, 63, 64, 65];
-
 /// In-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
 /// `[top-left, top, top-right, left, center, right, bottom-left, bottom,
 /// bottom-right]`.
@@ -652,16 +644,70 @@ pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760,
 /// In-game tab silhouettes in visual order: construction, spells, followers.
 pub const HFX_TAB_ICONS: [u16; 3] = [676, 678, 680];
 
-/// Small, verified subset of the HFX bank needed by the construction HUD.
-pub const HFX_HUD_SPRITE_IDS: [u16; 21] = [
-    740, 744, 741, 746, 748, 747, 742, 745, 743, 758, 762, 759, 764, 766, 765, 760, 763, 761, 676,
-    678, 680,
-];
+/// Native rock-arch frame around the minimap; its center stays transparent.
+pub const HFX_MINIMAP_FRAME: [u16; 9] = [690, 694, 691, 696, 0, 697, 692, 695, 693];
 
-/// Return the native POINT glyph for a construction-grid slot.
-pub fn construction_point_sprite(slot: usize) -> Option<usize> {
-    CONSTRUCTION_POINT_SPRITES.get(slot).copied()
-}
+/// Native shaman status widget in the main sidebar.
+pub const HFX_SHAMAN_WIDGET: u16 = 664;
+
+/// In-game construction-button frame tiles, in nine-patch order.
+pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826, 824];
+
+/// Native POINT building-menu silhouettes in the active game's eight
+/// supported slots. These are buildings (hut through airship hut); HFX
+/// `354..361` are spell glyphs and must not be substituted here.
+pub const POINT_CONSTRUCTION_ICONS: [usize; 8] = [58, 59, 60, 61, 62, 63, 64, 65];
+
+/// Native 32px repeat textures used by the panel compositor.
+pub const HFX_MINIMAP_SURROUND_TEXTURE: u16 = 700;
+pub const HFX_STATUS_TEXTURE: u16 = 706;
+pub const HFX_CONSTRUCTION_TEXTURE: u16 = 712;
+
+/// Verified original HFX art required by the construction HUD.
+pub const HFX_HUD_SPRITE_IDS: [u16; 42] = [
+    HFX_MINIMAP_SURROUND_TEXTURE,
+    HFX_STATUS_TEXTURE,
+    HFX_CONSTRUCTION_TEXTURE,
+    664,
+    690,
+    691,
+    692,
+    693,
+    694,
+    695,
+    696,
+    697,
+    740,
+    744,
+    741,
+    746,
+    748,
+    747,
+    742,
+    745,
+    743,
+    758,
+    762,
+    759,
+    764,
+    766,
+    765,
+    760,
+    763,
+    761,
+    821,
+    825,
+    822,
+    827,
+    829,
+    828,
+    823,
+    826,
+    824,
+    676,
+    678,
+    680,
+];
 
 /// Get the sprite region index for a PSFB panel sprite.
 /// Panel sprites are stored after the white pixel (1) + font glyphs (96).
@@ -694,6 +740,8 @@ pub struct HudRenderer {
     /// Atlas regions for the verified in-game HFX UI sprites.
     hfx_regions: HashMap<u16, usize>,
     vertices: Vec<HudVertex>,
+    /// Number of HUD vertices drawn beneath the separate minimap canvas.
+    minimap_split: usize,
     // Minimap texture (updated per-frame)
     minimap_bind_group: Option<wgpu::BindGroup>,
     minimap_texture: Option<GpuTexture>,
@@ -917,6 +965,7 @@ impl HudRenderer {
             point_region_start: 97,
             hfx_regions: HashMap::new(),
             vertices: Vec::with_capacity(4096),
+            minimap_split: 0,
             minimap_bind_group: None,
             minimap_texture: None,
         }
@@ -1139,6 +1188,14 @@ impl HudRenderer {
 
     pub fn begin_frame(&mut self) {
         self.vertices.clear();
+        self.minimap_split = 0;
+    }
+
+    /// Subsequent HUD vertices render above the minimap canvas. This mirrors
+    /// the original panel compositor: repeated sidebar art first, minimap,
+    /// then its frame and all controls.
+    pub fn mark_minimap_split(&mut self) {
+        self.minimap_split = self.vertices.len();
     }
 
     pub fn push_quad(
@@ -1329,6 +1386,69 @@ impl HudRenderer {
         true
     }
 
+    /// Repeat an original HFX texture at native pixel size, clipping the last
+    /// row and column instead of stretching its texels.
+    pub fn draw_hfx_tiled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale: f32,
+    ) -> bool {
+        let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        let region = self.sprite_regions[sprite_idx].clone();
+        let tile_w = region.width as f32 * scale;
+        let tile_h = region.height as f32 * scale;
+        if tile_w <= 0.0 || tile_h <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return false;
+        }
+
+        let mut tile_y = y;
+        while tile_y < y + height {
+            let draw_h = tile_h.min(y + height - tile_y);
+            let v1 = region.v0 + (region.v1 - region.v0) * (draw_h / tile_h);
+            let mut tile_x = x;
+            while tile_x < x + width {
+                let draw_w = tile_w.min(x + width - tile_x);
+                let u1 = region.u0 + (region.u1 - region.u0) * (draw_w / tile_w);
+                self.push_quad(
+                    tile_x,
+                    tile_y,
+                    tile_x + draw_w,
+                    tile_y + draw_h,
+                    region.u0,
+                    region.v0,
+                    u1,
+                    v1,
+                    [1.0; 4],
+                );
+                tile_x += tile_w;
+            }
+            tile_y += tile_h;
+        }
+        true
+    }
+
+    /// Draw only the border of an original nine-patch, preserving the native
+    /// repeated panel texture underneath its transparent-looking center.
+    pub fn draw_hfx_nine_patch_border(
+        &mut self,
+        sprite_ids: &[u16; 9],
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale: f32,
+    ) -> bool {
+        let mut border = *sprite_ids;
+        border[4] = 0;
+        self.draw_hfx_nine_patch(&border, x, y, width, height, scale)
+    }
+
     /// Draw one of the original HFX nine-patch widget frames.
     pub fn draw_hfx_nine_patch(
         &mut self,
@@ -1360,7 +1480,7 @@ impl HudRenderer {
             (sprite_ids[8], x2, y2, corner_w, corner_h),
         ];
         for (sprite_id, cell_x, cell_y, cell_w, cell_h) in cells {
-            if cell_w > 0.0 && cell_h > 0.0 {
+            if sprite_id != 0 && cell_w > 0.0 && cell_h > 0.0 {
                 self.draw_hfx_stretched(sprite_id, cell_x, cell_y, cell_w, cell_h);
             }
         }
@@ -1447,7 +1567,15 @@ impl HudRenderer {
         });
         pass.set_pipeline(&self.pipeline);
 
-        // Draw minimap first (separate bind group)
+        // Sidebar textures are laid down beneath the minimap canvas.
+        let minimap_split = self.minimap_split.min(self.vertices.len());
+        if minimap_split > 0 {
+            pass.set_bind_group(0, &self.atlas_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            pass.draw(0..minimap_split as u32, 0..1);
+        }
+
+        // Draw the minimap between the background and the HUD controls.
         if let (Some(ref mm_bg), Some((mx, my, mw, mh))) = (&self.minimap_bind_group, minimap_rect)
         {
             // Build minimap quad inline (6 vertices at the very start)
@@ -1496,11 +1624,11 @@ impl HudRenderer {
             );
         }
 
-        // Draw all other HUD elements with atlas bind group
-        if !self.vertices.is_empty() {
+        // Draw all controls and borders on top of the minimap.
+        if minimap_split < self.vertices.len() {
             pass.set_bind_group(0, &self.atlas_bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.draw(0..self.vertices.len() as u32, 0..1);
+            pass.draw(minimap_split as u32..self.vertices.len() as u32, 0..1);
         }
     }
 }
@@ -1934,38 +2062,54 @@ mod tests {
     }
 
     #[test]
-    fn construction_tab_uses_all_eight_native_building_glyphs() {
+    fn construction_tab_uses_native_point_building_icons() {
+        assert_eq!(POINT_CONSTRUCTION_ICONS, [58, 59, 60, 61, 62, 63, 64, 65]);
         assert_eq!(
-            (0..8)
-                .map(construction_point_sprite)
-                .collect::<Vec<Option<usize>>>(),
-            vec![
-                Some(58),
-                Some(59),
-                Some(60),
-                Some(61),
-                Some(62),
-                Some(63),
-                Some(64),
-                Some(65),
-            ]
+            HFX_BUILDING_FRAME,
+            [821, 825, 822, 827, 829, 828, 823, 826, 824]
         );
-        assert_eq!(construction_point_sprite(8), None);
-        assert_eq!(construction_point_sprite(9), None);
+        assert_eq!(
+            [
+                HFX_MINIMAP_SURROUND_TEXTURE,
+                HFX_STATUS_TEXTURE,
+                HFX_CONSTRUCTION_TEXTURE,
+            ],
+            [700, 706, 712]
+        );
     }
 
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 21);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 42);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
             .chain(HFX_TAB_FRAME_SELECTED.iter())
+            .chain(HFX_BUILDING_FRAME.iter())
             .chain(HFX_TAB_ICONS.iter())
+            .chain(
+                [
+                    HFX_MINIMAP_SURROUND_TEXTURE,
+                    HFX_STATUS_TEXTURE,
+                    HFX_CONSTRUCTION_TEXTURE,
+                ]
+                .iter(),
+            )
         {
             assert!(
                 HFX_HUD_SPRITE_IDS.contains(sprite_id),
+                "HFX sprite {sprite_id} must be packed into the HUD atlas"
+            );
+        }
+
+        for sprite_id in HFX_MINIMAP_FRAME
+            .into_iter()
+            .filter(|&sprite_id| sprite_id != 0)
+            .chain(std::iter::once(HFX_SHAMAN_WIDGET))
+        {
+            assert!(
+                HFX_HUD_SPRITE_IDS.contains(&sprite_id),
                 "HFX sprite {sprite_id} must be packed into the HUD atlas"
             );
         }
