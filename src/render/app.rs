@@ -2605,15 +2605,11 @@ impl App {
         let sidebar_element_rect = |element: &hud::layout::ElementDef| {
             hud::layout::element_rect(&hud::layout::PANEL_SIDEBAR, element, screen_w, screen_h)
         };
-        let ochre = [0.82, 0.45, 0.035, 1.0];
-        let ochre_light = [0.96, 0.60, 0.055, 1.0];
-        let ochre_dark = [0.45, 0.20, 0.025, 1.0];
-
         // The original renders two tiled UI panels: the full sidebar and the
         // open construction page over its lower portion.  Each surface uses
         // the 16 original corner/edge/interior sprites rather than a newly
         // drawn or uniformly repeated background.
-        if !hud.draw_hfx_panel_surface_scaled(
+        hud.draw_hfx_panel_surface_scaled(
             &hud::HFX_PANEL_SURFACE_TILES,
             0.0,
             0.0,
@@ -2621,10 +2617,8 @@ impl App {
             layout.screen_h,
             scale_x,
             scale_y,
-        ) {
-            hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.screen_h, ochre_dark);
-        }
-        if !hud.draw_hfx_panel_surface_scaled(
+        );
+        hud.draw_hfx_panel_surface_scaled(
             &hud::HFX_PANEL_SURFACE_TILES,
             0.0,
             layout.panel_y,
@@ -2632,15 +2626,7 @@ impl App {
             layout.screen_h - layout.panel_y,
             scale_x,
             scale_y,
-        ) {
-            hud.draw_rect(
-                0.0,
-                layout.panel_y,
-                layout.sidebar_w,
-                layout.screen_h - layout.panel_y,
-                ochre_light,
-            );
-        }
+        );
         hud.mark_minimap_split();
 
         // Native rock arch on top of the minimap canvas.
@@ -2669,7 +2655,7 @@ impl App {
             } else {
                 *inactive_icon
             };
-            if !hud.draw_hfx_nine_patch_scaled(
+            hud.draw_hfx_nine_patch_scaled(
                 frame,
                 x,
                 layout.tab_y,
@@ -2677,24 +2663,7 @@ impl App {
                 layout.tab_h,
                 scale_x,
                 scale_y,
-            ) {
-                let background = if selected { ochre_light } else { ochre };
-                hud.draw_rect(
-                    x + scale_x,
-                    layout.tab_y,
-                    layout.tab_w - 2.0 * scale_x,
-                    layout.tab_h,
-                    background,
-                );
-                hud.draw_rect(x, layout.tab_y, scale_x, layout.tab_h, ochre_dark);
-                hud.draw_rect(
-                    x + layout.tab_w - scale_x,
-                    layout.tab_y,
-                    scale_x,
-                    layout.tab_h,
-                    ochre_dark,
-                );
-            }
+            );
             if let Some((width, height)) = hud.hfx_size(icon) {
                 let icon_w = width as f32 * scale_x;
                 let icon_h = height as f32 * scale_y;
