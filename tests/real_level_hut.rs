@@ -2,10 +2,64 @@ use std::path::PathBuf;
 
 use pop3::data::level::{LevelDefinition, LevelRes, ObjectPaths};
 use pop3::data::objects::{Object3D, ShapeFootprints};
+use pop3::data::psfb::ContainerPSFB;
+use pop3::data::types::BinDeserializer;
 use pop3::data::units::ModelType;
 use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
+use pop3::render::hud::{
+    FONT4_HUD_GLYPH_IDS, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER, HSPR_HUD_SPRITE_IDS,
+    POINT_CONSTRUCTION_ICONS,
+};
+
+fn assert_native_construction_hud_assets(base: &std::path::Path) {
+    let data = base.join("data");
+    let hfx = ContainerPSFB::from_file(&data.join("hfx0-0.dat"))
+        .expect("original HFX HUD bank must decode");
+    let point = ContainerPSFB::from_file(&data.join("POINT0-0.DAT"))
+        .expect("original POINT building-icon bank must decode");
+    let hspr = ContainerPSFB::from_file(&data.join("HSPR0-0.DAT"))
+        .expect("original HSPR status bank must decode");
+    let font4 = ContainerPSFB::from_file(&data.join("font4-0.dat"))
+        .expect("original FONT4 status bank must decode");
+
+    for &sprite_id in HFX_HUD_SPRITE_IDS {
+        let image = hfx
+            .get_image(sprite_id as usize)
+            .unwrap_or_else(|| panic!("original HFX sprite {sprite_id} must decode"));
+        assert!(
+            image.width > 0 && image.height > 0,
+            "original HFX sprite {sprite_id} must have an image extent"
+        );
+    }
+    let population_meter = hfx
+        .get_image(HFX_POPULATION_METER as usize)
+        .expect("native population meter must decode");
+    assert_eq!((population_meter.width, population_meter.height), (104, 10));
+
+    for &sprite_index in &POINT_CONSTRUCTION_ICONS {
+        let image = point.get_image(sprite_index).unwrap_or_else(|| {
+            panic!("original POINT construction icon {sprite_index} must decode")
+        });
+        assert!(
+            image.width > 0 && image.height > 0,
+            "original POINT construction icon {sprite_index} must have an image extent"
+        );
+    }
+    for &sprite_id in &HSPR_HUD_SPRITE_IDS {
+        assert!(
+            hspr.get_image(sprite_id as usize).is_some(),
+            "original HSPR status sprite {sprite_id} must decode"
+        );
+    }
+    for &sprite_id in FONT4_HUD_GLYPH_IDS {
+        assert!(
+            font4.get_image(sprite_id as usize).is_some(),
+            "original FONT4 status glyph {sprite_id} must decode"
+        );
+    }
+}
 
 #[test]
 #[ignore = "requires legally owned POP3_DATA_DIR assets"]
@@ -13,6 +67,7 @@ fn real_level_one_hut_vertical_slice() {
     let base = PathBuf::from(
         std::env::var("POP3_DATA_DIR").expect("set POP3_DATA_DIR to the Populous 3 data root"),
     );
+    assert_native_construction_hud_assets(&base);
     let level = LevelRes::new(&base, 1, None);
     let obj_bank = level.obj_bank;
     let expected = level
