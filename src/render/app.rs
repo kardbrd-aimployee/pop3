@@ -2978,15 +2978,11 @@ impl App {
                 let cell_h = cell.h as f32;
                 let slot = row * 3 + col;
                 if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
-                    let frame_state = if self.input.construction_slot_pressed == Some(slot)
-                        && hovered_slot == Some(slot)
-                    {
-                        hud::ConstructionButtonState::Pressed
-                    } else if hovered_slot == Some(slot) {
-                        hud::ConstructionButtonState::Hovered
-                    } else {
-                        hud::ConstructionButtonState::Normal
-                    };
+                    let frame_state = hud::construction_button_state(
+                        slot,
+                        hovered_slot,
+                        self.input.construction_slot_pressed,
+                    );
                     hud.draw_hfx_nine_patch_scaled(
                         hud::construction_button_frame(frame_state),
                         x,

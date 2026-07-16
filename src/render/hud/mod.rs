@@ -821,6 +821,23 @@ pub fn construction_button_frame(state: ConstructionButtonState) -> &'static [u1
     }
 }
 
+/// Resolve the native visual state for one construction-button cell.  A
+/// pressed frame only remains while the pointer is still over the same cell,
+/// matching the original button compositor's active-pointer behavior.
+pub fn construction_button_state(
+    slot: usize,
+    hovered_slot: Option<usize>,
+    pressed_slot: Option<usize>,
+) -> ConstructionButtonState {
+    if hovered_slot == Some(slot) && pressed_slot == Some(slot) {
+        ConstructionButtonState::Pressed
+    } else if hovered_slot == Some(slot) {
+        ConstructionButtonState::Hovered
+    } else {
+        ConstructionButtonState::Normal
+    }
+}
+
 /// Native POINT building-menu silhouettes in the active game's eight
 /// supported slots. These are buildings (hut through airship hut); HFX
 /// `354..361` are spell glyphs and must not be substituted here.
@@ -2829,6 +2846,26 @@ mod tests {
         assert_eq!(
             construction_button_frame(ConstructionButtonState::Pressed),
             &HFX_BUILDING_FRAME_PRESSED
+        );
+    }
+
+    #[test]
+    fn construction_button_state_requires_same_slot_for_pressed_art() {
+        assert_eq!(
+            construction_button_state(3, None, None),
+            ConstructionButtonState::Normal
+        );
+        assert_eq!(
+            construction_button_state(3, Some(3), None),
+            ConstructionButtonState::Hovered
+        );
+        assert_eq!(
+            construction_button_state(3, Some(3), Some(3)),
+            ConstructionButtonState::Pressed
+        );
+        assert_eq!(
+            construction_button_state(3, Some(4), Some(3)),
+            ConstructionButtonState::Normal
         );
     }
 
