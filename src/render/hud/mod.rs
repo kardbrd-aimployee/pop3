@@ -653,8 +653,8 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     );
 
     let panel_y = page.y as f32;
-    let construction_cell_w = 31.0 * scale_x;
-    let construction_cell_h = 43.0 * scale_y;
+    let construction_cell_w = 46.0 * scale_x;
+    let construction_cell_h = 52.0 * scale_y;
     let line_h = font_scale + 2.0;
     HudLayout {
         screen_w,
@@ -706,8 +706,9 @@ pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Optio
     }
 }
 
-/// Return the native construction-grid slot under the pointer (three columns,
-/// six rows).  The current gameplay slice only enables slot zero.
+/// Return the native construction-grid slot under the pointer (two columns,
+/// five rows). The ninth native cell is reserved; the current gameplay slice
+/// maps its supported building types into the first eight slots.
 pub fn detect_construction_slot_click(
     mouse_x: f32,
     mouse_y: f32,
@@ -715,24 +716,14 @@ pub fn detect_construction_slot_click(
 ) -> Option<usize> {
     let screen_w = layout.screen_w as i32;
     let screen_h = layout.screen_h as i32;
-    for row in 0..6usize {
-        for col in 0..3usize {
-            // BUILDINGS_PAGE is in binary/right-to-left order; input slots
-            // remain in visual left-to-right order.
-            let source_index = row * 3 + (2 - col);
-            let rect = layout::element_rect(
-                &layout::PANEL_TAB_PAGE,
-                &layout::BUILDINGS_PAGE[source_index],
-                screen_w,
-                screen_h,
-            );
-            if mouse_x >= rect.x as f32
-                && mouse_x < (rect.x + rect.w) as f32
-                && mouse_y >= rect.y as f32
-                && mouse_y < (rect.y + rect.h) as f32
-            {
-                return Some(row * 3 + col);
-            }
+    for (slot, cell) in layout::CONSTRUCTION_PAGE.iter().enumerate() {
+        let rect = layout::element_rect(&layout::PANEL_TAB_PAGE, cell, screen_w, screen_h);
+        if mouse_x >= rect.x as f32
+            && mouse_x < (rect.x + rect.w) as f32
+            && mouse_y >= rect.y as f32
+            && mouse_y < (rect.y + rect.h) as f32
+        {
+            return Some(slot);
         }
     }
     None
@@ -2668,8 +2659,8 @@ mod tests {
         assert_eq!(l.tab_h, 27.0);
         assert_eq!(l.tab_xs, [0.0, 31.0, 63.0]);
         assert_eq!(l.panel_y, 203.0);
-        assert_eq!(l.construction_cell_w, 31.0);
-        assert_eq!(l.construction_cell_h, 43.0);
+        assert_eq!(l.construction_cell_w, 46.0);
+        assert_eq!(l.construction_cell_h, 52.0);
     }
 
     #[test]
@@ -2754,8 +2745,8 @@ mod tests {
     fn detect_first_construction_slot() {
         let layout = compute_hud_layout(640.0, 480.0);
         let result = detect_construction_slot_click(
-            2.0 * layout.scale_x + layout.construction_cell_w * 0.5,
-            layout.panel_y + 8.0 * layout.scale_y + layout.construction_cell_h * 0.5,
+            3.0 * layout.scale_x + layout.construction_cell_w * 0.5,
+            layout.panel_y + 3.0 * layout.scale_y + layout.construction_cell_h * 0.5,
             &layout,
         );
         assert_eq!(result, Some(0));

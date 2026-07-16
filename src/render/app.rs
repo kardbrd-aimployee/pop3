@@ -2945,11 +2945,10 @@ impl App {
             scale_y,
         );
 
-        // Construction page: the native panel reserves an 18-button, three
-        // column grid. The supported eight building silhouettes occupy the
-        // first slots; unavailable entries leave the tiled panel surface
-        // exposed, matching the unframed inactive spell entries in the
-        // native reference HUD.
+        // Construction page: the native house tab reserves a two-column,
+        // nine-button grid. The supported eight building silhouettes occupy
+        // the first slots; the final reserved cell leaves the tiled panel
+        // surface exposed, matching the native reference HUD.
         let hovered_slot = (self.engine.hud_tab == HudTab::Buildings)
             .then(|| {
                 hud::detect_construction_slot_click(
@@ -2959,52 +2958,44 @@ impl App {
                 )
             })
             .flatten();
-        for row in 0..6usize {
-            for col in 0..3usize {
-                // The binary table is stored right-to-left.  Convert it to
-                // screen order while retaining its original fixed-point
-                // position and extent (rather than reconstructing a grid by
-                // multiplying float scales).
-                let source_index = row * 3 + (2 - col);
-                let cell = hud::layout::element_rect(
-                    &hud::layout::PANEL_TAB_PAGE,
-                    &hud::layout::BUILDINGS_PAGE[source_index],
-                    screen_w,
-                    screen_h,
+        for (slot, element) in hud::layout::CONSTRUCTION_PAGE.iter().enumerate() {
+            let cell = hud::layout::element_rect(
+                &hud::layout::PANEL_TAB_PAGE,
+                element,
+                screen_w,
+                screen_h,
+            );
+            let x = cell.x as f32;
+            let y = cell.y as f32;
+            let cell_w = cell.w as f32;
+            let cell_h = cell.h as f32;
+            if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
+                let frame_state = hud::construction_button_state(
+                    slot,
+                    hovered_slot,
+                    self.input.construction_slot_pressed,
                 );
-                let x = cell.x as f32;
-                let y = cell.y as f32;
-                let cell_w = cell.w as f32;
-                let cell_h = cell.h as f32;
-                let slot = row * 3 + col;
-                if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
-                    let frame_state = hud::construction_button_state(
-                        slot,
-                        hovered_slot,
-                        self.input.construction_slot_pressed,
-                    );
-                    hud.draw_hfx_nine_patch_scaled(
-                        hud::construction_button_frame(frame_state),
-                        x,
-                        y,
-                        cell_w,
-                        cell_h,
-                        scale_x,
-                        scale_y,
-                    );
-                    if self.engine.hud_point_sprite_count > icon {
-                        let icon = hud.point_sprite_index(icon);
-                        if let Some((width, height)) = hud.sprite_size(icon) {
-                            let icon_w = width as f32 * scale_x;
-                            let icon_h = height as f32 * scale_y;
-                            hud.draw_sprite(
-                                icon,
-                                x + (cell_w - icon_w) * 0.5,
-                                y + (cell_h - icon_h) * 0.5,
-                                scale_x,
-                                scale_y,
-                            );
-                        }
+                hud.draw_hfx_nine_patch_scaled(
+                    hud::construction_button_frame(frame_state),
+                    x,
+                    y,
+                    cell_w,
+                    cell_h,
+                    scale_x,
+                    scale_y,
+                );
+                if self.engine.hud_point_sprite_count > icon {
+                    let icon = hud.point_sprite_index(icon);
+                    if let Some((width, height)) = hud.sprite_size(icon) {
+                        let icon_w = width as f32 * scale_x;
+                        let icon_h = height as f32 * scale_y;
+                        hud.draw_sprite(
+                            icon,
+                            x + (cell_w - icon_w) * 0.5,
+                            y + (cell_h - icon_h) * 0.5,
+                            scale_x,
+                            scale_y,
+                        );
                     }
                 }
             }
