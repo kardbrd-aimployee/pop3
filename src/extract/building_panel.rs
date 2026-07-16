@@ -14,8 +14,7 @@ use super::hud::{
 use super::structures::make_contact_sheet;
 
 const SCHEMA_VERSION: u32 = 1;
-const POINT_BANK: &str = "POINT0-0.DAT";
-const POINT_PALETTE: &str = "PAL1-0.DAT";
+const HFX_BANK: &str = "hfx0-0.dat";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildingPanelIconSpec {
@@ -26,62 +25,74 @@ pub struct BuildingPanelIconSpec {
     pub sprite_index: usize,
 }
 
-pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 8] = [
+/// Original house-tab element parameters from `0x576c20`.
+///
+/// The construction elements pass these HFX image numbers to
+/// `FUN_004018a0`; they are not the smaller `POINT0-0.DAT` silhouettes.
+/// Keep this order in sync with `render::hud::layout::CONSTRUCTION_PAGE`.
+pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
     BuildingPanelIconSpec {
         id: "small-hut",
         name: "Small Hut",
         short_label: "Hut",
         building_subtype: 1,
-        sprite_index: 58,
+        sprite_index: 1028,
     },
     BuildingPanelIconSpec {
         id: "drum-tower",
         name: "Drum Tower",
         short_label: "Drum Tower",
         building_subtype: 4,
-        sprite_index: 59,
-    },
-    BuildingPanelIconSpec {
-        id: "temple",
-        name: "Temple",
-        short_label: "Temple",
-        building_subtype: 5,
-        sprite_index: 60,
-    },
-    BuildingPanelIconSpec {
-        id: "spy-training-hut",
-        name: "Spy Training Hut",
-        short_label: "Spy Hut",
-        building_subtype: 6,
-        sprite_index: 61,
+        sprite_index: 1029,
     },
     BuildingPanelIconSpec {
         id: "warrior-training-hut",
         name: "Warrior Training Hut",
         short_label: "Warrior Hut",
         building_subtype: 7,
-        sprite_index: 62,
+        sprite_index: 1030,
+    },
+    BuildingPanelIconSpec {
+        id: "temple",
+        name: "Temple",
+        short_label: "Temple",
+        building_subtype: 5,
+        sprite_index: 1032,
+    },
+    BuildingPanelIconSpec {
+        id: "spy-training-hut",
+        name: "Spy Training Hut",
+        short_label: "Spy Hut",
+        building_subtype: 6,
+        sprite_index: 1033,
     },
     BuildingPanelIconSpec {
         id: "firewarrior-training-hut",
         name: "Firewarrior Training Hut",
         short_label: "Firewarrior",
         building_subtype: 8,
-        sprite_index: 63,
+        sprite_index: 1031,
     },
     BuildingPanelIconSpec {
         id: "boat-hut",
         name: "Boat Hut",
         short_label: "Boat Hut",
         building_subtype: 13,
-        sprite_index: 64,
+        sprite_index: 1034,
     },
     BuildingPanelIconSpec {
-        id: "airship-hut",
-        name: "Airship Hut",
-        short_label: "Airship Hut",
-        building_subtype: 14,
-        sprite_index: 65,
+        id: "guard-post",
+        name: "Guard Post",
+        short_label: "Guard Post",
+        building_subtype: 15,
+        sprite_index: 1035,
+    },
+    BuildingPanelIconSpec {
+        id: "vault",
+        name: "Vault",
+        short_label: "Vault",
+        building_subtype: 17,
+        sprite_index: 1036,
     },
 ];
 
@@ -131,8 +142,8 @@ pub fn export_building_panel_icons(
     validate_request(request)?;
 
     let data_dir = request.base.join("data");
-    let sprite_bank_path = data_dir.join(POINT_BANK);
-    let palette_path = data_dir.join(POINT_PALETTE);
+    let sprite_bank_path = data_dir.join(HFX_BANK);
+    let palette_path = data_dir.join(format!("pal0-{}.dat", request.landscape));
     ensure_file(&sprite_bank_path)?;
     ensure_file(&palette_path)?;
 
@@ -152,7 +163,7 @@ pub fn export_building_panel_icons(
     for spec in BUILDING_PANEL_ICON_SPECS {
         let source = sprite_bank.get_image(spec.sprite_index).ok_or_else(|| {
             invalid_data(format!(
-                "{POINT_BANK} has no sprite {} ({})",
+                "{HFX_BANK} has no sprite {} ({})",
                 spec.sprite_index, spec.name
             ))
         })?;
@@ -218,12 +229,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_build_menu_is_a_contiguous_point_sprite_family() {
+    fn native_build_menu_uses_the_hfx_element_parameters() {
         let sprite_indices: Vec<_> = BUILDING_PANEL_ICON_SPECS
             .iter()
             .map(|spec| spec.sprite_index)
             .collect();
-        assert_eq!(sprite_indices, (58..=65).collect::<Vec<_>>());
+        assert_eq!(
+            sprite_indices,
+            [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036]
+        );
     }
 
     #[test]
@@ -232,6 +246,6 @@ mod tests {
             .iter()
             .map(|spec| spec.building_subtype)
             .collect();
-        assert_eq!(subtypes, [1, 4, 5, 6, 7, 8, 13, 14]);
+        assert_eq!(subtypes, [1, 4, 7, 5, 6, 8, 13, 15, 17]);
     }
 }

@@ -706,9 +706,7 @@ pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Optio
     }
 }
 
-/// Return the native construction-grid slot under the pointer (two columns,
-/// five rows). The ninth native cell is reserved; the current gameplay slice
-/// maps its supported building types into the first eight slots.
+/// Return the native two-column construction-grid slot under the pointer.
 pub fn detect_construction_slot_click(
     mouse_x: f32,
     mouse_y: f32,
@@ -785,18 +783,15 @@ pub const FONT4_HUD_GLYPH_IDS: &[u16] = &[FONT4_STATUS_GLYPH_I];
 /// It is the original status-avatar pose used by the reference HUD.
 pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 
-/// In-game construction-button frame tiles, in nine-patch order.
-///
-/// The house tab's two-column element list at `popTB.exe` `0x576c20` is
-/// rendered by `FUN_004018a0`; its normal table is `0x575448`. The nearby
-/// `0x575490` table is for the unrelated three-column stats/building page,
-/// not the construction tab visible in the gameplay HUD.
+/// In-game construction-button frame tiles, in nine-patch order.  The house
+/// tab's two-column element list is rendered by `FUN_004018a0`; its normal
+/// frame table is `popTB.exe` `0x575448`.
 pub const HFX_BUILDING_FRAME: [u16; 9] = [794, 798, 795, 800, 802, 801, 796, 799, 797];
 
-/// The original construction-button hover frame (`popTB.exe` `0x575460`).
+/// Native construction-button hover frame (`popTB.exe` `0x575460`).
 pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [812, 816, 813, 818, 820, 819, 814, 817, 815];
 
-/// The original construction-button pressed frame (`popTB.exe` `0x575478`).
+/// Native construction-button pressed frame (`popTB.exe` `0x575478`).
 pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [803, 807, 804, 809, 811, 810, 805, 808, 806];
 
 /// Visual state selected by the original construction-button renderer.
@@ -833,10 +828,23 @@ pub fn construction_button_state(
     }
 }
 
-/// Native POINT building-menu silhouettes in the active game's eight
-/// supported slots. These are buildings (hut through airship hut); HFX
-/// `354..361` are spell glyphs and must not be substituted here.
-pub const POINT_CONSTRUCTION_ICONS: [usize; 8] = [58, 59, 60, 61, 62, 63, 64, 65];
+/// Native HFX icon params from the nine `0x576c20` construction records.
+/// `FUN_004018a0` adds 18 while a button is active, selecting the companion
+/// highlight family.  The non-sequential third row reflects the original
+/// record order; it must not be normalized.
+pub const HFX_CONSTRUCTION_ICONS: [u16; 9] = [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036];
+pub const HFX_CONSTRUCTION_ICONS_HOVER: [u16; 9] =
+    [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054];
+
+/// Resolve the exact construction icon for a native element slot.
+pub fn construction_icon_sprite(slot: usize, highlighted: bool) -> Option<u16> {
+    let icons = if highlighted {
+        &HFX_CONSTRUCTION_ICONS_HOVER
+    } else {
+        &HFX_CONSTRUCTION_ICONS
+    };
+    icons.get(slot).copied()
+}
 
 /// `GUI_RenderTiledPanel`'s native 16px surface family.  The original UI
 /// uses these as four corners, alternating horizontal/vertical edges, and a
@@ -908,6 +916,24 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_STATUS_RED_CHIP,
     HFX_STATUS_FOLLOWER_GLYPH,
     HFX_POPULATION_METER,
+    1028,
+    1029,
+    1030,
+    1031,
+    1032,
+    1033,
+    1034,
+    1035,
+    1036,
+    1046,
+    1047,
+    1048,
+    1049,
+    1050,
+    1051,
+    1052,
+    1053,
+    1054,
     690,
     691,
     692,
@@ -2748,9 +2774,15 @@ mod tests {
     #[test]
     fn detect_first_construction_slot() {
         let layout = compute_hud_layout(640.0, 480.0);
+        let cell = layout::element_rect(
+            &layout::PANEL_TAB_PAGE,
+            &layout::CONSTRUCTION_PAGE[0],
+            layout.screen_w as i32,
+            layout.screen_h as i32,
+        );
         let result = detect_construction_slot_click(
-            3.0 * layout.scale_x + layout.construction_cell_w * 0.5,
-            layout.panel_y + 3.0 * layout.scale_y + layout.construction_cell_h * 0.5,
+            (cell.x + cell.w / 2) as f32,
+            (cell.y + cell.h / 2) as f32,
             &layout,
         );
         assert_eq!(result, Some(0));
@@ -2766,8 +2798,18 @@ mod tests {
     }
 
     #[test]
-    fn construction_tab_uses_native_point_building_icons() {
-        assert_eq!(POINT_CONSTRUCTION_ICONS, [58, 59, 60, 61, 62, 63, 64, 65]);
+    fn construction_tab_uses_native_hfx_building_icons() {
+        assert_eq!(
+            HFX_CONSTRUCTION_ICONS,
+            [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036]
+        );
+        assert_eq!(
+            HFX_CONSTRUCTION_ICONS_HOVER,
+            [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054]
+        );
+        assert_eq!(construction_icon_sprite(0, false), Some(1028));
+        assert_eq!(construction_icon_sprite(5, true), Some(1049));
+        assert_eq!(construction_icon_sprite(9, false), None);
         assert_eq!(FONT4_HUD_GLYPH_IDS, [FONT4_STATUS_GLYPH_I]);
         assert_eq!(
             HFX_BUILDING_FRAME,
@@ -2808,7 +2850,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 118);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 136);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -2816,6 +2858,8 @@ mod tests {
             .chain(HFX_BUILDING_FRAME.iter())
             .chain(HFX_BUILDING_FRAME_HOVER.iter())
             .chain(HFX_BUILDING_FRAME_PRESSED.iter())
+            .chain(HFX_CONSTRUCTION_ICONS.iter())
+            .chain(HFX_CONSTRUCTION_ICONS_HOVER.iter())
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())

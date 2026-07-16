@@ -122,7 +122,7 @@ fn cli() -> Command {
         )
         .subcommand(
             Command::new("building-panel-icons")
-                .about("Extract the original construction-panel icons from POINT0-0.DAT")
+                .about("Extract the original construction-panel glyphs from hfx0-0.dat")
                 .arg(
                     Arg::new("output")
                         .long("output")
@@ -137,7 +137,7 @@ fn cli() -> Command {
                         .long("landscape")
                         .value_name("KEY")
                         .default_value("0")
-                        .help("Deprecated; POINT icons always use PAL1-0.DAT"),
+                        .help("One-character landscape/palette bank key"),
                 )
                 .arg(
                     Arg::new("size")

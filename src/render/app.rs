@@ -2945,10 +2945,9 @@ impl App {
             scale_y,
         );
 
-        // Construction page: the native house tab reserves a two-column,
-        // nine-button grid. The supported eight building silhouettes occupy
-        // the first slots; the final reserved cell leaves the tiled panel
-        // surface exposed, matching the native reference HUD.
+        // Construction page: the original house tab uses a two-column HFX
+        // button table.  Its HFX param sprites are the source of the large
+        // construction glyphs in the native reference, not POINT silhouettes.
         let hovered_slot = (self.engine.hud_tab == HudTab::Buildings)
             .then(|| {
                 hud::detect_construction_slot_click(
@@ -2969,34 +2968,34 @@ impl App {
             let y = cell.y as f32;
             let cell_w = cell.w as f32;
             let cell_h = cell.h as f32;
-            if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
-                let frame_state = hud::construction_button_state(
-                    slot,
-                    hovered_slot,
-                    self.input.construction_slot_pressed,
-                );
-                hud.draw_hfx_nine_patch_scaled(
-                    hud::construction_button_frame(frame_state),
-                    x,
-                    y,
-                    cell_w,
-                    cell_h,
-                    scale_x,
-                    scale_y,
-                );
-                if self.engine.hud_point_sprite_count > icon {
-                    let icon = hud.point_sprite_index(icon);
-                    if let Some((width, height)) = hud.sprite_size(icon) {
-                        let icon_w = width as f32 * scale_x;
-                        let icon_h = height as f32 * scale_y;
-                        hud.draw_sprite(
-                            icon,
-                            x + (cell_w - icon_w) * 0.5,
-                            y + (cell_h - icon_h) * 0.5,
-                            scale_x,
-                            scale_y,
-                        );
-                    }
+            let frame_state = hud::construction_button_state(
+                slot,
+                hovered_slot,
+                self.input.construction_slot_pressed,
+            );
+            hud.draw_hfx_nine_patch_scaled(
+                hud::construction_button_frame(frame_state),
+                x,
+                y,
+                cell_w,
+                cell_h,
+                scale_x,
+                scale_y,
+            );
+            if let Some(icon) = hud::construction_icon_sprite(
+                slot,
+                frame_state != hud::ConstructionButtonState::Normal,
+            ) {
+                if let Some((width, height)) = hud.hfx_size(icon) {
+                    let icon_w = width as f32 * scale_x;
+                    let icon_h = height as f32 * scale_y;
+                    hud.draw_hfx_scaled(
+                        icon,
+                        x + (cell_w - icon_w) * 0.5,
+                        y + (cell_h - icon_h) * 0.5,
+                        scale_x,
+                        scale_y,
+                    );
                 }
             }
         }

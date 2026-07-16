@@ -9,16 +9,14 @@ use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
-    FONT4_HUD_GLYPH_IDS, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER, HSPR_HUD_SPRITE_IDS,
-    POINT_CONSTRUCTION_ICONS,
+    FONT4_HUD_GLYPH_IDS, HFX_CONSTRUCTION_ICONS, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER,
+    HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
     let data = base.join("data");
     let hfx = ContainerPSFB::from_file(&data.join("hfx0-0.dat"))
         .expect("original HFX HUD bank must decode");
-    let point = ContainerPSFB::from_file(&data.join("POINT0-0.DAT"))
-        .expect("original POINT building-icon bank must decode");
     let hspr = ContainerPSFB::from_file(&data.join("HSPR0-0.DAT"))
         .expect("original HSPR status bank must decode");
     let font4 = ContainerPSFB::from_file(&data.join("font4-0.dat"))
@@ -38,13 +36,13 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
         .expect("native population meter must decode");
     assert_eq!((population_meter.width, population_meter.height), (104, 10));
 
-    for &sprite_index in &POINT_CONSTRUCTION_ICONS {
-        let image = point.get_image(sprite_index).unwrap_or_else(|| {
-            panic!("original POINT construction icon {sprite_index} must decode")
-        });
+    for &sprite_id in &HFX_CONSTRUCTION_ICONS {
+        let image = hfx
+            .get_image(sprite_id as usize)
+            .unwrap_or_else(|| panic!("original HFX construction icon {sprite_id} must decode"));
         assert!(
             image.width > 0 && image.height > 0,
-            "original POINT construction icon {sprite_index} must have an image extent"
+            "original HFX construction icon {sprite_id} must have an image extent"
         );
     }
     for &sprite_id in &HSPR_HUD_SPRITE_IDS {

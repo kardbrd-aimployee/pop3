@@ -261,9 +261,8 @@ pub fn minimap_element() -> ElementDef {
 
 /// Construction page (house tab, panel 3 @ 0x576c20): 9 buttons, 2 columns.
 ///
-/// The original executable's `GUI_RenderBuildingButton` uses this table with
-/// the native POINT building silhouettes.  The ninth cell is intentionally
-/// reserved: the eight buildable structure types occupy slots 0..7.
+/// `FUN_004018a0` draws the element's native HFX param sprite (1028..1036
+/// in this table), so POINT silhouettes are not part of this UI path.
 pub const CONSTRUCTION_PAGE: [ElementDef; 9] = [
     btn(2, 3, 3, 46, 52, 1),
     btn(3, 49, 3, 46, 52, 4),
@@ -276,11 +275,8 @@ pub const CONSTRUCTION_PAGE: [ElementDef; 9] = [
     btn(10, 3, 219, 46, 52, 17),
 ];
 
-/// Spells page (star tab, panel 2, 16bpp variant @ 0x5764a0): 18 buttons,
-/// three columns.
-///
-/// This table is retained as native reference data, but spells are outside
-/// the current construction-only HUD scope.
+/// The independent three-column page at panel 2 is retained as native
+/// reference data, but is not part of the construction-only HUD slice.
 pub const SPELLS_PAGE: [ElementDef; 18] = [
     btn(31, 66, 8, 31, 43, 17),
     btn(28, 34, 8, 31, 43, 16),
@@ -609,7 +605,7 @@ mod tests {
     fn element_tables_match_binary_counts() {
         assert_eq!(SIDEBAR_ELEMENTS.len(), 25);
         assert_eq!(CONSTRUCTION_PAGE.len(), 9);
-        assert_eq!(SPELLS_PAGE.len(), 18); // 16bpp variant
+        assert_eq!(SPELLS_PAGE.len(), 18); // 16bpp reference page
         assert_eq!(UNITS_PAGE.len(), 36);
         assert_eq!(BOTTOM_BAR.len(), 10);
         assert_eq!(SIDEBAR_TABS.len(), 3);
@@ -668,16 +664,13 @@ mod tests {
     }
 
     #[test]
-    fn spells_page_grid_preserves_the_native_three_column_table() {
-        // The star tab's 16-bit layout is distinct from the two-column
-        // construction page. Its records are stored right-to-left, with
-        // three 31×43 cells per row beginning at x=66 and y=8.
+    fn reference_page_grid_preserves_the_native_three_column_table() {
         for (i, e) in SPELLS_PAGE.iter().enumerate() {
             let row = i / 3;
-            assert_eq!(e.x, [66, 34, 2][i % 3], "x for spell cell {i}");
-            assert_eq!(e.y, 8 + 44 * row as i16, "y for spell cell {i}");
-            assert_eq!((e.w, e.h), (31, 43), "extent for spell cell {i}");
-            assert_eq!(e.icon, 17 - i as i32, "icon for spell cell {i}");
+            assert_eq!(e.x, [66, 34, 2][i % 3], "x for reference cell {i}");
+            assert_eq!(e.y, 8 + 44 * row as i16, "y for reference cell {i}");
+            assert_eq!((e.w, e.h), (31, 43), "extent for reference cell {i}");
+            assert_eq!(e.icon, 17 - i as i32, "icon for reference cell {i}");
         }
     }
 

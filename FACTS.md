@@ -103,9 +103,9 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 
 ## Interface and landscape presentation
 
-- The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, and a population bar. The spell page uses a two-column pictographic grid; the construction page uses its separate three-column, 18-cell table (31×43 virtual units per cell).
+- The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, and a population bar. The construction page uses a two-column, nine-cell table (46×52 virtual units per cell); the separate spell reference page uses an 18-cell, three-column table (31×43 virtual units per cell).
 - The current remake slice recreates only the building tab. Spell and follower tabs remain out of scope until their gameplay systems are implemented.
-- The eight construction-choice glyphs are `POINT0-0.DAT` sprites `58..65`. They use the fixed 768-byte RGB palette `PAL1-0.DAT`; interpreting them with a landscape `pal0-*.dat` palette produces the wrong teal/green colors.
+- The nine construction-choice glyphs are `hfx0-0.dat` image numbers `1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036`, in original element order. They use the landscape `pal0-*.dat` palette; `FUN_004018a0` adds 18 for the highlighted companion glyph.
 - `GUI_RenderTiledPanel` at `0x004936B0` composes panel surfaces from HSPR sprites `1450..1465`, choosing distinct corners, alternating edges, and four alternating interior pieces. These sprites use the active landscape palette rather than the POINT palette.
 - `plspanel.spr` is loaded by the planet-selection interface at `0x00419BF0`; it is not the source of the in-game construction sidebar texture.
 - The native house, spell, and follower mode silhouettes are not POINT sprites `56`, `41`, and `55`. Those IDs are unrelated gameplay symbols and must not be used as substitutes while the original mode-silhouette source is still being mapped.
