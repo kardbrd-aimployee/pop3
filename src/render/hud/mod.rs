@@ -182,6 +182,11 @@ pub const MINIMAP_TRIBE_COLORS: [[u8; 3]; 4] = [
     [60, 255, 60],  // Green
 ];
 
+/// Native minimap water sampled from the uniform ocean in the owner's
+/// original-HUD capture: RGB `#00556B`. The minimap is dynamic, but its base
+/// water color is not an arbitrary remake tint.
+pub const MINIMAP_WATER_COLOR: [u8; 3] = [0x00, 0x55, 0x6B];
+
 /// Tribe colors for HUD text overlay (RGBA, 0.0-1.0).
 pub const HUD_TRIBE_COLORS: [[f32; 4]; 4] = [
     [0.3, 0.5, 1.0, 0.9], // Blue
@@ -486,9 +491,9 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
             let h = data.heights[y][x];
             if h == 0 {
                 // Water
-                rgba[off] = 20;
-                rgba[off + 1] = 40;
-                rgba[off + 2] = 80;
+                rgba[off] = MINIMAP_WATER_COLOR[0];
+                rgba[off + 1] = MINIMAP_WATER_COLOR[1];
+                rgba[off + 2] = MINIMAP_WATER_COLOR[2];
                 rgba[off + 3] = 255;
             } else {
                 // Land — green gradient by height
@@ -2388,11 +2393,11 @@ mod tests {
         // Act
         let rgba = generate_minimap_rgba(&data);
 
-        // Assert: center is water blue and corners are transparent.
+        // Assert: center uses the sampled native water and corners are transparent.
         let center = (64 * 128 + 64) * 4;
-        assert_eq!(rgba[center], 20);
-        assert_eq!(rgba[center + 1], 40);
-        assert_eq!(rgba[center + 2], 80);
+        assert_eq!(rgba[center], 0x00);
+        assert_eq!(rgba[center + 1], 0x55);
+        assert_eq!(rgba[center + 2], 0x6B);
         assert_eq!(rgba[center + 3], 255);
         assert_eq!(rgba[3], 0);
     }
