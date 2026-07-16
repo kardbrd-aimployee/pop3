@@ -644,11 +644,30 @@ pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760,
 /// In-game tab silhouettes in visual order: construction, spells, followers.
 pub const HFX_TAB_ICONS: [u16; 3] = [676, 678, 680];
 
+/// Highlighted hut silhouette used by the active construction tab.
+pub const HFX_TAB_ICON_BUILDINGS_SELECTED: u16 = 677;
+
 /// Native rock-arch frame around the minimap; its center stays transparent.
 pub const HFX_MINIMAP_FRAME: [u16; 9] = [690, 694, 691, 696, 0, 697, 692, 695, 693];
 
 /// Native shaman status widget in the main sidebar.
 pub const HFX_SHAMAN_WIDGET: u16 = 664;
+
+/// Native assets that form the compact in-game status strip.
+pub const PANEL_STATUS_GLOBE: usize = 1;
+pub const HFX_STATUS_AVATAR_FRAME: u16 = 469;
+pub const HFX_STATUS_LIGHT_FRAME: u16 = 470;
+pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
+pub const HFX_STATUS_WHITE_TEXTURE: u16 = 503;
+pub const HFX_STATUS_HELP_GLYPH: u16 = 662;
+pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
+pub const HFX_STATUS_RED_CHIP: u16 = 65;
+pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
+pub const HFX_POPULATION_METER: u16 = 1603;
+
+/// Blue tribe's side-facing idle shaman frame from `HSPR0-0.DAT`.
+/// It is the original status-avatar pose used by the reference HUD.
+pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 
 /// In-game construction-button frame tiles, in nine-patch order.
 pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826, 824];
@@ -664,11 +683,20 @@ pub const HFX_STATUS_TEXTURE: u16 = 706;
 pub const HFX_CONSTRUCTION_TEXTURE: u16 = 712;
 
 /// Verified original HFX art required by the construction HUD.
-pub const HFX_HUD_SPRITE_IDS: [u16; 42] = [
+pub const HFX_HUD_SPRITE_IDS: [u16; 52] = [
     HFX_MINIMAP_SURROUND_TEXTURE,
     HFX_STATUS_TEXTURE,
     HFX_CONSTRUCTION_TEXTURE,
-    664,
+    HFX_SHAMAN_WIDGET,
+    HFX_STATUS_AVATAR_FRAME,
+    HFX_STATUS_LIGHT_FRAME,
+    HFX_STATUS_BLACK_TEXTURE,
+    HFX_STATUS_WHITE_TEXTURE,
+    HFX_STATUS_HELP_GLYPH,
+    HFX_STATUS_BLUE_CHIP,
+    HFX_STATUS_RED_CHIP,
+    HFX_STATUS_FOLLOWER_GLYPH,
+    HFX_POPULATION_METER,
     690,
     691,
     692,
@@ -705,9 +733,13 @@ pub const HFX_HUD_SPRITE_IDS: [u16; 42] = [
     826,
     824,
     676,
+    HFX_TAB_ICON_BUILDINGS_SELECTED,
     678,
     680,
 ];
+
+/// Verified original HSPR art required by the construction HUD.
+pub const HSPR_HUD_SPRITE_IDS: [u16; 1] = [HSPR_STATUS_AVATAR_BLUE];
 
 /// Get the sprite region index for a PSFB panel sprite.
 /// Panel sprites are stored after the white pixel (1) + font glyphs (96).
@@ -739,6 +771,8 @@ pub struct HudRenderer {
     point_region_start: usize,
     /// Atlas regions for the verified in-game HFX UI sprites.
     hfx_regions: HashMap<u16, usize>,
+    /// Atlas regions for the verified in-game HSPR status-avatar sprites.
+    hspr_regions: HashMap<u16, usize>,
     vertices: Vec<HudVertex>,
     /// Number of HUD vertices drawn beneath the separate minimap canvas.
     minimap_split: usize,
@@ -964,6 +998,7 @@ impl HudRenderer {
             panel_sprite_count: 0,
             point_region_start: 97,
             hfx_regions: HashMap::new(),
+            hspr_regions: HashMap::new(),
             vertices: Vec::with_capacity(4096),
             minimap_split: 0,
             minimap_bind_group: None,
@@ -971,7 +1006,7 @@ impl HudRenderer {
         }
     }
 
-    /// Build the HUD atlas from plspanel.spr, POINT0-0.DAT, and font glyphs.
+    /// Build the HUD atlas from the original panel, POINT, HFX, and HSPR banks.
     ///
     /// The panel and POINT banks use separate native palettes.
     pub fn build_atlas(
@@ -983,6 +1018,7 @@ impl HudRenderer {
         point_sprites: Option<&ContainerPSFB>,
         point_palette: &[u8],
         hfx_sprites: Option<(&ContainerPSFB, &[u16])>,
+        hspr_sprites: Option<(&ContainerPSFB, &[u16])>,
         hfx_palette: &[u8],
     ) {
         // Phase 1: Convert all sprites to RGBA
@@ -1021,6 +1057,18 @@ impl HudRenderer {
                     let rgba = convert_indexed_to_rgba(&img.data, hfx_palette, 255);
                     sprite_images.push((w, h, rgba));
                     hfx_sprite_ids.push(sprite_id);
+                }
+            }
+        }
+        let mut hspr_sprite_ids = Vec::new();
+        if let Some((hspr_sprites, sprite_ids)) = hspr_sprites {
+            for &sprite_id in sprite_ids {
+                if let Some(img) = hspr_sprites.get_image(sprite_id as usize) {
+                    let w = img.width as u16;
+                    let h = img.height as u16;
+                    let rgba = convert_indexed_to_rgba(&img.data, hfx_palette, 255);
+                    sprite_images.push((w, h, rgba));
+                    hspr_sprite_ids.push(sprite_id);
                 }
             }
         }
@@ -1170,10 +1218,16 @@ impl HudRenderer {
         self.panel_sprite_count = panel_sprite_count;
         self.point_region_start = font_start + 96 + panel_sprite_count;
         self.hfx_regions.clear();
+        self.hspr_regions.clear();
         let hfx_region_start = self.point_region_start + point_sprite_count;
         for (offset, sprite_id) in hfx_sprite_ids.iter().enumerate() {
             self.hfx_regions
                 .insert(*sprite_id, hfx_region_start + offset);
+        }
+        let hspr_region_start = hfx_region_start + hfx_sprite_ids.len();
+        for (offset, sprite_id) in hspr_sprite_ids.iter().enumerate() {
+            self.hspr_regions
+                .insert(*sprite_id, hspr_region_start + offset);
         }
 
         log::info!(
@@ -1383,6 +1437,36 @@ impl HudRenderer {
             region.v1,
             [1.0; 4],
         );
+        true
+    }
+
+    /// Draw a verified HFX UI sprite mirrored horizontally. The original
+    /// population meter fills from the right edge in the construction HUD.
+    pub fn draw_hfx_flipped(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        let region = self.sprite_regions[sprite_idx].clone();
+        self.push_quad(
+            x,
+            y,
+            x + region.width as f32 * scale,
+            y + region.height as f32 * scale,
+            region.u1,
+            region.v0,
+            region.u0,
+            region.v1,
+            [1.0; 4],
+        );
+        true
+    }
+
+    /// Draw a verified HSPR status-avatar sprite at native size times `scale`.
+    pub fn draw_hspr(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        let Some(&sprite_idx) = self.hspr_regions.get(&sprite_id) else {
+            return false;
+        };
+        self.draw_sprite(sprite_idx, x, y, scale, scale);
         true
     }
 
@@ -2081,13 +2165,14 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 42);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 52);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
             .chain(HFX_TAB_FRAME_SELECTED.iter())
             .chain(HFX_BUILDING_FRAME.iter())
             .chain(HFX_TAB_ICONS.iter())
+            .chain(std::iter::once(&HFX_TAB_ICON_BUILDINGS_SELECTED))
             .chain(
                 [
                     HFX_MINIMAP_SURROUND_TEXTURE,
@@ -2102,6 +2187,8 @@ mod tests {
                 "HFX sprite {sprite_id} must be packed into the HUD atlas"
             );
         }
+
+        assert_eq!(HSPR_HUD_SPRITE_IDS, [HSPR_STATUS_AVATAR_BLUE]);
 
         for sprite_id in HFX_MINIMAP_FRAME
             .into_iter()

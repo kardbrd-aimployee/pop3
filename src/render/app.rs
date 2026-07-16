@@ -1647,6 +1647,7 @@ impl App {
         let panel_path = data_dir.join("plspanel.spr");
         let point_path = data_dir.join("POINT0-0.DAT");
         let hfx_path = data_dir.join("hfx0-0.dat");
+        let hspr_path = data_dir.join("HSPR0-0.DAT");
         let panel_palette_path = data_dir.join("plspal.dat");
         let point_palette_path = data_dir.join("PAL1-0.DAT");
 
@@ -1699,6 +1700,7 @@ impl App {
         };
         let point_container = ContainerPSFB::from_file(&point_path);
         let hfx_container = ContainerPSFB::from_file(&hfx_path);
+        let hspr_container = ContainerPSFB::from_file(&hspr_path);
         self.engine.hud_panel_sprite_count = panel_container.len();
         self.engine.hud_point_sprite_count = point_container.as_ref().map_or(0, ContainerPSFB::len);
 
@@ -1713,6 +1715,9 @@ impl App {
                 hfx_container
                     .as_ref()
                     .map(|sprites| (sprites, hud::HFX_HUD_SPRITE_IDS.as_slice())),
+                hspr_container
+                    .as_ref()
+                    .map(|sprites| (sprites, hud::HSPR_HUD_SPRITE_IDS.as_slice())),
                 level_palette,
             );
         }
@@ -2700,7 +2705,6 @@ impl App {
         let ochre = [0.82, 0.45, 0.035, 1.0];
         let ochre_light = [0.96, 0.60, 0.055, 1.0];
         let ochre_dark = [0.45, 0.20, 0.025, 1.0];
-        let ink = [0.16, 0.06, 0.08, 1.0];
 
         // The original sidebar is composited from its 32px HFX repeat
         // textures. Draw these before the minimap layer so the canvas masks
@@ -2761,13 +2765,18 @@ impl App {
 
         // Native three-mode strip. Only Buildings is active in this slice;
         // Spells and Followers remain visible but intentionally inert.
-        for (index, icon) in hud::HFX_TAB_ICONS.iter().enumerate() {
+        for (index, inactive_icon) in hud::HFX_TAB_ICONS.iter().enumerate() {
             let x = index as f32 * layout.tab_w;
             let selected = index == 0;
             let frame = if selected {
                 &hud::HFX_TAB_FRAME_SELECTED
             } else {
                 &hud::HFX_TAB_FRAME
+            };
+            let icon = if selected {
+                hud::HFX_TAB_ICON_BUILDINGS_SELECTED
+            } else {
+                *inactive_icon
             };
             if !hud.draw_hfx_nine_patch(frame, x, layout.tab_y, layout.tab_w, layout.tab_h, scale) {
                 let background = if selected { ochre_light } else { ochre };
@@ -2787,11 +2796,11 @@ impl App {
                     ochre_dark,
                 );
             }
-            if let Some((width, height)) = hud.hfx_size(*icon) {
+            if let Some((width, height)) = hud.hfx_size(icon) {
                 let icon_w = width as f32 * scale;
                 let icon_h = height as f32 * scale;
                 hud.draw_hfx(
-                    *icon,
+                    icon,
                     x + (layout.tab_w - icon_w) * 0.5,
                     layout.tab_y + (layout.tab_h - icon_h) * 0.5,
                     scale,
@@ -2799,98 +2808,114 @@ impl App {
             }
         }
 
-        // Compact tribe/status block. It deliberately stays visual-only while
-        // construction is the sole implemented panel mode.
-        let status_y = 118.0 * scale;
-        let status_h = 79.0 * scale;
-        hud.draw_rect(0.0, status_y, layout.sidebar_w, scale, ochre_dark);
-        hud.draw_rect(
-            0.0,
-            status_y + status_h - scale,
-            layout.sidebar_w,
+        // Compact tribe/status block. Its frames, globe, avatar, controls,
+        // and population meter are all composited from their native banks.
+        let globe_x = 7.0 * scale;
+        let globe_y = 126.0 * scale;
+        hud.draw_hfx_tiled(
+            hud::HFX_STATUS_WHITE_TEXTURE,
+            globe_x,
+            globe_y,
+            27.0 * scale,
+            27.0 * scale,
             scale,
-            ochre_dark,
         );
-        hud.draw_rect(37.0 * scale, status_y, scale, status_h, ochre_dark);
-        hud.draw_rect(76.0 * scale, status_y, scale, status_h, ochre_dark);
+        hud.draw_hfx_stretched(
+            hud::HFX_STATUS_LIGHT_FRAME,
+            5.0 * scale,
+            124.0 * scale,
+            30.0 * scale,
+            30.0 * scale,
+        );
+        if self.engine.hud_panel_sprite_count > hud::PANEL_STATUS_GLOBE {
+            hud.draw_sprite(
+                hud.panel_sprite_index(hud::PANEL_STATUS_GLOBE),
+                10.0 * scale,
+                129.0 * scale,
+                scale,
+                scale,
+            );
+        }
 
-        let meter_x = 2.0 * scale;
-        let meter_y = 142.0 * scale;
-        let meter_w = 13.0 * scale;
-        let meter_h = 28.0 * scale;
-        hud.draw_rect(meter_x, meter_y, meter_w, meter_h, [0.93, 0.93, 0.86, 1.0]);
-        let mana_fraction = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-        let fill_h = meter_h * mana_fraction;
-        hud.draw_rect(
+        let avatar_x = 38.0 * scale;
+        let avatar_y = 118.0 * scale;
+        hud.draw_hfx_tiled(
+            hud::HFX_STATUS_BLACK_TEXTURE,
+            avatar_x,
+            avatar_y,
+            38.0 * scale,
+            45.0 * scale,
+            scale,
+        );
+        hud.draw_hfx(hud::HFX_STATUS_AVATAR_FRAME, avatar_x, avatar_y, scale);
+        hud.draw_hspr(
+            hud::HSPR_STATUS_AVATAR_BLUE,
+            50.0 * scale,
+            124.0 * scale,
+            scale,
+        );
+
+        hud.draw_hfx(
+            hud::HFX_STATUS_HELP_GLYPH,
+            82.0 * scale,
+            121.0 * scale,
+            scale,
+        );
+        hud.draw_hfx_tiled(
+            hud::HFX_STATUS_WHITE_TEXTURE,
+            78.0 * scale,
+            135.0 * scale,
+            12.0 * scale,
+            28.0 * scale,
+            scale,
+        );
+        hud.draw_hfx_stretched(
+            hud::HFX_STATUS_BLUE_CHIP,
+            95.0 * scale,
+            121.0 * scale,
+            9.0 * scale,
+            12.0 * scale,
+        );
+        hud.draw_hfx_stretched(
+            hud::HFX_STATUS_RED_CHIP,
+            105.0 * scale,
+            121.0 * scale,
+            9.0 * scale,
+            12.0 * scale,
+        );
+
+        let meter_x = 0.0;
+        let meter_y = 164.0 * scale;
+        let meter_w = 18.0 * scale;
+        let meter_h = 34.0 * scale;
+        hud.draw_hfx_tiled(
+            hud::HFX_STATUS_WHITE_TEXTURE,
             meter_x,
-            meter_y + meter_h - fill_h,
+            meter_y,
             meter_w,
+            meter_h,
+            scale,
+        );
+        let mana_fraction = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
+        let meter_inset = 2.0 * scale;
+        let fill_h = (meter_h - meter_inset * 2.0) * mana_fraction;
+        hud.draw_rect(
+            meter_x + meter_inset,
+            meter_y + meter_h - meter_inset - fill_h,
+            meter_w - meter_inset * 2.0,
             fill_h,
             [0.02, 0.62, 0.28, 1.0],
         );
-
-        if let Some((width, _)) = hud.hfx_size(hud::HFX_SHAMAN_WIDGET) {
-            let x = (layout.sidebar_w - width as f32 * scale) * 0.5;
-            hud.draw_hfx(hud::HFX_SHAMAN_WIDGET, x, 120.0 * scale, scale);
-        } else if self.engine.hud_point_sprite_count > 80 {
-            // Original-data fallback for an incomplete HFX bank.
-            let brave = hud.point_sprite_index(80);
-            if let Some((width, height)) = hud.sprite_size(brave) {
-                let icon_scale = (29.0 * scale / height as f32).min(22.0 * scale / width as f32);
-                hud.draw_sprite_tinted(
-                    brave,
-                    18.0 * scale,
-                    138.0 * scale,
-                    icon_scale,
-                    icon_scale,
-                    ink,
-                );
-            }
-        }
-        hud.draw_text(
-            &format!("{}", hud_state.player_population),
-            80.0 * scale,
-            124.0 * scale,
-            6.0 * scale,
-            ink,
+        hud.draw_hfx(
+            hud::HFX_STATUS_FOLLOWER_GLYPH,
+            21.0 * scale,
+            168.0 * scale,
+            scale,
         );
 
-        // Striped population band from the original construction HUD.
-        let population_y = 198.0 * scale;
-        let population_h = 18.0 * scale;
-        hud.draw_rect(
-            3.0 * scale,
-            population_y,
-            108.0 * scale,
-            population_h,
-            ochre_dark,
-        );
-        let inner_x = 5.0 * scale;
-        let inner_y = population_y + 2.0 * scale;
-        let inner_w = 104.0 * scale;
-        let inner_h = population_h - 4.0 * scale;
-        let population_fraction = (hud_state.player_population as f32
-            / hud_state.player_max_population.max(1) as f32)
-            .clamp(0.0, 1.0);
-        let stripe_w = scale.max(1.0);
-        let stripe_count = (inner_w / stripe_w).ceil() as usize;
-        for stripe in 0..stripe_count {
-            let filled = stripe as f32 / stripe_count as f32 >= 1.0 - population_fraction;
-            let color = if filled {
-                [0.05, 0.43, 0.36, 1.0]
-            } else if stripe % 2 == 0 {
-                [0.80, 0.80, 0.72, 1.0]
-            } else {
-                [0.20, 0.20, 0.19, 1.0]
-            };
-            hud.draw_rect(
-                inner_x + stripe as f32 * stripe_w,
-                inner_y,
-                stripe_w,
-                inner_h,
-                color,
-            );
-        }
+        // The native meter is stored left-to-right; the original sidebar
+        // presents its available capacity from the right edge.
+        hud.draw_hfx_flipped(hud::HFX_POPULATION_METER, 5.0 * scale, 202.0 * scale, scale);
 
         // Construction grid: native HFX frames with original POINT building
         // glyphs. The selected tile owns the frame center; idle tiles retain
