@@ -1,5 +1,7 @@
 // HUD data types, layout computation, rendering helpers, and GPU renderer.
 
+use std::collections::HashMap;
+
 use crate::data::psfb::ContainerPSFB;
 use crate::render::gpu::buffer::GpuBuffer;
 use crate::render::gpu::texture::GpuTexture;
@@ -444,20 +446,22 @@ pub fn shelf_pack(items: &[(u16, u16)], atlas_w: u32) -> (Vec<(u32, u32)>, u32) 
 }
 
 /// Convert palette-indexed pixel data to RGBA.
-/// Palette is in BGRA format (4 bytes per entry). `transparent_idx` pixels get alpha=0.
+///
+/// The original UI banks use either 768-byte RGB palettes or 1024-byte RGBX
+/// palettes. `transparent_idx` pixels get alpha=0.
 pub fn convert_indexed_to_rgba(indexed: &[u8], palette: &[u8], transparent_idx: u8) -> Vec<u8> {
     let mut rgba = vec![0u8; indexed.len() * 4];
     for (j, &idx) in indexed.iter().enumerate() {
         if idx == transparent_idx {
             rgba[j * 4 + 3] = 0;
         } else {
-            let p = (idx as usize) * 4;
+            let stride = if palette.len() == 768 { 3 } else { 4 };
+            let p = (idx as usize) * stride;
             if p + 2 < palette.len() {
-                // Palette is BGRA → output RGBA
-                rgba[j * 4] = palette[p + 2]; // R
-                rgba[j * 4 + 1] = palette[p + 1]; // G
-                rgba[j * 4 + 2] = palette[p]; // B
-                rgba[j * 4 + 3] = 255; // A
+                rgba[j * 4] = palette[p];
+                rgba[j * 4 + 1] = palette[p + 1];
+                rgba[j * 4 + 2] = palette[p + 2];
+                rgba[j * 4 + 3] = 255;
             }
         }
     }
@@ -554,9 +558,12 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     let pop_h = 18.0 * scale;
     let status_y = 118.0 * scale;
     let status_h = 79.0 * scale;
-    let panel_y = 222.0 * scale;
+    // The native construction cells are square. Fit all five rows in the
+    // visible sidebar so the full construction collection remains available
+    // at the remake's 480px and 600px window heights.
+    let panel_y = 216.0 * scale;
     let construction_cell_w = 57.0 * scale;
-    let construction_cell_h = 79.0 * scale;
+    let construction_cell_h = (57.0 * scale).min((screen_h - panel_y).max(0.0) / 5.0);
     let line_h = font_scale + 2.0;
     HudLayout {
         screen_w,
@@ -626,6 +633,36 @@ pub fn detect_construction_slot_click(
     Some(row * 2 + col)
 }
 
+/// Native POINT0-0.DAT glyphs used by the construction tab, in display order.
+///
+/// The original game stores these separately from the model data: the
+/// construction tab is a fixed two-column grid of eight pictograms, followed
+/// by an empty fifth row. Keep this mapping in one place so the renderer and
+/// the Level 18 collection check cannot diverge.
+pub const CONSTRUCTION_POINT_SPRITES: [usize; 8] = [58, 59, 60, 61, 62, 63, 64, 65];
+
+/// In-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
+/// `[top-left, top, top-right, left, center, right, bottom-left, bottom,
+/// bottom-right]`.
+pub const HFX_TAB_FRAME: [u16; 9] = [740, 744, 741, 746, 748, 747, 742, 745, 743];
+
+/// Highlighted counterpart of [`HFX_TAB_FRAME`].
+pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760, 763, 761];
+
+/// In-game tab silhouettes in visual order: construction, spells, followers.
+pub const HFX_TAB_ICONS: [u16; 3] = [676, 678, 680];
+
+/// Small, verified subset of the HFX bank needed by the construction HUD.
+pub const HFX_HUD_SPRITE_IDS: [u16; 21] = [
+    740, 744, 741, 746, 748, 747, 742, 745, 743, 758, 762, 759, 764, 766, 765, 760, 763, 761, 676,
+    678, 680,
+];
+
+/// Return the native POINT glyph for a construction-grid slot.
+pub fn construction_point_sprite(slot: usize) -> Option<usize> {
+    CONSTRUCTION_POINT_SPRITES.get(slot).copied()
+}
+
 /// Get the sprite region index for a PSFB panel sprite.
 /// Panel sprites are stored after the white pixel (1) + font glyphs (96).
 pub fn panel_sprite_index(font_region_start: usize, psfb_index: usize) -> usize {
@@ -654,6 +691,8 @@ pub struct HudRenderer {
     panel_sprite_count: usize,
     /// Index where POINT0-0.DAT sprites start in sprite_regions.
     point_region_start: usize,
+    /// Atlas regions for the verified in-game HFX UI sprites.
+    hfx_regions: HashMap<u16, usize>,
     vertices: Vec<HudVertex>,
     // Minimap texture (updated per-frame)
     minimap_bind_group: Option<wgpu::BindGroup>,
@@ -876,6 +915,7 @@ impl HudRenderer {
             font_region_start: 1,
             panel_sprite_count: 0,
             point_region_start: 97,
+            hfx_regions: HashMap::new(),
             vertices: Vec::with_capacity(4096),
             minimap_bind_group: None,
             minimap_texture: None,
@@ -883,14 +923,18 @@ impl HudRenderer {
     }
 
     /// Build the HUD atlas from plspanel.spr, POINT0-0.DAT, and font glyphs.
-    /// `palette` is the 1024-byte BGRA palette used by both sprite banks.
+    ///
+    /// The panel and POINT banks use separate native palettes.
     pub fn build_atlas(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         panel_sprites: &ContainerPSFB,
+        panel_palette: &[u8],
         point_sprites: Option<&ContainerPSFB>,
-        palette: &[u8],
+        point_palette: &[u8],
+        hfx_sprites: Option<(&ContainerPSFB, &[u16])>,
+        hfx_palette: &[u8],
     ) {
         // Phase 1: Convert all sprites to RGBA
         let mut sprite_images: Vec<(u16, u16, Vec<u8>)> = Vec::new(); // (w, h, rgba)
@@ -898,22 +942,36 @@ impl HudRenderer {
             if let Some(img) = panel_sprites.get_image(i) {
                 let w = img.width as u16;
                 let h = img.height as u16;
-                let rgba = convert_indexed_to_rgba(&img.data, palette, 255);
+                let rgba = convert_indexed_to_rgba(&img.data, panel_palette, 255);
                 sprite_images.push((w, h, rgba));
             } else {
                 sprite_images.push((1, 1, vec![0, 0, 0, 0]));
             }
         }
         let panel_sprite_count = sprite_images.len();
+        let mut point_sprite_count = 0;
         if let Some(point_sprites) = point_sprites {
             for i in 0..point_sprites.len() {
                 if let Some(img) = point_sprites.get_image(i) {
                     let w = img.width as u16;
                     let h = img.height as u16;
-                    let rgba = convert_indexed_to_rgba(&img.data, palette, 255);
+                    let rgba = convert_indexed_to_rgba(&img.data, point_palette, 255);
                     sprite_images.push((w, h, rgba));
                 } else {
                     sprite_images.push((1, 1, vec![0, 0, 0, 0]));
+                }
+            }
+            point_sprite_count = point_sprites.len();
+        }
+        let mut hfx_sprite_ids = Vec::new();
+        if let Some((hfx_sprites, sprite_ids)) = hfx_sprites {
+            for &sprite_id in sprite_ids {
+                if let Some(img) = hfx_sprites.get_image(sprite_id as usize) {
+                    let w = img.width as u16;
+                    let h = img.height as u16;
+                    let rgba = convert_indexed_to_rgba(&img.data, hfx_palette, 255);
+                    sprite_images.push((w, h, rgba));
+                    hfx_sprite_ids.push(sprite_id);
                 }
             }
         }
@@ -1062,6 +1120,12 @@ impl HudRenderer {
         self.font_region_start = font_start;
         self.panel_sprite_count = panel_sprite_count;
         self.point_region_start = font_start + 96 + panel_sprite_count;
+        self.hfx_regions.clear();
+        let hfx_region_start = self.point_region_start + point_sprite_count;
+        for (offset, sprite_id) in hfx_sprite_ids.iter().enumerate() {
+            self.hfx_regions
+                .insert(*sprite_id, hfx_region_start + offset);
+        }
 
         log::info!(
             "[hud] Atlas built: {}x{}, {} sprites, {} font glyphs, {} total regions",
@@ -1220,6 +1284,87 @@ impl HudRenderer {
         self.sprite_regions
             .get(sprite_idx)
             .map(|region| (region.width, region.height))
+    }
+
+    /// Native pixel dimensions of a verified HFX UI sprite.
+    pub fn hfx_size(&self, sprite_id: u16) -> Option<(u16, u16)> {
+        self.hfx_regions
+            .get(&sprite_id)
+            .and_then(|&sprite_idx| self.sprite_size(sprite_idx))
+    }
+
+    /// Draw a verified HFX UI sprite at native size times `scale`.
+    pub fn draw_hfx(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        self.draw_sprite(sprite_idx, x, y, scale, scale);
+        true
+    }
+
+    /// Draw a verified HFX UI sprite stretched to an exact rectangle.
+    pub fn draw_hfx_stretched(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> bool {
+        let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        let region = self.sprite_regions[sprite_idx].clone();
+        self.push_quad(
+            x,
+            y,
+            x + width,
+            y + height,
+            region.u0,
+            region.v0,
+            region.u1,
+            region.v1,
+            [1.0; 4],
+        );
+        true
+    }
+
+    /// Draw one of the original HFX nine-patch widget frames.
+    pub fn draw_hfx_nine_patch(
+        &mut self,
+        sprite_ids: &[u16; 9],
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale: f32,
+    ) -> bool {
+        let Some((corner_w, corner_h)) = self.hfx_size(sprite_ids[0]) else {
+            return false;
+        };
+        let corner_w = (corner_w as f32 * scale).min(width * 0.5);
+        let corner_h = (corner_h as f32 * scale).min(height * 0.5);
+        let x1 = x + corner_w;
+        let y1 = y + corner_h;
+        let x2 = x + width - corner_w;
+        let y2 = y + height - corner_h;
+        let cells = [
+            (sprite_ids[0], x, y, corner_w, corner_h),
+            (sprite_ids[1], x1, y, x2 - x1, corner_h),
+            (sprite_ids[2], x2, y, corner_w, corner_h),
+            (sprite_ids[3], x, y1, corner_w, y2 - y1),
+            (sprite_ids[4], x1, y1, x2 - x1, y2 - y1),
+            (sprite_ids[5], x2, y1, corner_w, y2 - y1),
+            (sprite_ids[6], x, y2, corner_w, corner_h),
+            (sprite_ids[7], x1, y2, x2 - x1, corner_h),
+            (sprite_ids[8], x2, y2, corner_w, corner_h),
+        ];
+        for (sprite_id, cell_x, cell_y, cell_w, cell_h) in cells {
+            if cell_w > 0.0 && cell_h > 0.0 {
+                self.draw_hfx_stretched(sprite_id, cell_x, cell_y, cell_w, cell_h);
+            }
+        }
+        true
     }
 
     /// Update the minimap texture from pre-built MinimapData.
@@ -1539,21 +1684,21 @@ mod tests {
 
     #[test]
     fn convert_indexed_opaque_pixel() {
-        // Arrange: palette entry 5 = BGRA (10, 20, 30, 255)
+        // Arrange: palette entry 5 = RGBX (10, 20, 30, 255)
         let mut palette = vec![0u8; 256 * 4];
-        palette[5 * 4] = 10; // B
+        palette[5 * 4] = 10; // R
         palette[5 * 4 + 1] = 20; // G
-        palette[5 * 4 + 2] = 30; // R
+        palette[5 * 4 + 2] = 30; // B
         palette[5 * 4 + 3] = 255;
         let indexed = [5u8];
 
         // Act
         let rgba = convert_indexed_to_rgba(&indexed, &palette, 255);
 
-        // Assert: BGRA→RGBA swap
-        assert_eq!(rgba[0], 30); // R (from palette B+2)
+        // Assert: original RGB channel order is retained
+        assert_eq!(rgba[0], 10); // R
         assert_eq!(rgba[1], 20); // G
-        assert_eq!(rgba[2], 10); // B (from palette B+0)
+        assert_eq!(rgba[2], 30); // B
         assert_eq!(rgba[3], 255); // A
     }
 
@@ -1571,21 +1716,36 @@ mod tests {
     }
 
     #[test]
-    fn convert_indexed_bgra_to_rgba_swap() {
-        // Arrange: palette entry 0 = B=0xFF, G=0x80, R=0x40, A=0
+    fn convert_indexed_rgbx_palette_uses_native_channel_order() {
+        // Arrange: palette entry 0 = R=0x40, G=0x80, B=0xFF, X=0
         let mut palette = vec![0u8; 4];
-        palette[0] = 0xFF; // B
+        palette[0] = 0x40; // R
         palette[1] = 0x80; // G
-        palette[2] = 0x40; // R
+        palette[2] = 0xFF; // B
         let indexed = [0u8];
 
         // Act
         let rgba = convert_indexed_to_rgba(&indexed, &palette, 255);
 
-        // Assert: R and B swapped
+        // Assert: RGBX channel order is retained
         assert_eq!(rgba[0], 0x40); // R
         assert_eq!(rgba[1], 0x80); // G
         assert_eq!(rgba[2], 0xFF); // B
+    }
+
+    #[test]
+    fn convert_indexed_rgb_triples_use_native_channel_order() {
+        // Arrange: PAL1-0.DAT stores 256 RGB triples.
+        let mut palette = vec![0u8; 256 * 3];
+        palette[7 * 3] = 0x22;
+        palette[7 * 3 + 1] = 0x55;
+        palette[7 * 3 + 2] = 0x88;
+
+        // Act
+        let rgba = convert_indexed_to_rgba(&[7], &palette, 255);
+
+        // Assert
+        assert_eq!(rgba, [0x22, 0x55, 0x88, 0xFF]);
     }
 
     // -- generate_minimap_rgba --
@@ -1671,7 +1831,8 @@ mod tests {
         assert_eq!(l.mm_w, 114.0);
         assert_eq!(l.mm_h, 114.0);
         assert_eq!(l.tab_y, 91.0);
-        assert_eq!(l.panel_y, 222.0);
+        assert_eq!(l.panel_y, 216.0);
+        assert_eq!(l.construction_cell_h, 52.8);
     }
 
     #[test]
@@ -1770,6 +1931,44 @@ mod tests {
             detect_construction_slot_click(layout.sidebar_w + 1.0, layout.panel_y + 1.0, &layout,),
             None
         );
+    }
+
+    #[test]
+    fn construction_tab_uses_all_eight_native_building_glyphs() {
+        assert_eq!(
+            (0..8)
+                .map(construction_point_sprite)
+                .collect::<Vec<Option<usize>>>(),
+            vec![
+                Some(58),
+                Some(59),
+                Some(60),
+                Some(61),
+                Some(62),
+                Some(63),
+                Some(64),
+                Some(65),
+            ]
+        );
+        assert_eq!(construction_point_sprite(8), None);
+        assert_eq!(construction_point_sprite(9), None);
+    }
+
+    #[test]
+    fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
+        assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 21);
+
+        for sprite_id in HFX_TAB_FRAME
+            .iter()
+            .chain(HFX_TAB_FRAME_SELECTED.iter())
+            .chain(HFX_TAB_ICONS.iter())
+        {
+            assert!(
+                HFX_HUD_SPRITE_IDS.contains(sprite_id),
+                "HFX sprite {sprite_id} must be packed into the HUD atlas"
+            );
+        }
     }
 
     // -- panel_sprite_index --
