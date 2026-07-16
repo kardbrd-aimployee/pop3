@@ -97,7 +97,6 @@ pub struct HudState {
     pub player_max_population: u16,
     pub spell_cooldowns: Vec<SpellCooldown>,
     pub spell_charges: [u8; 16],
-    pub camera_viewport: MinimapViewport,
     pub selected_info: Option<SelectedEntityInfo>,
     pub health_bars: Vec<HealthBarEntry>,
 }
@@ -139,14 +138,6 @@ pub struct TribePopulation {
     pub tribe_index: u8,
     pub count: u32,
     pub color: [f32; 4],
-}
-
-/// Minimap viewport rectangle data for camera position overlay.
-pub struct MinimapViewport {
-    pub cam_cell_x: f32, // camera center in cell coords (0-127)
-    pub cam_cell_y: f32,
-    pub view_width_cells: f32, // visible area width in cells
-    pub view_height_cells: f32,
 }
 
 /// Selected entity info for sidebar detail panel.

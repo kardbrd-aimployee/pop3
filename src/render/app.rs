@@ -74,8 +74,8 @@ use crate::engine::{GameAction, GameSession};
 
 use crate::render::hud::{
     self, compute_mana_fraction, HealthBarEntry, HealthBarType, HudRenderer, HudState, HudTab,
-    MinimapData, MinimapDot, MinimapMarkerKind, MinimapViewport, PanelEntry, SelectedEntityInfo,
-    TribePopulation, HUD_TRIBE_COLORS,
+    MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry, SelectedEntityInfo, TribePopulation,
+    HUD_TRIBE_COLORS,
 };
 
 /******************************************************************************/
@@ -738,19 +738,6 @@ impl GameEngine {
                 color: HUD_TRIBE_COLORS[t as usize],
             })
             .collect();
-        // Camera viewport: shift values are in cell coords (0-127)
-        let shift_vec = self.landscape_mesh.get_shift_vector();
-        let cam_cx = (shift_vec.x as f32).rem_euclid(128.0);
-        let cam_cy = (shift_vec.y as f32).rem_euclid(128.0);
-        let view_w = 20.0 / self.zoom.max(0.1);
-        let view_h = view_w * (self.screen.height as f32 / self.screen.width.max(1) as f32);
-        let camera_viewport = MinimapViewport {
-            cam_cell_x: cam_cx,
-            cam_cell_y: cam_cy,
-            view_width_cells: view_w,
-            view_height_cells: view_h,
-        };
-
         // Selection info: show first selected unit details
         let selected_info =
             if let Some(&first_id) = self.unit_coordinator.selection.selected.first() {
@@ -834,7 +821,6 @@ impl GameEngine {
             player_max_population,
             spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
             spell_charges: crate::engine::economy::mana::compute_spell_charges(player_mana),
-            camera_viewport,
             selected_info,
             health_bars,
         }
@@ -3005,21 +2991,6 @@ impl App {
                 }
             }
         }
-
-        // Viewport marker is drawn after the circular minimap texture.
-        let vp = &hud_state.camera_viewport;
-        let cell_to_px_x = layout.mm_w / 128.0;
-        let cell_to_px_y = layout.mm_h / 128.0;
-        let rx =
-            layout.mm_x + vp.cam_cell_x * cell_to_px_x - vp.view_width_cells * cell_to_px_x * 0.5;
-        let ry =
-            layout.mm_y + vp.cam_cell_y * cell_to_px_y - vp.view_height_cells * cell_to_px_y * 0.5;
-        let rw = vp.view_width_cells * cell_to_px_x;
-        let rh = vp.view_height_cells * cell_to_px_y;
-        hud.draw_rect(rx, ry, rw, scale_y, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx, ry + rh - scale_y, rw, scale_y, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx, ry, scale_x, rh, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx + rw - scale_x, ry, scale_x, rh, [0.85, 0.85, 1.0, 0.75]);
 
         hud.render_full(
             encoder,
