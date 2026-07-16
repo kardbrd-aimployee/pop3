@@ -797,6 +797,30 @@ pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 /// In-game construction-button frame tiles, in nine-patch order.
 pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826, 824];
 
+/// The original construction-button hover frame (`popTB.exe` 0x5754a8).
+/// `GUI_RenderBuildingButton` chooses this table while the button is focused.
+pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [839, 843, 840, 845, 847, 846, 841, 844, 842];
+
+/// The original construction-button pressed frame (`popTB.exe` 0x5754c0).
+pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [830, 834, 831, 836, 838, 837, 832, 835, 833];
+
+/// Visual state selected by the original construction-button renderer.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ConstructionButtonState {
+    Normal,
+    Hovered,
+    Pressed,
+}
+
+/// Return the exact native nine-patch table for a construction-button state.
+pub fn construction_button_frame(state: ConstructionButtonState) -> &'static [u16; 9] {
+    match state {
+        ConstructionButtonState::Normal => &HFX_BUILDING_FRAME,
+        ConstructionButtonState::Hovered => &HFX_BUILDING_FRAME_HOVER,
+        ConstructionButtonState::Pressed => &HFX_BUILDING_FRAME_PRESSED,
+    }
+}
+
 /// Native POINT building-menu silhouettes in the active game's eight
 /// supported slots. These are buildings (hut through airship hut); HFX
 /// `354..361` are spell glyphs and must not be substituted here.
@@ -896,6 +920,24 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     823,
     826,
     824,
+    839,
+    843,
+    840,
+    845,
+    847,
+    846,
+    841,
+    844,
+    842,
+    830,
+    834,
+    831,
+    836,
+    838,
+    837,
+    832,
+    835,
+    833,
     676,
     678,
     680,
@@ -2705,6 +2747,14 @@ mod tests {
             [821, 825, 822, 827, 829, 828, 823, 826, 824]
         );
         assert_eq!(
+            HFX_BUILDING_FRAME_HOVER,
+            [839, 843, 840, 845, 847, 846, 841, 844, 842]
+        );
+        assert_eq!(
+            HFX_BUILDING_FRAME_PRESSED,
+            [830, 834, 831, 836, 838, 837, 832, 835, 833]
+        );
+        assert_eq!(
             HFX_PANEL_SURFACE_TILES,
             [
                 1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 1462, 1463,
@@ -2716,12 +2766,14 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 100);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 118);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
             .chain(HFX_TAB_FRAME_SELECTED.iter())
             .chain(HFX_BUILDING_FRAME.iter())
+            .chain(HFX_BUILDING_FRAME_HOVER.iter())
+            .chain(HFX_BUILDING_FRAME_PRESSED.iter())
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())
@@ -2762,6 +2814,22 @@ mod tests {
                 "HFX sprite {sprite_id} must be packed into the HUD atlas"
             );
         }
+    }
+
+    #[test]
+    fn construction_button_frames_match_original_renderer_state_tables() {
+        assert_eq!(
+            construction_button_frame(ConstructionButtonState::Normal),
+            &HFX_BUILDING_FRAME
+        );
+        assert_eq!(
+            construction_button_frame(ConstructionButtonState::Hovered),
+            &HFX_BUILDING_FRAME_HOVER
+        );
+        assert_eq!(
+            construction_button_frame(ConstructionButtonState::Pressed),
+            &HFX_BUILDING_FRAME_PRESSED
+        );
     }
 
     // -- panel_sprite_index --

@@ -249,6 +249,9 @@ pub struct GameEngine {
 pub struct InputState {
     mouse_pos: Point2<f32>,
     drag_state: DragState,
+    /// Construction button currently held by the primary mouse button.
+    /// The native HUD has a distinct pressed nine-patch for this state.
+    construction_slot_pressed: Option<usize>,
     placement: Option<BuildingSubtype>,
     placement_rotation: u8,
     ghost: Option<GhostPreviewState>,
@@ -1352,6 +1355,7 @@ impl App {
             input: InputState {
                 mouse_pos: Point2::<f32>::new(0.0, 0.0),
                 drag_state: DragState::None,
+                construction_slot_pressed: None,
                 placement: None,
                 placement_rotation: 0,
                 ghost: None,
@@ -2946,6 +2950,15 @@ impl App {
         // first slots; unavailable entries leave the tiled panel surface
         // exposed, matching the unframed inactive spell entries in the
         // native reference HUD.
+        let hovered_slot = (self.engine.hud_tab == HudTab::Buildings)
+            .then(|| {
+                hud::detect_construction_slot_click(
+                    self.input.mouse_pos.x,
+                    self.input.mouse_pos.y,
+                    &layout,
+                )
+            })
+            .flatten();
         for row in 0..6usize {
             for col in 0..3usize {
                 // The binary table is stored right-to-left.  Convert it to
@@ -2965,8 +2978,17 @@ impl App {
                 let cell_h = cell.h as f32;
                 let slot = row * 3 + col;
                 if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
+                    let frame_state = if self.input.construction_slot_pressed == Some(slot)
+                        && hovered_slot == Some(slot)
+                    {
+                        hud::ConstructionButtonState::Pressed
+                    } else if hovered_slot == Some(slot) {
+                        hud::ConstructionButtonState::Hovered
+                    } else {
+                        hud::ConstructionButtonState::Normal
+                    };
                     hud.draw_hfx_nine_patch_scaled(
-                        &hud::HFX_BUILDING_FRAME,
+                        hud::construction_button_frame(frame_state),
                         x,
                         y,
                         cell_w,
@@ -4954,6 +4976,7 @@ impl ApplicationHandler for App {
 
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
+                        self.input.construction_slot_pressed = None;
                         if on_sidebar {
                             // Check if click is on minimap for click-to-move
                             let mx = self.input.mouse_pos.x;
@@ -4989,14 +5012,16 @@ impl ApplicationHandler for App {
                                 self.engine
                                     .apply_command(&GameCommand::SetHudTab(HudTab::Buildings));
                             } else if self.engine.hud_tab == HudTab::Buildings {
-                                if hud::detect_construction_slot_click(
+                                if let Some(slot) = hud::detect_construction_slot_click(
                                     self.input.mouse_pos.x,
                                     self.input.mouse_pos.y,
                                     &layout,
-                                ) == Some(0)
-                                {
-                                    self.input.placement = Some(BuildingSubtype::SmallHut);
-                                    self.input.placement_rotation = 0;
+                                ) {
+                                    self.input.construction_slot_pressed = Some(slot);
+                                    if slot == 0 {
+                                        self.input.placement = Some(BuildingSubtype::SmallHut);
+                                        self.input.placement_rotation = 0;
+                                    }
                                 }
                             }
                             self.do_render = true;
@@ -5008,6 +5033,7 @@ impl ApplicationHandler for App {
                         }
                     }
                     (MouseButton::Left, ElementState::Released) => {
+                        self.input.construction_slot_pressed = None;
                         if !on_sidebar {
                             if let Some(ghost) = self.input.ghost.filter(|ghost| ghost.valid) {
                                 self.engine.apply_command(&GameCommand::PlaceBuilding {
