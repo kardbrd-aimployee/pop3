@@ -677,15 +677,13 @@ pub fn detect_construction_slot_click(
     None
 }
 
-/// Depressed in-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
-/// `[top-left, top, top-right, left, center, right, bottom-left, bottom,
-/// bottom-right]`.  The native screencut uses this darker state for the open
-/// page, not the raised gold counterpart below.
+/// Dark inactive in-game tab frame tiles from `hfx0-0.dat`, in nine-patch
+/// order `[top-left, top, top-right, left, center, right, bottom-left,
+/// bottom, bottom-right]`.
 pub const HFX_TAB_FRAME: [u16; 9] = [740, 744, 741, 746, 748, 747, 742, 745, 743];
 
-/// Raised counterpart of [`HFX_TAB_FRAME`] for tabs whose page is not open.
-/// The historical asset order calls it "selected", but the observed native
-/// HUD uses the darker [`HFX_TAB_FRAME`] as the active/depressed state.
+/// Bright active construction-tab frame. The native HUD screencut shows this
+/// raised gold state around the open hut page.
 pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760, 763, 761];
 
 /// In-game tab silhouettes in visual order: construction, spells, followers.

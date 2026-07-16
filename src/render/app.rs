@@ -109,6 +109,16 @@ fn confirm_quit(deadline: &mut Option<Instant>, now: Instant) -> bool {
     }
 }
 
+/// The construction-only HUD keeps its native hut tab raised and the two
+/// inert tab silhouettes dark, as in the reference capture.
+fn construction_slice_tab_frame(index: usize) -> &'static [u16; 9] {
+    if index == 0 {
+        &hud::HFX_TAB_FRAME_SELECTED
+    } else {
+        &hud::HFX_TAB_FRAME
+    }
+}
+
 /******************************************************************************/
 
 #[rustfmt::skip]
@@ -2645,11 +2655,7 @@ impl App {
         for (index, inactive_icon) in hud::HFX_TAB_ICONS.iter().enumerate() {
             let x = layout.tab_xs[index];
             let selected = index == 0;
-            let frame = if selected {
-                &hud::HFX_TAB_FRAME
-            } else {
-                &hud::HFX_TAB_FRAME_SELECTED
-            };
+            let frame = construction_slice_tab_frame(index);
             let icon = if selected {
                 hud::HFX_TAB_ICON_BUILDINGS_SELECTED
             } else {
@@ -5316,5 +5322,15 @@ mod tests {
         assert_eq!(placement_entrance_direction(1), (-1.0, 0.0));
         assert_eq!(placement_entrance_direction(2), (0.0, 1.0));
         assert_eq!(placement_entrance_direction(3), (1.0, 0.0));
+    }
+
+    #[test]
+    fn construction_tab_uses_the_bright_native_active_frame() {
+        assert_eq!(
+            construction_slice_tab_frame(0),
+            &hud::HFX_TAB_FRAME_SELECTED
+        );
+        assert_eq!(construction_slice_tab_frame(1), &hud::HFX_TAB_FRAME);
+        assert_eq!(construction_slice_tab_frame(2), &hud::HFX_TAB_FRAME);
     }
 }
