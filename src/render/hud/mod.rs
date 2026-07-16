@@ -836,6 +836,14 @@ pub const HFX_CONSTRUCTION_ICONS: [u16; 9] = [1028, 1029, 1030, 1032, 1033, 1031
 pub const HFX_CONSTRUCTION_ICONS_HOVER: [u16; 9] =
     [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054];
 
+/// Native `?` overlay used by the original blocked construction state.
+///
+/// `FUN_004018a0` composes this over the regular construction glyph when
+/// `FUN_00401c60` reports state 4.  It is deliberately kept separate from
+/// the nine building icon families: the overlay is a state signal, not a
+/// replacement building icon.
+pub const HFX_CONSTRUCTION_BLOCKED_OVERLAY: u16 = 1055;
+
 /// Resolve the exact construction icon for a native element slot.
 pub fn construction_icon_sprite(slot: usize, highlighted: bool) -> Option<u16> {
     let icons = if highlighted {
@@ -934,6 +942,7 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     1052,
     1053,
     1054,
+    HFX_CONSTRUCTION_BLOCKED_OVERLAY,
     690,
     691,
     692,
@@ -2807,6 +2816,7 @@ mod tests {
             HFX_CONSTRUCTION_ICONS_HOVER,
             [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054]
         );
+        assert_eq!(HFX_CONSTRUCTION_BLOCKED_OVERLAY, 1055);
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
@@ -2850,7 +2860,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 136);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 137);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -2860,6 +2870,7 @@ mod tests {
             .chain(HFX_BUILDING_FRAME_PRESSED.iter())
             .chain(HFX_CONSTRUCTION_ICONS.iter())
             .chain(HFX_CONSTRUCTION_ICONS_HOVER.iter())
+            .chain(std::iter::once(&HFX_CONSTRUCTION_BLOCKED_OVERLAY))
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())

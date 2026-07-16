@@ -287,7 +287,10 @@ fn run() -> Result<(), Box<dyn Error>> {
                 contact_sheet_size: *args.get_one::<u32>("size").expect("defaulted by clap"),
             };
             let result = export_building_panel_icons(&request)?;
-            println!("Extracted {} building-panel icons", result.icon_count);
+            println!(
+                "Extracted {} construction cells (normal and highlighted glyphs)",
+                result.icon_count
+            );
             println!("Manifest: {}", result.manifest_path.display());
             println!("Contact sheet: {}", result.contact_sheet_path.display());
         }

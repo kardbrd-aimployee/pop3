@@ -9,8 +9,8 @@ use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
-    FONT4_HUD_GLYPH_IDS, HFX_CONSTRUCTION_ICONS, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER,
-    HSPR_HUD_SPRITE_IDS,
+    FONT4_HUD_GLYPH_IDS, HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS,
+    HFX_CONSTRUCTION_ICONS_HOVER, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER, HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
@@ -45,6 +45,22 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
             "original HFX construction icon {sprite_id} must have an image extent"
         );
     }
+    for &sprite_id in &HFX_CONSTRUCTION_ICONS_HOVER {
+        let image = hfx.get_image(sprite_id as usize).unwrap_or_else(|| {
+            panic!("original HFX highlighted construction icon {sprite_id} must decode")
+        });
+        assert!(
+            image.width > 0 && image.height > 0,
+            "original HFX highlighted construction icon {sprite_id} must have an image extent"
+        );
+    }
+    let blocked_overlay = hfx
+        .get_image(HFX_CONSTRUCTION_BLOCKED_OVERLAY as usize)
+        .expect("original HFX blocked construction overlay must decode");
+    assert!(
+        blocked_overlay.width > 0 && blocked_overlay.height > 0,
+        "original HFX blocked construction overlay must have an image extent"
+    );
     for &sprite_id in &HSPR_HUD_SPRITE_IDS {
         assert!(
             hspr.get_image(sprite_id as usize).is_some(),

@@ -15,6 +15,8 @@ use super::structures::make_contact_sheet;
 
 const SCHEMA_VERSION: u32 = 1;
 const HFX_BANK: &str = "hfx0-0.dat";
+/// The native `?` overlay composed by the original blocked build-menu state.
+const HFX_BLOCKED_OVERLAY: usize = 1055;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildingPanelIconSpec {
@@ -23,6 +25,7 @@ pub struct BuildingPanelIconSpec {
     pub short_label: &'static str,
     pub building_subtype: u8,
     pub sprite_index: usize,
+    pub highlight_sprite_index: usize,
 }
 
 /// Original house-tab element parameters from `0x576c20`.
@@ -37,6 +40,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Hut",
         building_subtype: 1,
         sprite_index: 1028,
+        highlight_sprite_index: 1046,
     },
     BuildingPanelIconSpec {
         id: "drum-tower",
@@ -44,6 +48,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Drum Tower",
         building_subtype: 4,
         sprite_index: 1029,
+        highlight_sprite_index: 1047,
     },
     BuildingPanelIconSpec {
         id: "warrior-training-hut",
@@ -51,6 +56,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Warrior Hut",
         building_subtype: 7,
         sprite_index: 1030,
+        highlight_sprite_index: 1048,
     },
     BuildingPanelIconSpec {
         id: "temple",
@@ -58,6 +64,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Temple",
         building_subtype: 5,
         sprite_index: 1032,
+        highlight_sprite_index: 1050,
     },
     BuildingPanelIconSpec {
         id: "spy-training-hut",
@@ -65,6 +72,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Spy Hut",
         building_subtype: 6,
         sprite_index: 1033,
+        highlight_sprite_index: 1051,
     },
     BuildingPanelIconSpec {
         id: "firewarrior-training-hut",
@@ -72,6 +80,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Firewarrior",
         building_subtype: 8,
         sprite_index: 1031,
+        highlight_sprite_index: 1049,
     },
     BuildingPanelIconSpec {
         id: "boat-hut",
@@ -79,6 +88,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Boat Hut",
         building_subtype: 13,
         sprite_index: 1034,
+        highlight_sprite_index: 1052,
     },
     BuildingPanelIconSpec {
         id: "guard-post",
@@ -86,6 +96,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Guard Post",
         building_subtype: 15,
         sprite_index: 1035,
+        highlight_sprite_index: 1053,
     },
     BuildingPanelIconSpec {
         id: "vault",
@@ -93,6 +104,7 @@ pub const BUILDING_PANEL_ICON_SPECS: [BuildingPanelIconSpec; 9] = [
         short_label: "Vault",
         building_subtype: 17,
         sprite_index: 1036,
+        highlight_sprite_index: 1054,
     },
 ];
 
@@ -117,6 +129,7 @@ struct Manifest {
     kind: &'static str,
     source: SourceManifest,
     items: Vec<IconManifest>,
+    blocked_overlay: OverlayManifest,
 }
 
 #[derive(Serialize)]
@@ -130,6 +143,16 @@ struct IconManifest {
     id: &'static str,
     name: &'static str,
     building_subtype: u8,
+    sprite_index: usize,
+    highlight_sprite_index: usize,
+    width: u16,
+    height: u16,
+    icon: String,
+    highlight_icon: String,
+}
+
+#[derive(Serialize)]
+struct OverlayManifest {
     sprite_index: usize,
     width: u16,
     height: u16,
@@ -167,23 +190,58 @@ pub fn export_building_panel_icons(
                 spec.sprite_index, spec.name
             ))
         })?;
+        let highlighted_source = sprite_bank
+            .get_image(spec.highlight_sprite_index)
+            .ok_or_else(|| {
+                invalid_data(format!(
+                    "{HFX_BANK} has no highlighted sprite {} ({})",
+                    spec.highlight_sprite_index, spec.name
+                ))
+            })?;
         let icon = indexed_to_rgba(&source, &palette);
+        let highlighted_icon = indexed_to_rgba(&highlighted_source, &palette);
         let file_name = format!("{}.png", spec.id);
+        let highlighted_file_name = format!("{}-highlighted.png", spec.id);
         icon.save(icons_dir.join(&file_name))?;
+        highlighted_icon.save(icons_dir.join(&highlighted_file_name))?;
         rendered.push((
             format!("{} (#{})", spec.short_label, spec.sprite_index),
             fit_icon(&icon, request.contact_sheet_size),
+        ));
+        rendered.push((
+            format!(
+                "{} highlighted (#{})",
+                spec.short_label, spec.highlight_sprite_index
+            ),
+            fit_icon(&highlighted_icon, request.contact_sheet_size),
         ));
         manifest_items.push(IconManifest {
             id: spec.id,
             name: spec.name,
             building_subtype: spec.building_subtype,
             sprite_index: spec.sprite_index,
+            highlight_sprite_index: spec.highlight_sprite_index,
             width: source.width as u16,
             height: source.height as u16,
             icon: format!("icons/{file_name}"),
+            highlight_icon: format!("icons/{highlighted_file_name}"),
         });
     }
+
+    // `FUN_004018a0` composites this native glyph over the corresponding
+    // building icon for construction state 4. It is not a tenth building.
+    let blocked_overlay_source = sprite_bank.get_image(HFX_BLOCKED_OVERLAY).ok_or_else(|| {
+        invalid_data(format!(
+            "{HFX_BANK} has no blocked construction overlay {HFX_BLOCKED_OVERLAY}"
+        ))
+    })?;
+    let blocked_overlay = indexed_to_rgba(&blocked_overlay_source, &palette);
+    let blocked_overlay_file_name = "blocked-overlay.png";
+    blocked_overlay.save(icons_dir.join(blocked_overlay_file_name))?;
+    rendered.push((
+        format!("Blocked overlay (#{HFX_BLOCKED_OVERLAY})"),
+        fit_icon(&blocked_overlay, request.contact_sheet_size),
+    ));
 
     let contact_sheet_path = request.output.join("contact-sheet.png");
     make_contact_sheet(&rendered, request.contact_sheet_size).save(&contact_sheet_path)?;
@@ -196,6 +254,12 @@ pub fn export_building_panel_icons(
             palette: relative_source(&request.base, &palette_path),
         },
         items: manifest_items,
+        blocked_overlay: OverlayManifest {
+            sprite_index: HFX_BLOCKED_OVERLAY,
+            width: blocked_overlay_source.width as u16,
+            height: blocked_overlay_source.height as u16,
+            icon: format!("icons/{blocked_overlay_file_name}"),
+        },
     };
     let manifest_path = request.output.join("manifest.json");
     fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
@@ -238,6 +302,26 @@ mod tests {
             sprite_indices,
             [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036]
         );
+    }
+
+    #[test]
+    fn native_build_menu_uses_the_hfx_highlight_parameters() {
+        let highlighted_indices: Vec<_> = BUILDING_PANEL_ICON_SPECS
+            .iter()
+            .map(|spec| spec.highlight_sprite_index)
+            .collect();
+        assert_eq!(
+            highlighted_indices,
+            [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054]
+        );
+        assert!(BUILDING_PANEL_ICON_SPECS
+            .iter()
+            .all(|spec| spec.highlight_sprite_index == spec.sprite_index + 18));
+    }
+
+    #[test]
+    fn native_build_menu_uses_the_blocked_question_overlay() {
+        assert_eq!(HFX_BLOCKED_OVERLAY, 1055);
     }
 
     #[test]

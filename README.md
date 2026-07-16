@@ -208,10 +208,13 @@ cargo run --release --bin pop_extract -- \
   --landscape 0
 ```
 
-The output contains native-size transparent PNGs for the nine active construction
-cells. The manifest records their canonical building subtypes and original
-`hfx0-0.dat` image numbers `1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035,
-1036` in native menu order.
+The output contains native-size transparent PNG pairs for the nine active
+construction cells: normal and highlighted. The manifest records their
+canonical building subtypes and original `hfx0-0.dat` image numbers
+`1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036` in native menu order;
+the highlighted companion is always the source image number plus 18. It also
+exports the original state-4 `?` overlay (`1055`) as
+`icons/blocked-overlay.png`; this is a state layer, not a replacement icon.
 
 To inspect other native in-game HUD artwork, generate an indexed catalog from
 the complete primary HSPR bank:
