@@ -1714,7 +1714,7 @@ impl App {
                 &point_palette,
                 hfx_container
                     .as_ref()
-                    .map(|sprites| (sprites, hud::HFX_HUD_SPRITE_IDS.as_slice())),
+                    .map(|sprites| (sprites, hud::HFX_HUD_SPRITE_IDS)),
                 hspr_container
                     .as_ref()
                     .map(|sprites| (sprites, hud::HSPR_HUD_SPRITE_IDS.as_slice())),
@@ -2701,7 +2701,8 @@ impl App {
         hud.update_minimap(&gpu.device, &gpu.queue, &hud_state.minimap);
         hud.begin_frame();
 
-        let scale = layout.scale_y;
+        let scale_x = layout.scale_x;
+        let scale_y = layout.scale_y;
         let ochre = [0.82, 0.45, 0.035, 1.0];
         let ochre_light = [0.96, 0.60, 0.055, 1.0];
         let ochre_dark = [0.45, 0.20, 0.025, 1.0];
@@ -2709,23 +2710,25 @@ impl App {
         // The original sidebar is composited from its 32px HFX repeat
         // textures. Draw these before the minimap layer so the canvas masks
         // the middle naturally instead of approximating its circular aperture.
-        if !hud.draw_hfx_tiled(
+        if !hud.draw_hfx_tiled_scaled(
             hud::HFX_MINIMAP_SURROUND_TEXTURE,
             0.0,
             0.0,
             layout.sidebar_w,
             layout.tab_y,
-            scale,
+            scale_x,
+            scale_y,
         ) {
             hud.draw_rect(0.0, 0.0, layout.sidebar_w, layout.tab_y, ochre_dark);
         }
-        if !hud.draw_hfx_tiled(
+        if !hud.draw_hfx_tiled_scaled(
             hud::HFX_STATUS_TEXTURE,
             0.0,
             layout.tab_y,
             layout.sidebar_w,
             layout.panel_y - layout.tab_y,
-            scale,
+            scale_x,
+            scale_y,
         ) {
             hud.draw_rect(
                 0.0,
@@ -2735,13 +2738,14 @@ impl App {
                 ochre,
             );
         }
-        if !hud.draw_hfx_tiled(
+        if !hud.draw_hfx_tiled_scaled(
             hud::HFX_CONSTRUCTION_TEXTURE,
             0.0,
             layout.panel_y,
             layout.sidebar_w,
             layout.screen_h - layout.panel_y,
-            scale,
+            scale_x,
+            scale_y,
         ) {
             hud.draw_rect(
                 0.0,
@@ -2754,19 +2758,20 @@ impl App {
         hud.mark_minimap_split();
 
         // Native rock arch on top of the minimap canvas.
-        hud.draw_hfx_nine_patch_border(
+        hud.draw_hfx_nine_patch_border_scaled(
             &hud::HFX_MINIMAP_FRAME,
             layout.mm_x,
             layout.mm_y,
-            layout.mm_size,
-            layout.mm_size,
-            scale,
+            layout.mm_w,
+            layout.mm_h,
+            scale_x,
+            scale_y,
         );
 
         // Native three-mode strip. Only Buildings is active in this slice;
         // Spells and Followers remain visible but intentionally inert.
         for (index, inactive_icon) in hud::HFX_TAB_ICONS.iter().enumerate() {
-            let x = index as f32 * layout.tab_w;
+            let x = layout.tab_xs[index];
             let selected = index == 0;
             let frame = if selected {
                 &hud::HFX_TAB_FRAME_SELECTED
@@ -2778,166 +2783,235 @@ impl App {
             } else {
                 *inactive_icon
             };
-            if !hud.draw_hfx_nine_patch(frame, x, layout.tab_y, layout.tab_w, layout.tab_h, scale) {
+            if !hud.draw_hfx_nine_patch_scaled(
+                frame,
+                x,
+                layout.tab_y,
+                layout.tab_w,
+                layout.tab_h,
+                scale_x,
+                scale_y,
+            ) {
                 let background = if selected { ochre_light } else { ochre };
                 hud.draw_rect(
-                    x + scale,
+                    x + scale_x,
                     layout.tab_y,
-                    layout.tab_w - 2.0 * scale,
+                    layout.tab_w - 2.0 * scale_x,
                     layout.tab_h,
                     background,
                 );
-                hud.draw_rect(x, layout.tab_y, scale, layout.tab_h, ochre_dark);
+                hud.draw_rect(x, layout.tab_y, scale_x, layout.tab_h, ochre_dark);
                 hud.draw_rect(
-                    x + layout.tab_w - scale,
+                    x + layout.tab_w - scale_x,
                     layout.tab_y,
-                    scale,
+                    scale_x,
                     layout.tab_h,
                     ochre_dark,
                 );
             }
             if let Some((width, height)) = hud.hfx_size(icon) {
-                let icon_w = width as f32 * scale;
-                let icon_h = height as f32 * scale;
-                hud.draw_hfx(
+                let icon_w = width as f32 * scale_x;
+                let icon_h = height as f32 * scale_y;
+                hud.draw_hfx_scaled(
                     icon,
                     x + (layout.tab_w - icon_w) * 0.5,
                     layout.tab_y + (layout.tab_h - icon_h) * 0.5,
-                    scale,
+                    scale_x,
+                    scale_y,
                 );
             }
         }
 
-        // Compact tribe/status block. Its frames, globe, avatar, controls,
-        // and population meter are all composited from their native banks.
-        let globe_x = 7.0 * scale;
-        let globe_y = 126.0 * scale;
-        hud.draw_hfx_tiled(
-            hud::HFX_STATUS_WHITE_TEXTURE,
+        // Main-sidebar status widgets.  Their positions and nine-patches are
+        // taken directly from the original element table (e01/e02/e12/e19,
+        // e13–18, and e20); no replacement UI art is drawn here.
+        let globe_x = 6.0 * scale_x;
+        let globe_y = 122.0 * scale_y;
+        let globe_w = 24.0 * scale_x;
+        let globe_h = 24.0 * scale_y;
+        hud.draw_hfx_nine_patch_scaled(
+            &hud::HFX_STATUS_GLOBE_FRAME,
             globe_x,
             globe_y,
-            27.0 * scale,
-            27.0 * scale,
-            scale,
-        );
-        hud.draw_hfx_stretched(
-            hud::HFX_STATUS_LIGHT_FRAME,
-            5.0 * scale,
-            124.0 * scale,
-            30.0 * scale,
-            30.0 * scale,
+            globe_w,
+            globe_h,
+            scale_x,
+            scale_y,
         );
         if self.engine.hud_panel_sprite_count > hud::PANEL_STATUS_GLOBE {
-            hud.draw_sprite(
-                hud.panel_sprite_index(hud::PANEL_STATUS_GLOBE),
-                10.0 * scale,
-                129.0 * scale,
-                scale,
-                scale,
-            );
+            let globe = hud.panel_sprite_index(hud::PANEL_STATUS_GLOBE);
+            if let Some((width, height)) = hud.sprite_size(globe) {
+                let globe_w = width as f32 * scale_x;
+                let globe_h = height as f32 * scale_y;
+                hud.draw_sprite(
+                    globe,
+                    globe_x + (24.0 * scale_x - globe_w) * 0.5,
+                    globe_y + (24.0 * scale_y - globe_h) * 0.5,
+                    scale_x,
+                    scale_y,
+                );
+            }
         }
 
-        let avatar_x = 38.0 * scale;
-        let avatar_y = 118.0 * scale;
-        hud.draw_hfx_tiled(
+        let avatar_x = 33.0 * scale_x;
+        let avatar_y = 114.0 * scale_y;
+        let avatar_w = 30.0 * scale_x;
+        let avatar_h = 35.0 * scale_y;
+        hud.draw_hfx_tiled_scaled(
             hud::HFX_STATUS_BLACK_TEXTURE,
             avatar_x,
             avatar_y,
-            38.0 * scale,
-            45.0 * scale,
-            scale,
+            avatar_w,
+            avatar_h,
+            scale_x,
+            scale_y,
         );
-        hud.draw_hfx(hud::HFX_STATUS_AVATAR_FRAME, avatar_x, avatar_y, scale);
-        hud.draw_hspr(
+        hud.draw_hfx_nine_patch_scaled(
+            &hud::HFX_STATUS_AVATAR_FRAME,
+            avatar_x,
+            avatar_y,
+            avatar_w,
+            avatar_h,
+            scale_x,
+            scale_y,
+        );
+        hud.draw_hspr_scaled(
             hud::HSPR_STATUS_AVATAR_BLUE,
-            50.0 * scale,
-            124.0 * scale,
-            scale,
+            41.0 * scale_x,
+            115.0 * scale_y,
+            scale_x,
+            scale_y,
         );
 
-        hud.draw_hfx(
-            hud::HFX_STATUS_HELP_GLYPH,
-            82.0 * scale,
-            121.0 * scale,
-            scale,
+        let help_x = 64.0 * scale_x;
+        let help_y = 114.0 * scale_y;
+        let help_w = 13.0 * scale_x;
+        let help_h = 12.0 * scale_y;
+        hud.draw_hfx_nine_patch_scaled(
+            &hud::HFX_STATUS_SMALL_FRAME,
+            help_x,
+            help_y,
+            help_w,
+            help_h,
+            scale_x,
+            scale_y,
         );
-        hud.draw_hfx_tiled(
-            hud::HFX_STATUS_WHITE_TEXTURE,
-            78.0 * scale,
-            135.0 * scale,
-            12.0 * scale,
-            28.0 * scale,
-            scale,
+        hud.draw_hfx_scaled(
+            hud::HFX_STATUS_HELP_GLYPH,
+            help_x + (help_w - 8.0 * scale_x) * 0.5,
+            help_y,
+            scale_x,
+            scale_y,
+        );
+
+        hud.draw_hfx_nine_patch_scaled(
+            &hud::HFX_STATUS_TALL_FRAME,
+            64.0 * scale_x,
+            126.0 * scale_y,
+            10.0 * scale_x,
+            22.0 * scale_y,
+            scale_x,
+            scale_y,
         );
         hud.draw_hfx_stretched(
             hud::HFX_STATUS_BLUE_CHIP,
-            95.0 * scale,
-            121.0 * scale,
-            9.0 * scale,
-            12.0 * scale,
+            78.0 * scale_x,
+            114.0 * scale_y,
+            10.0 * scale_x,
+            11.0 * scale_y,
         );
         hud.draw_hfx_stretched(
             hud::HFX_STATUS_RED_CHIP,
-            105.0 * scale,
-            121.0 * scale,
-            9.0 * scale,
-            12.0 * scale,
+            89.0 * scale_x,
+            114.0 * scale_y,
+            10.0 * scale_x,
+            11.0 * scale_y,
         );
 
-        let meter_x = 0.0;
-        let meter_y = 164.0 * scale;
-        let meter_w = 18.0 * scale;
-        let meter_h = 34.0 * scale;
-        hud.draw_hfx_tiled(
-            hud::HFX_STATUS_WHITE_TEXTURE,
-            meter_x,
-            meter_y,
-            meter_w,
-            meter_h,
-            scale,
-        );
-        let mana_fraction = compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-        let meter_inset = 2.0 * scale;
-        let fill_h = (meter_h - meter_inset * 2.0) * mana_fraction;
-        hud.draw_rect(
-            meter_x + meter_inset,
-            meter_y + meter_h - meter_inset - fill_h,
-            meter_w - meter_inset * 2.0,
-            fill_h,
-            [0.02, 0.62, 0.28, 1.0],
-        );
-        hud.draw_hfx(
-            hud::HFX_STATUS_FOLLOWER_GLYPH,
-            21.0 * scale,
-            168.0 * scale,
-            scale,
-        );
+        // Quick-row cells: only mana and the follower art are live in this
+        // construction-only implementation, but the other native frames stay
+        // visible exactly where the original places them.
+        for slot in 0..6 {
+            let cell_x = slot as f32 * 16.0 * scale_x;
+            let cell_y = 153.0 * scale_y;
+            let cell_w = 15.0 * scale_x;
+            let cell_h = 36.0 * scale_y;
+            hud.draw_hfx_nine_patch_scaled(
+                &hud::HFX_STATUS_SMALL_FRAME,
+                cell_x,
+                cell_y,
+                cell_w,
+                cell_h,
+                scale_x,
+                scale_y,
+            );
+            if slot == 0 {
+                let mana_fraction =
+                    compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
+                let inset_x = 2.0 * scale_x;
+                let inset_y = 2.0 * scale_y;
+                let fill_h = (cell_h - inset_y * 2.0) * mana_fraction;
+                hud.draw_rect(
+                    cell_x + inset_x,
+                    cell_y + cell_h - inset_y - fill_h,
+                    cell_w - inset_x * 2.0,
+                    fill_h,
+                    [0.02, 0.62, 0.28, 1.0],
+                );
+            }
+            if slot == 1 {
+                hud.draw_hfx_scaled(
+                    hud::HFX_STATUS_FOLLOWER_GLYPH,
+                    cell_x + (cell_w - 13.0 * scale_x) * 0.5,
+                    cell_y + (cell_h - 23.0 * scale_y) * 0.5,
+                    scale_x,
+                    scale_y,
+                );
+            }
+        }
 
         // The native meter is stored left-to-right; the original sidebar
         // presents its available capacity from the right edge.
-        hud.draw_hfx_flipped(hud::HFX_POPULATION_METER, 5.0 * scale, 202.0 * scale, scale);
+        hud.draw_hfx_flipped_scaled(
+            hud::HFX_POPULATION_METER,
+            4.0 * scale_x,
+            190.0 * scale_y,
+            scale_x,
+            scale_y,
+        );
 
-        // Construction grid: native HFX frames with original POINT building
-        // glyphs. The selected tile owns the frame center; idle tiles retain
-        // the repeated source texture beneath their native border.
-        let grid_y = layout.panel_y;
+        // Construction page: the native panel reserves an 18-button, three
+        // column grid.  The supported eight building silhouettes occupy the
+        // first slots; the remaining original cells stay visibly present but
+        // inert until their mechanics are implemented.
+        let grid_x = 2.0 * scale_x;
+        let grid_y = layout.panel_y + 8.0 * scale_y;
         let cell_w = layout.construction_cell_w;
         let cell_h = layout.construction_cell_h;
-        for row in 0..5usize {
-            for col in 0..2usize {
-                let x = col as f32 * cell_w;
-                let y = grid_y + row as f32 * cell_h;
-                let slot = row * 2 + col;
+        for row in 0..6usize {
+            for col in 0..3usize {
+                let x = grid_x + col as f32 * (cell_w + scale_x);
+                let y = grid_y + row as f32 * (cell_h + scale_y);
+                let slot = row * 3 + col;
                 if slot == 0 {
-                    hud.draw_hfx_nine_patch(&hud::HFX_BUILDING_FRAME, x, y, cell_w, cell_h, scale);
-                } else {
-                    hud.draw_hfx_nine_patch_border(
+                    hud.draw_hfx_nine_patch_scaled(
                         &hud::HFX_BUILDING_FRAME,
                         x,
                         y,
                         cell_w,
                         cell_h,
-                        scale,
+                        scale_x,
+                        scale_y,
+                    );
+                } else {
+                    hud.draw_hfx_nine_patch_border_scaled(
+                        &hud::HFX_BUILDING_FRAME,
+                        x,
+                        y,
+                        cell_w,
+                        cell_h,
+                        scale_x,
+                        scale_y,
                     );
                 }
 
@@ -2945,14 +3019,14 @@ impl App {
                     if self.engine.hud_point_sprite_count > icon {
                         let icon = hud.point_sprite_index(icon);
                         if let Some((width, height)) = hud.sprite_size(icon) {
-                            let icon_w = width as f32 * scale;
-                            let icon_h = height as f32 * scale;
+                            let icon_w = width as f32 * scale_x;
+                            let icon_h = height as f32 * scale_y;
                             hud.draw_sprite(
                                 icon,
                                 x + (cell_w - icon_w) * 0.5,
                                 y + (cell_h - icon_h) * 0.5,
-                                scale,
-                                scale,
+                                scale_x,
+                                scale_y,
                             );
                         }
                     }
@@ -2962,15 +3036,18 @@ impl App {
 
         // Viewport marker is drawn after the circular minimap texture.
         let vp = &hud_state.camera_viewport;
-        let cell_to_px = layout.mm_size / 128.0;
-        let rx = layout.mm_x + vp.cam_cell_x * cell_to_px - vp.view_width_cells * cell_to_px * 0.5;
-        let ry = layout.mm_y + vp.cam_cell_y * cell_to_px - vp.view_height_cells * cell_to_px * 0.5;
-        let rw = vp.view_width_cells * cell_to_px;
-        let rh = vp.view_height_cells * cell_to_px;
-        hud.draw_rect(rx, ry, rw, scale, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx, ry + rh - scale, rw, scale, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx, ry, scale, rh, [0.85, 0.85, 1.0, 0.75]);
-        hud.draw_rect(rx + rw - scale, ry, scale, rh, [0.85, 0.85, 1.0, 0.75]);
+        let cell_to_px_x = layout.mm_w / 128.0;
+        let cell_to_px_y = layout.mm_h / 128.0;
+        let rx =
+            layout.mm_x + vp.cam_cell_x * cell_to_px_x - vp.view_width_cells * cell_to_px_x * 0.5;
+        let ry =
+            layout.mm_y + vp.cam_cell_y * cell_to_px_y - vp.view_height_cells * cell_to_px_y * 0.5;
+        let rw = vp.view_width_cells * cell_to_px_x;
+        let rh = vp.view_height_cells * cell_to_px_y;
+        hud.draw_rect(rx, ry, rw, scale_y, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx, ry + rh - scale_y, rw, scale_y, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx, ry, scale_x, rh, [0.85, 0.85, 1.0, 0.75]);
+        hud.draw_rect(rx + rw - scale_x, ry, scale_x, rh, [0.85, 0.85, 1.0, 0.75]);
 
         hud.render_full(
             encoder,
@@ -2978,7 +3055,7 @@ impl App {
             &gpu.queue,
             layout.screen_w,
             layout.screen_h,
-            Some((layout.mm_x, layout.mm_y, layout.mm_size, layout.mm_size)),
+            Some((layout.mm_x, layout.mm_y, layout.mm_w, layout.mm_h)),
         );
     }
 
@@ -5144,13 +5221,12 @@ impl ApplicationHandler for App {
                             // Check if click is on minimap for click-to-move
                             let mx = self.input.mouse_pos.x;
                             let my = self.input.mouse_pos.y;
-                            let minimap_center_x = layout.mm_x + layout.mm_size * 0.5;
-                            let minimap_center_y = layout.mm_y + layout.mm_size * 0.5;
-                            let minimap_dx = mx - minimap_center_x;
-                            let minimap_dy = my - minimap_center_y;
+                            let minimap_center_x = layout.mm_x + layout.mm_w * 0.5;
+                            let minimap_center_y = layout.mm_y + layout.mm_h * 0.5;
+                            let minimap_dx = (mx - minimap_center_x) / (layout.mm_w * 0.49);
+                            let minimap_dy = (my - minimap_center_y) / (layout.mm_h * 0.49);
                             let in_minimap = my < layout.tab_y
-                                && minimap_dx * minimap_dx + minimap_dy * minimap_dy
-                                    <= (layout.mm_size * 0.49).powi(2);
+                                && minimap_dx * minimap_dx + minimap_dy * minimap_dy <= 1.0;
                             if in_minimap {
                                 let (click_cell_x, click_cell_y) = hud::minimap_click_to_cell(
                                     mx,

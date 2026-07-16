@@ -1,4 +1,5 @@
 // HUD data types, layout computation, rendering helpers, and GPU renderer.
+pub mod layout;
 
 use std::collections::HashMap;
 
@@ -65,6 +66,8 @@ pub struct HudLayout {
     pub tab_y: f32,
     pub tab_h: f32,
     pub tab_w: f32,
+    /// Tab draw positions in visual order: construction, spells, followers.
+    pub tab_xs: [f32; 3],
     pub status_y: f32,
     pub status_h: f32,
     pub panel_y: f32,
@@ -530,40 +533,61 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
     rgba
 }
 
-/// Compute HUD layout dimensions from screen size.
+/// Compute the native panel geometry from Populous' 640×480 virtual canvas.
+///
+/// PopTB scales x and y independently.  The original status and construction
+/// panel entries are data-driven, so keeping those axes separate matters on
+/// widescreen captures and keeps the HUD aligned with its native sprites.
 pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
-    // Populous' native panel is 114 logical pixels wide on a 640x480 canvas.
-    // Scale it uniformly from height; independent X/Y scaling made the remake
-    // panel much wider than the original on widescreen displays.
-    let scale = screen_h / 480.0;
-    let scale_x = scale;
-    let scale_y = scale;
-    let sidebar_w = (114.0 * scale).round();
-    let font_scale = (8.0 * scale).max(8.0).round();
+    use layout::{element_rect, minimap_element, sidebar_width, PANEL_SIDEBAR, PANEL_TAB_PAGE};
+
+    let screen_w_i = screen_w as i32;
+    let screen_h_i = screen_h as i32;
+    let scale_x = screen_w / layout::VIRTUAL_W as f32;
+    let scale_y = screen_h / layout::VIRTUAL_H as f32;
+    let sidebar_w = sidebar_width(screen_w_i) as f32;
+    let font_scale = (12.0 * scale_y).max(10.0).round();
     let small_font = (font_scale * 0.75).round();
     let mm_pad = 0.0;
-    let mm_size = 114.0 * scale;
-    let mm_x = 0.0;
-    let mm_y = -12.0 * scale;
-    let mm_w = mm_size;
-    let mm_h = mm_size;
-    let tab_y = 91.0 * scale;
-    let tab_h = 27.0 * scale;
-    let tab_w = 38.0 * scale;
-    // Retain these fields for the HUD data contract, but map them to the
-    // original compact status and population-meter bands.
-    let mana_bar_y = 118.0 * scale;
-    let mana_bar_h = 79.0 * scale;
-    let pop_y = 197.0 * scale;
-    let pop_h = 18.0 * scale;
-    let status_y = 118.0 * scale;
-    let status_h = 79.0 * scale;
-    // The native construction cells are square. Fit all five rows in the
-    // visible sidebar so the full construction collection remains available
-    // at the remake's 480px and 600px window heights.
-    let panel_y = 216.0 * scale;
-    let construction_cell_w = 57.0 * scale;
-    let construction_cell_h = (57.0 * scale).min((screen_h - panel_y).max(0.0) / 5.0);
+
+    let minimap = element_rect(&PANEL_SIDEBAR, &minimap_element(), screen_w_i, screen_h_i);
+    let tab_defs = &layout::SIDEBAR_TABS;
+    let construction_tab = element_rect(&PANEL_SIDEBAR, tab_defs[1].1, screen_w_i, screen_h_i);
+    let spells_tab = element_rect(&PANEL_SIDEBAR, tab_defs[0].1, screen_w_i, screen_h_i);
+    let followers_tab = element_rect(&PANEL_SIDEBAR, tab_defs[2].1, screen_w_i, screen_h_i);
+    let mana = element_rect(
+        &PANEL_SIDEBAR,
+        &layout::SIDEBAR_ELEMENTS[23],
+        screen_w_i,
+        screen_h_i,
+    );
+    let info = element_rect(
+        &PANEL_SIDEBAR,
+        &layout::SIDEBAR_ELEMENTS[22],
+        screen_w_i,
+        screen_h_i,
+    );
+    let page = element_rect(
+        &PANEL_TAB_PAGE,
+        &layout::ElementDef {
+            cmd: 0,
+            kind: layout::ElementKind::Static,
+            ix: 0,
+            iy: 0,
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 277,
+            icon: 0,
+            flags: 0,
+        },
+        screen_w_i,
+        screen_h_i,
+    );
+
+    let panel_y = page.y as f32;
+    let construction_cell_w = 31.0 * scale_x;
+    let construction_cell_h = 43.0 * scale_y;
     let line_h = font_scale + 2.0;
     HudLayout {
         screen_w,
@@ -574,20 +598,25 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
         font_scale,
         small_font,
         mm_pad,
-        mm_x,
-        mm_y,
-        mm_size,
-        mm_w,
-        mm_h,
-        mana_bar_y,
-        mana_bar_h,
-        pop_y,
-        pop_h,
-        tab_y,
-        tab_h,
-        tab_w,
-        status_y,
-        status_h,
+        mm_x: minimap.x as f32,
+        mm_y: minimap.y as f32,
+        mm_size: minimap.w as f32,
+        mm_w: minimap.w as f32,
+        mm_h: minimap.h as f32,
+        mana_bar_y: mana.y as f32,
+        mana_bar_h: mana.h as f32,
+        pop_y: info.y as f32,
+        pop_h: info.h as f32,
+        tab_y: construction_tab.y as f32,
+        tab_h: construction_tab.h as f32,
+        tab_w: construction_tab.w as f32,
+        tab_xs: [
+            construction_tab.x as f32,
+            spells_tab.x as f32,
+            followers_tab.x as f32,
+        ],
+        status_y: mana.y as f32,
+        status_h: (info.y + info.h - mana.y) as f32,
         panel_y,
         construction_cell_w,
         construction_cell_h,
@@ -595,42 +624,40 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
     }
 }
 
-/// Detect the active building-tab silhouette.
-///
-/// Spell and follower silhouettes are presentation-only until their systems
-/// exist, so clicks on those positions deliberately return `None`.
+/// Detect the active construction-tab silhouette.  The other tab artwork is
+/// visible for fidelity but intentionally inert in this construction-only UI.
 pub fn detect_tab_click(mouse_x: f32, mouse_y: f32, layout: &HudLayout) -> Option<HudTab> {
-    if mouse_y < layout.tab_y || mouse_y >= layout.tab_y + layout.tab_h {
+    let hit_y = 86.0 * layout.scale_y;
+    let hit_h = 27.0 * layout.scale_y;
+    if mouse_y < hit_y || mouse_y >= hit_y + hit_h {
         return None;
     }
-    if mouse_x < layout.mm_pad || mouse_x >= layout.sidebar_w - layout.mm_pad {
-        return None;
-    }
-    if mouse_x < layout.mm_pad + layout.tab_w {
+    if mouse_x >= layout.tab_xs[0] && mouse_x < layout.tab_xs[0] + layout.tab_w {
         Some(HudTab::Buildings)
     } else {
         None
     }
 }
 
-/// Return the native construction-grid slot under the pointer (two columns).
+/// Return the native construction-grid slot under the pointer (three columns,
+/// six rows).  The current gameplay slice only enables slot zero.
 pub fn detect_construction_slot_click(
     mouse_x: f32,
     mouse_y: f32,
     layout: &HudLayout,
 ) -> Option<usize> {
-    let x = mouse_x - layout.mm_pad;
-    let y = mouse_y - layout.panel_y;
+    let x = mouse_x - 2.0 * layout.scale_x;
+    let y = mouse_y - (layout.panel_y + 8.0 * layout.scale_y);
     if x < 0.0
         || y < 0.0
-        || x >= layout.construction_cell_w * 2.0
-        || y >= layout.construction_cell_h * 5.0
+        || x >= layout.construction_cell_w * 3.0
+        || y >= layout.construction_cell_h * 6.0
     {
         return None;
     }
     let col = (x / layout.construction_cell_w) as usize;
     let row = (y / layout.construction_cell_h) as usize;
-    Some(row * 2 + col)
+    Some(row * 3 + col)
 }
 
 /// In-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
@@ -644,8 +671,10 @@ pub const HFX_TAB_FRAME_SELECTED: [u16; 9] = [758, 762, 759, 764, 766, 765, 760,
 /// In-game tab silhouettes in visual order: construction, spells, followers.
 pub const HFX_TAB_ICONS: [u16; 3] = [676, 678, 680];
 
-/// Highlighted hut silhouette used by the active construction tab.
-pub const HFX_TAB_ICON_BUILDINGS_SELECTED: u16 = 677;
+/// The selected construction tab keeps the original dark hut silhouette.
+/// Sprite 677 is the white hover state, not the idle selected state shown in
+/// the native gameplay HUD.
+pub const HFX_TAB_ICON_BUILDINGS_SELECTED: u16 = 676;
 
 /// Native rock-arch frame around the minimap; its center stays transparent.
 pub const HFX_MINIMAP_FRAME: [u16; 9] = [690, 694, 691, 696, 0, 697, 692, 695, 693];
@@ -655,11 +684,16 @@ pub const HFX_SHAMAN_WIDGET: u16 = 664;
 
 /// Native assets that form the compact in-game status strip.
 pub const PANEL_STATUS_GLOBE: usize = 1;
-pub const HFX_STATUS_AVATAR_FRAME: u16 = 469;
-pub const HFX_STATUS_LIGHT_FRAME: u16 = 470;
+/// e01's normal (not hover) avatar frame, from callback 0x404130.
+pub const HFX_STATUS_AVATAR_FRAME: [u16; 9] = [713, 717, 714, 719, 721, 720, 715, 718, 716];
+/// e12's globe-toggle frame, from callback 0x405c80.
+pub const HFX_STATUS_GLOBE_FRAME: [u16; 9] = [767, 771, 768, 773, 775, 774, 769, 772, 770];
+/// e19's small help-button frame and e13–18's quick-row cells.
+pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
+/// e02's tall status field frame.
+pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
-pub const HFX_STATUS_WHITE_TEXTURE: u16 = 503;
-pub const HFX_STATUS_HELP_GLYPH: u16 = 662;
+pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
 pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
 pub const HFX_STATUS_RED_CHIP: u16 = 65;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
@@ -683,15 +717,48 @@ pub const HFX_STATUS_TEXTURE: u16 = 706;
 pub const HFX_CONSTRUCTION_TEXTURE: u16 = 712;
 
 /// Verified original HFX art required by the construction HUD.
-pub const HFX_HUD_SPRITE_IDS: [u16; 52] = [
+pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_MINIMAP_SURROUND_TEXTURE,
     HFX_STATUS_TEXTURE,
     HFX_CONSTRUCTION_TEXTURE,
     HFX_SHAMAN_WIDGET,
-    HFX_STATUS_AVATAR_FRAME,
-    HFX_STATUS_LIGHT_FRAME,
+    713,
+    714,
+    715,
+    716,
+    717,
+    718,
+    719,
+    720,
+    721,
+    767,
+    768,
+    769,
+    770,
+    771,
+    772,
+    773,
+    774,
+    775,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
     HFX_STATUS_BLACK_TEXTURE,
-    HFX_STATUS_WHITE_TEXTURE,
     HFX_STATUS_HELP_GLYPH,
     HFX_STATUS_BLUE_CHIP,
     HFX_STATUS_RED_CHIP,
@@ -733,7 +800,6 @@ pub const HFX_HUD_SPRITE_IDS: [u16; 52] = [
     826,
     824,
     676,
-    HFX_TAB_ICON_BUILDINGS_SELECTED,
     678,
     680,
 ];
@@ -1406,10 +1472,23 @@ impl HudRenderer {
 
     /// Draw a verified HFX UI sprite at native size times `scale`.
     pub fn draw_hfx(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        self.draw_hfx_scaled(sprite_id, x, y, scale, scale)
+    }
+
+    /// Draw a verified HFX UI sprite with the original panel's independent
+    /// horizontal and vertical scales.
+    pub fn draw_hfx_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
             return false;
         };
-        self.draw_sprite(sprite_idx, x, y, scale, scale);
+        self.draw_sprite(sprite_idx, x, y, scale_x, scale_y);
         true
     }
 
@@ -1443,6 +1522,19 @@ impl HudRenderer {
     /// Draw a verified HFX UI sprite mirrored horizontally. The original
     /// population meter fills from the right edge in the construction HUD.
     pub fn draw_hfx_flipped(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        self.draw_hfx_flipped_scaled(sprite_id, x, y, scale, scale)
+    }
+
+    /// Draw a verified HFX UI sprite mirrored horizontally with independent
+    /// panel-axis scales.
+    pub fn draw_hfx_flipped_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
             return false;
         };
@@ -1450,8 +1542,8 @@ impl HudRenderer {
         self.push_quad(
             x,
             y,
-            x + region.width as f32 * scale,
-            y + region.height as f32 * scale,
+            x + region.width as f32 * scale_x,
+            y + region.height as f32 * scale_y,
             region.u1,
             region.v0,
             region.u0,
@@ -1463,10 +1555,22 @@ impl HudRenderer {
 
     /// Draw a verified HSPR status-avatar sprite at native size times `scale`.
     pub fn draw_hspr(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
+        self.draw_hspr_scaled(sprite_id, x, y, scale, scale)
+    }
+
+    /// Draw a verified HSPR sprite with independent panel-axis scales.
+    pub fn draw_hspr_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hspr_regions.get(&sprite_id) else {
             return false;
         };
-        self.draw_sprite(sprite_idx, x, y, scale, scale);
+        self.draw_sprite(sprite_idx, x, y, scale_x, scale_y);
         true
     }
 
@@ -1481,12 +1585,27 @@ impl HudRenderer {
         height: f32,
         scale: f32,
     ) -> bool {
+        self.draw_hfx_tiled_scaled(sprite_id, x, y, width, height, scale, scale)
+    }
+
+    /// Repeat original HFX texture art using PopTB's independent x/y panel
+    /// scaling, clipping partial edge tiles without filtering replacement art.
+    pub fn draw_hfx_tiled_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
             return false;
         };
         let region = self.sprite_regions[sprite_idx].clone();
-        let tile_w = region.width as f32 * scale;
-        let tile_h = region.height as f32 * scale;
+        let tile_w = region.width as f32 * scale_x;
+        let tile_h = region.height as f32 * scale_y;
         if tile_w <= 0.0 || tile_h <= 0.0 || width <= 0.0 || height <= 0.0 {
             return false;
         }
@@ -1528,9 +1647,23 @@ impl HudRenderer {
         height: f32,
         scale: f32,
     ) -> bool {
+        self.draw_hfx_nine_patch_border_scaled(sprite_ids, x, y, width, height, scale, scale)
+    }
+
+    /// Draw just a native nine-patch border using independent x/y scales.
+    pub fn draw_hfx_nine_patch_border_scaled(
+        &mut self,
+        sprite_ids: &[u16; 9],
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let mut border = *sprite_ids;
         border[4] = 0;
-        self.draw_hfx_nine_patch(&border, x, y, width, height, scale)
+        self.draw_hfx_nine_patch_scaled(&border, x, y, width, height, scale_x, scale_y)
     }
 
     /// Draw one of the original HFX nine-patch widget frames.
@@ -1543,11 +1676,27 @@ impl HudRenderer {
         height: f32,
         scale: f32,
     ) -> bool {
+        self.draw_hfx_nine_patch_scaled(sprite_ids, x, y, width, height, scale, scale)
+    }
+
+    /// Draw one original HFX nine-patch at an independently scaled panel
+    /// rectangle.  This matches the binary's separate 640-wide/480-high
+    /// virtual-coordinate conversion.
+    pub fn draw_hfx_nine_patch_scaled(
+        &mut self,
+        sprite_ids: &[u16; 9],
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some((corner_w, corner_h)) = self.hfx_size(sprite_ids[0]) else {
             return false;
         };
-        let corner_w = (corner_w as f32 * scale).min(width * 0.5);
-        let corner_h = (corner_h as f32 * scale).min(height * 0.5);
+        let corner_w = (corner_w as f32 * scale_x).min(width * 0.5);
+        let corner_h = (corner_h as f32 * scale_y).min(height * 0.5);
         let x1 = x + corner_w;
         let y1 = y + corner_h;
         let x2 = x + width - corner_w;
@@ -2035,16 +2184,19 @@ mod tests {
         let l = compute_hud_layout(640.0, 480.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 114.0);
+        assert_eq!(l.sidebar_w, 100.0);
         assert_eq!(l.scale_x, 1.0);
         assert_eq!(l.scale_y, 1.0);
         assert_eq!(l.mm_pad, 0.0);
-        assert_eq!(l.mm_size, 114.0);
-        assert_eq!(l.mm_w, 114.0);
-        assert_eq!(l.mm_h, 114.0);
-        assert_eq!(l.tab_y, 91.0);
-        assert_eq!(l.panel_y, 216.0);
-        assert_eq!(l.construction_cell_h, 52.8);
+        assert_eq!(l.mm_size, 100.0);
+        assert_eq!(l.mm_w, 100.0);
+        assert_eq!(l.mm_h, 96.0);
+        assert_eq!(l.tab_y, 81.0);
+        assert_eq!(l.tab_h, 27.0);
+        assert_eq!(l.tab_xs, [0.0, 31.0, 63.0]);
+        assert_eq!(l.panel_y, 203.0);
+        assert_eq!(l.construction_cell_w, 31.0);
+        assert_eq!(l.construction_cell_h, 43.0);
     }
 
     #[test]
@@ -2055,11 +2207,15 @@ mod tests {
         let l = compute_hud_layout(1280.0, 960.0);
 
         // Assert
-        assert_eq!(l.sidebar_w, 228.0);
+        assert_eq!(l.sidebar_w, 200.0);
         assert_eq!(l.scale_x, 2.0);
         assert_eq!(l.scale_y, 2.0);
         assert_eq!(l.mm_pad, 0.0);
-        assert_eq!(l.mm_size, 228.0);
+        assert_eq!(l.mm_size, 200.0);
+        assert_eq!(l.mm_w, 200.0);
+        assert_eq!(l.mm_h, 192.0);
+        assert_eq!(l.tab_y, 163.0);
+        assert_eq!(l.panel_y, 407.0);
     }
 
     #[test]
@@ -2068,7 +2224,7 @@ mod tests {
         let l = compute_hud_layout(320.0, 200.0);
 
         // Assert
-        assert_eq!(l.font_scale, 8.0);
+        assert_eq!(l.font_scale, 10.0);
     }
 
     // -- detect_tab_click --
@@ -2078,7 +2234,7 @@ mod tests {
         // Arrange
         let layout = compute_hud_layout(640.0, 480.0);
         // Click in the middle of the first tab
-        let x = layout.mm_pad + layout.tab_w * 0.5;
+        let x = layout.tab_xs[0] + layout.tab_w * 0.5;
         let y = layout.tab_y + layout.tab_h * 0.5;
 
         // Act
@@ -2094,11 +2250,11 @@ mod tests {
         let y = layout.tab_y + layout.tab_h * 0.5;
 
         assert_eq!(
-            detect_tab_click(layout.mm_pad + layout.tab_w * 1.5, y, &layout),
+            detect_tab_click(layout.tab_xs[1] + layout.tab_w * 0.5, y, &layout),
             None
         );
         assert_eq!(
-            detect_tab_click(layout.mm_pad + layout.tab_w * 2.5, y, &layout),
+            detect_tab_click(layout.tab_xs[2] + layout.tab_w * 0.5, y, &layout),
             None
         );
     }
@@ -2109,13 +2265,9 @@ mod tests {
         let layout = compute_hud_layout(640.0, 480.0);
 
         // Act: click above tab bar
-        let above = detect_tab_click(layout.mm_pad + 10.0, layout.tab_y - 5.0, &layout);
+        let above = detect_tab_click(10.0, layout.tab_y - 5.0, &layout);
         // Click below tab bar
-        let below = detect_tab_click(
-            layout.mm_pad + 10.0,
-            layout.tab_y + layout.tab_h + 5.0,
-            &layout,
-        );
+        let below = detect_tab_click(10.0, layout.tab_y + layout.tab_h + 5.0, &layout);
         // Click left of tabs
         let left = detect_tab_click(-1.0, layout.tab_y + 2.0, &layout);
 
@@ -2129,8 +2281,8 @@ mod tests {
     fn detect_first_construction_slot() {
         let layout = compute_hud_layout(640.0, 480.0);
         let result = detect_construction_slot_click(
-            layout.mm_pad + layout.construction_cell_w * 0.5,
-            layout.panel_y + layout.construction_cell_h * 0.5,
+            2.0 * layout.scale_x + layout.construction_cell_w * 0.5,
+            layout.panel_y + 8.0 * layout.scale_y + layout.construction_cell_h * 0.5,
             &layout,
         );
         assert_eq!(result, Some(0));
@@ -2165,12 +2317,16 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 52);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 84);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
             .chain(HFX_TAB_FRAME_SELECTED.iter())
             .chain(HFX_BUILDING_FRAME.iter())
+            .chain(HFX_STATUS_AVATAR_FRAME.iter())
+            .chain(HFX_STATUS_GLOBE_FRAME.iter())
+            .chain(HFX_STATUS_SMALL_FRAME.iter())
+            .chain(HFX_STATUS_TALL_FRAME.iter())
             .chain(HFX_TAB_ICONS.iter())
             .chain(std::iter::once(&HFX_TAB_ICON_BUILDINGS_SELECTED))
             .chain(
@@ -2178,6 +2334,17 @@ mod tests {
                     HFX_MINIMAP_SURROUND_TEXTURE,
                     HFX_STATUS_TEXTURE,
                     HFX_CONSTRUCTION_TEXTURE,
+                ]
+                .iter(),
+            )
+            .chain(
+                [
+                    HFX_STATUS_BLACK_TEXTURE,
+                    HFX_STATUS_HELP_GLYPH,
+                    HFX_STATUS_BLUE_CHIP,
+                    HFX_STATUS_RED_CHIP,
+                    HFX_STATUS_FOLLOWER_GLYPH,
+                    HFX_POPULATION_METER,
                 ]
                 .iter(),
             )
