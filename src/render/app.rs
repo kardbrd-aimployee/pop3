@@ -3003,9 +3003,10 @@ impl App {
         );
 
         // Construction page: the native panel reserves an 18-button, three
-        // column grid.  The supported eight building silhouettes occupy the
-        // first slots; the remaining original cells stay visibly present but
-        // inert until their mechanics are implemented.
+        // column grid. The supported eight building silhouettes occupy the
+        // first slots; unavailable entries leave the tiled panel surface
+        // exposed, matching the unframed inactive spell entries in the
+        // native reference HUD.
         for row in 0..6usize {
             for col in 0..3usize {
                 // The binary table is stored right-to-left.  Convert it to
@@ -3024,7 +3025,7 @@ impl App {
                 let cell_w = cell.w as f32;
                 let cell_h = cell.h as f32;
                 let slot = row * 3 + col;
-                if slot == 0 {
+                if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
                     hud.draw_hfx_nine_patch_scaled(
                         &hud::HFX_BUILDING_FRAME,
                         x,
@@ -3034,19 +3035,6 @@ impl App {
                         scale_x,
                         scale_y,
                     );
-                } else {
-                    hud.draw_hfx_nine_patch_border_scaled(
-                        &hud::HFX_BUILDING_FRAME,
-                        x,
-                        y,
-                        cell_w,
-                        cell_h,
-                        scale_x,
-                        scale_y,
-                    );
-                }
-
-                if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
                     if self.engine.hud_point_sprite_count > icon {
                         let icon = hud.point_sprite_index(icon);
                         if let Some((width, height)) = hud.sprite_size(icon) {
