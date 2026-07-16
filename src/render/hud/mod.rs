@@ -177,7 +177,8 @@ pub const FONT_ATLAS_H: u32 = FONT_ROWS * FONT_GLYPH_H; // 48
 /// Tribe colors for minimap dots (RGB, 0-255).
 pub const MINIMAP_TRIBE_COLORS: [[u8; 3]; 4] = [
     [80, 130, 255], // Blue
-    [255, 60, 60],  // Red
+    // The original HUD capture's unblended red minimap markers are #FF0000.
+    [255, 0, 0],    // Red
     [255, 255, 60], // Yellow
     [60, 255, 60],  // Green
 ];
@@ -2441,8 +2442,8 @@ mod tests {
         // Assert: centered cell should be red tribe color, not water
         let off = (64 * 128 + 64) * 4;
         assert_eq!(rgba[off], 255); // R
-        assert_eq!(rgba[off + 1], 60); // G
-        assert_eq!(rgba[off + 2], 60); // B
+        assert_eq!(rgba[off + 1], 0); // G
+        assert_eq!(rgba[off + 2], 0); // B
     }
 
     // -- compute_hud_layout --
