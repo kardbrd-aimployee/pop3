@@ -33,6 +33,8 @@ use crate::engine::state::constants::*;
 use crate::render::picking::intersect_iter;
 
 use crate::data::bl320::make_bl320_texture_rgba;
+use crate::data::landscape::common::{LandPos, LandscapeFull};
+use crate::data::landscape::minimap::texture_minimap;
 use crate::data::landscape::{draw_texture_u8, make_texture_land};
 use crate::data::level::{LevelDefinition, LevelRes, ObjectPaths};
 use crate::data::objects::{Object3D, Shape, ShapeFootprints};
@@ -83,6 +85,37 @@ type LandscapeMeshS = LandscapeMesh<128>;
 const APP_TITLE: &str = "Populous: The Beginning — Faithful";
 const QUIT_CONFIRM_TITLE: &str = "Press Escape again to quit — Populous: The Beginning";
 const QUIT_CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Expand the original level's BIGF0 minimap pass through its companion
+/// palette. This follows the same extractor path exposed by `pop_res minimap`
+/// rather than deriving terrain colours from heights in the HUD.
+fn native_minimap_terrain_rgba(level_res: &LevelRes) -> Option<Arc<[u8]>> {
+    let land_size = level_res.landscape.land_size();
+    let land = LandPos::from_landscape_sun(&level_res.landscape);
+    let landscape = LandscapeFull::new(land_size, land);
+    let indices = texture_minimap(land_size, true, &landscape, &level_res.params.bigf0).data;
+    Some(expand_native_minimap_indices(
+        &indices,
+        &level_res.params.palette,
+    ))
+}
+
+fn expand_native_minimap_indices(indices: &[u8], palette: &[u8]) -> Arc<[u8]> {
+    let mut rgba = Vec::with_capacity(indices.len() * 4);
+    for &index in indices {
+        let palette_offset = index as usize * 4;
+        // The shipped palette files contain entries 0..=254.  `pop_res`
+        // leaves the unused 255th slot black when expanding an indexed map;
+        // preserve that native/extractor behavior instead of rejecting the
+        // whole minimap texture when a level uses index 255.
+        let color = palette
+            .get(palette_offset..palette_offset + 3)
+            .unwrap_or(&[0, 0, 0]);
+        rgba.extend_from_slice(color);
+        rgba.push(255);
+    }
+    rgba.into()
+}
 
 fn preferred_window_size(
     physical_width: u32,
@@ -186,6 +219,7 @@ pub struct GameEngine {
     walkability_visible: bool,
     hud_panel_sprite_count: usize,
     hud_point_sprite_count: usize,
+    native_minimap_terrain_rgba: Option<Arc<[u8]>>,
 
     // Game simulation
     unit_coordinator: UnitCoordinator,
@@ -569,6 +603,7 @@ impl GameEngine {
         };
         let minimap = MinimapData {
             heights: *self.landscape_mesh.heights(),
+            native_terrain_rgba: self.native_minimap_terrain_rgba.clone(),
             dots,
         };
         let panel_entries = match self.hud_tab {
@@ -1283,6 +1318,7 @@ impl App {
                 walkability_visible: false,
                 hud_panel_sprite_count: 0,
                 hud_point_sprite_count: 0,
+                native_minimap_terrain_rgba: None,
                 unit_coordinator: UnitCoordinator::new(),
                 game_world: {
                     let mut w = GameWorld::new(20);
@@ -3048,6 +3084,8 @@ impl App {
     }
 
     fn rebuild_landscape_variants(&mut self, level_res: &LevelRes) {
+        self.engine.native_minimap_terrain_rgba = native_minimap_terrain_rgba(level_res);
+
         let gpu = self.gpu.as_ref().unwrap();
         let device = &gpu.device;
         let group0_layout = self.landscape_group0_layout.as_ref().unwrap();
@@ -5332,5 +5370,16 @@ mod tests {
         );
         assert_eq!(construction_slice_tab_frame(1), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(2), &hud::HFX_TAB_FRAME);
+    }
+
+    #[test]
+    fn native_minimap_palette_leaves_the_missing_255_slot_black() {
+        let mut palette = vec![0u8; 255 * 4];
+        palette[4..7].copy_from_slice(&[0x12, 0x34, 0x56]);
+
+        assert_eq!(
+            &*expand_native_minimap_indices(&[1, 255], &palette),
+            &[0x12, 0x34, 0x56, 0xff, 0, 0, 0, 0xff]
+        );
     }
 }

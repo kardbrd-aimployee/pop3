@@ -2,6 +2,7 @@
 pub mod layout;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::data::psfb::ContainerPSFB;
 use crate::render::gpu::buffer::GpuBuffer;
@@ -103,6 +104,10 @@ pub struct HudState {
 
 pub struct MinimapData {
     pub heights: [[u16; 128]; 128],
+    /// Terrain generated from the original level's BIGF0 and palette.  This
+    /// is populated when native resources are available; `heights` remains a
+    /// portable fallback for test and no-asset runs.
+    pub native_terrain_rgba: Option<Arc<[u8]>>,
     pub dots: Vec<MinimapDot>,
 }
 
@@ -479,33 +484,38 @@ pub fn convert_indexed_to_rgba(indexed: &[u8], palette: &[u8], transparent_idx: 
 
 /// Generate 128x128 RGBA minimap texture from terrain heights and unit positions.
 pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
-    let mut rgba = vec![0u8; 128 * 128 * 4];
-    // Terrain
-    for y in 0..128usize {
-        for x in 0..128usize {
-            let off = (y * 128 + x) * 4;
-            let dx = x as f32 + 0.5 - 64.0;
-            let dy = y as f32 + 0.5 - 64.0;
-            if dx * dx + dy * dy > 63.5 * 63.5 {
-                continue;
+    let mut rgba = data
+        .native_terrain_rgba
+        .as_deref()
+        .filter(|terrain| terrain.len() == 128 * 128 * 4)
+        .map(<[u8]>::to_vec)
+        .unwrap_or_else(|| {
+            let mut fallback = vec![0u8; 128 * 128 * 4];
+            for y in 0..128usize {
+                for x in 0..128usize {
+                    let off = (y * 128 + x) * 4;
+                    let dx = x as f32 + 0.5 - 64.0;
+                    let dy = y as f32 + 0.5 - 64.0;
+                    if dx * dx + dy * dy > 63.5 * 63.5 {
+                        continue;
+                    }
+                    let h = data.heights[y][x];
+                    if h == 0 {
+                        fallback[off] = MINIMAP_WATER_COLOR[0];
+                        fallback[off + 1] = MINIMAP_WATER_COLOR[1];
+                        fallback[off + 2] = MINIMAP_WATER_COLOR[2];
+                        fallback[off + 3] = 255;
+                    } else {
+                        let v = ((h as f32 / 1024.0) * 180.0).min(255.0) as u8;
+                        fallback[off] = v / 4;
+                        fallback[off + 1] = 40 + v / 2;
+                        fallback[off + 2] = v / 6;
+                        fallback[off + 3] = 255;
+                    }
+                }
             }
-            let h = data.heights[y][x];
-            if h == 0 {
-                // Water
-                rgba[off] = MINIMAP_WATER_COLOR[0];
-                rgba[off + 1] = MINIMAP_WATER_COLOR[1];
-                rgba[off + 2] = MINIMAP_WATER_COLOR[2];
-                rgba[off + 3] = 255;
-            } else {
-                // Land — green gradient by height
-                let v = ((h as f32 / 1024.0) * 180.0).min(255.0) as u8;
-                rgba[off] = v / 4;
-                rgba[off + 1] = 40 + v / 2;
-                rgba[off + 2] = v / 6;
-                rgba[off + 3] = 255;
-            }
-        }
-    }
+            fallback
+        });
     // Unit dots
     for dot in &data.dots {
         let cx = (dot.cell_x as usize).min(127);
@@ -2386,6 +2396,7 @@ mod tests {
         // Arrange: all heights = 0 (water)
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
             dots: vec![],
         };
 
@@ -2408,6 +2419,7 @@ mod tests {
         heights[64][64] = 512;
         let data = MinimapData {
             heights,
+            native_terrain_rgba: None,
             dots: vec![],
         };
 
@@ -2427,6 +2439,7 @@ mod tests {
         // Arrange: water terrain, one centered unit dot, tribe 1 (red)
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -2442,6 +2455,22 @@ mod tests {
         assert_eq!(rgba[off], 255); // R
         assert_eq!(rgba[off + 1], 0); // G
         assert_eq!(rgba[off + 2], 0); // B
+    }
+
+    #[test]
+    fn generate_minimap_prefers_native_terrain_when_available() {
+        let mut terrain = vec![0u8; 128 * 128 * 4];
+        let center = (64 * 128 + 64) * 4;
+        terrain[center..center + 4].copy_from_slice(&[0x12, 0x34, 0x56, 0xff]);
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: Some(terrain.into()),
+            dots: vec![],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+
+        assert_eq!(&rgba[center..center + 4], &[0x12, 0x34, 0x56, 0xff]);
     }
 
     // -- compute_hud_layout --
