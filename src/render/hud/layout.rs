@@ -660,6 +660,20 @@ mod tests {
     }
 
     #[test]
+    fn buildings_page_grid_preserves_the_native_three_column_table() {
+        // Panel 2's 16-bit layout is distinct from the two-column spells
+        // page. Its records are stored right-to-left, with three 31×43
+        // cells per row beginning at x=66 and y=8.
+        for (i, e) in BUILDINGS_PAGE.iter().enumerate() {
+            let row = i / 3;
+            assert_eq!(e.x, [66, 34, 2][i % 3], "x for building cell {i}");
+            assert_eq!(e.y, 8 + 44 * row as i16, "y for building cell {i}");
+            assert_eq!((e.w, e.h), (31, 43), "extent for building cell {i}");
+            assert_eq!(e.icon, 17 - i as i32, "icon for building cell {i}");
+        }
+    }
+
+    #[test]
     fn units_page_grid_positions() {
         // 6 columns x=16k; rows 6/47/88/129 then 190/231.
         for e in UNITS_PAGE.iter() {

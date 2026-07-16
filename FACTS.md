@@ -103,7 +103,7 @@ This file records gameplay behavior confirmed by the project owner, an experienc
 
 ## Interface and landscape presentation
 
-- The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, a population bar, and a two-column pictographic command grid.
+- The original in-game interface is a narrow ochre strip on the left, with a circular minimap, three mode silhouettes, a compact tribe-status area, and a population bar. The spell page uses a two-column pictographic grid; the construction page uses its separate three-column, 18-cell table (31×43 virtual units per cell).
 - The current remake slice recreates only the building tab. Spell and follower tabs remain out of scope until their gameplay systems are implemented.
 - The eight construction-choice glyphs are `POINT0-0.DAT` sprites `58..65`. They use the fixed 768-byte RGB palette `PAL1-0.DAT`; interpreting them with a landscape `pal0-*.dat` palette produces the wrong teal/green colors.
 - `GUI_RenderTiledPanel` at `0x004936B0` composes panel surfaces from HSPR sprites `1450..1465`, choosing distinct corners, alternating edges, and four alternating interior pieces. These sprites use the active landscape palette rather than the POINT palette.
