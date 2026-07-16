@@ -4,7 +4,7 @@ use std::io::Read;
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 
-use clap::{arg, Arg, ArgAction, Command};
+use clap::{arg, Arg, ArgAction, ArgMatches, Command};
 use image::{
     DynamicImage, GrayImage, ImageBuffer, ImageFormat, ImageOutputFormat, Rgb, RgbImage, RgbaImage,
 };
@@ -499,10 +499,17 @@ fn parse_ids(s: &str) -> HashSet<usize> {
     HashSet::from_iter(s.split(',').map(|s| s.parse::<usize>().unwrap()))
 }
 
-fn main() {
-    let base_path = Path::new(DEFAULT_BASE_PATH);
+fn base_path_from_matches(matches: &ArgMatches) -> &Path {
+    matches
+        .subcommand()
+        .and_then(|(_, sub_matches)| sub_matches.get_one::<PathBuf>("base"))
+        .map(PathBuf::as_path)
+        .unwrap_or_else(|| Path::new(DEFAULT_BASE_PATH))
+}
 
+fn main() {
     let matches = cli().get_matches();
+    let base_path = base_path_from_matches(&matches);
     match matches.subcommand() {
         Some(("globe", sub_matches)) => {
             let level_num = sub_matches
@@ -860,5 +867,31 @@ fn main() {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_path_uses_the_subcommand_base_argument() {
+        let matches = cli()
+            .try_get_matches_from(["pop_res", "minimap", "1", "--base", "/tmp/original"])
+            .unwrap();
+
+        assert_eq!(base_path_from_matches(&matches), Path::new("/tmp/original"));
+    }
+
+    #[test]
+    fn base_path_falls_back_to_the_default_when_omitted() {
+        let matches = cli()
+            .try_get_matches_from(["pop_res", "minimap", "1"])
+            .unwrap();
+
+        assert_eq!(
+            base_path_from_matches(&matches),
+            Path::new(DEFAULT_BASE_PATH)
+        );
     }
 }
