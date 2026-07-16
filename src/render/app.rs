@@ -2703,6 +2703,11 @@ impl App {
 
         let scale_x = layout.scale_x;
         let scale_y = layout.scale_y;
+        let screen_w = self.engine.screen.width as i32;
+        let screen_h = self.engine.screen.height as i32;
+        let sidebar_element_rect = |element: &hud::layout::ElementDef| {
+            hud::layout::element_rect(&hud::layout::PANEL_SIDEBAR, element, screen_w, screen_h)
+        };
         let ochre = [0.82, 0.45, 0.035, 1.0];
         let ochre_light = [0.96, 0.60, 0.055, 1.0];
         let ochre_dark = [0.45, 0.20, 0.025, 1.0];
@@ -2809,10 +2814,11 @@ impl App {
         // Main-sidebar status widgets.  Their positions and nine-patches are
         // taken directly from the original element table (e01/e02/e12/e19,
         // e13–18, and e20); no replacement UI art is drawn here.
-        let globe_x = 6.0 * scale_x;
-        let globe_y = 122.0 * scale_y;
-        let globe_w = 24.0 * scale_x;
-        let globe_h = 18.0 * scale_y;
+        let globe = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[12]);
+        let globe_x = globe.x as f32;
+        let globe_y = globe.y as f32;
+        let globe_w = globe.w as f32;
+        let globe_h = globe.h as f32;
         hud.draw_hfx_nine_patch_scaled(
             &hud::HFX_STATUS_GLOBE_FRAME,
             globe_x,
@@ -2823,21 +2829,22 @@ impl App {
             scale_y,
         );
         if let Some((width, height)) = hud.hfx_size(hud::HFX_STATUS_GLOBE) {
-            let globe_w = width as f32 * scale_x;
-            let globe_h = height as f32 * scale_y;
+            let art_w = width as f32 * scale_x;
+            let art_h = height as f32 * scale_y;
             hud.draw_hfx_scaled(
                 hud::HFX_STATUS_GLOBE,
-                globe_x + (24.0 * scale_x - globe_w) * 0.5,
-                globe_y + (18.0 * scale_y - globe_h) * 0.5,
+                globe_x + (globe_w - art_w) * 0.5,
+                globe_y + (globe_h - art_h) * 0.5,
                 scale_x,
                 scale_y,
             );
         }
 
-        let avatar_x = 33.0 * scale_x;
-        let avatar_y = 114.0 * scale_y;
-        let avatar_w = 30.0 * scale_x;
-        let avatar_h = 35.0 * scale_y;
+        let avatar = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[1]);
+        let avatar_x = avatar.x as f32;
+        let avatar_y = avatar.y as f32;
+        let avatar_w = avatar.w as f32;
+        let avatar_h = avatar.h as f32;
         hud.draw_hfx_tiled_scaled(
             hud::HFX_STATUS_BLACK_TEXTURE,
             avatar_x,
@@ -2854,18 +2861,23 @@ impl App {
             avatar_w,
             avatar_h,
         );
-        hud.draw_hspr_scaled(
-            hud::HSPR_STATUS_AVATAR_BLUE,
-            41.0 * scale_x,
-            115.0 * scale_y,
-            scale_x,
-            scale_y,
-        );
+        if let Some((width, height)) = hud.hspr_size(hud::HSPR_STATUS_AVATAR_BLUE) {
+            let art_w = width as f32 * scale_x;
+            let art_h = height as f32 * scale_y;
+            hud.draw_hspr_scaled(
+                hud::HSPR_STATUS_AVATAR_BLUE,
+                avatar_x + (avatar_w - art_w) * 0.5,
+                avatar_y + (avatar_h - art_h) * 0.5,
+                scale_x,
+                scale_y,
+            );
+        }
 
-        let help_x = 64.0 * scale_x;
-        let help_y = 114.0 * scale_y;
-        let help_w = 13.0 * scale_x;
-        let help_h = 12.0 * scale_y;
+        let help = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[19]);
+        let help_x = help.x as f32;
+        let help_y = help.y as f32;
+        let help_w = help.w as f32;
+        let help_h = help.h as f32;
         hud.draw_hfx_nine_patch_scaled(
             &hud::HFX_STATUS_SMALL_FRAME,
             help_x,
@@ -2875,20 +2887,25 @@ impl App {
             scale_x,
             scale_y,
         );
-        hud.draw_hfx_scaled(
-            hud::HFX_STATUS_HELP_GLYPH,
-            help_x + (help_w - 8.0 * scale_x) * 0.5,
-            help_y,
-            scale_x,
-            scale_y,
-        );
+        if let Some((width, height)) = hud.hfx_size(hud::HFX_STATUS_HELP_GLYPH) {
+            let art_w = width as f32 * scale_x;
+            let art_h = height as f32 * scale_y;
+            hud.draw_hfx_scaled(
+                hud::HFX_STATUS_HELP_GLYPH,
+                help_x + (help_w - art_w) * 0.5,
+                help_y + (help_h - art_h) * 0.5,
+                scale_x,
+                scale_y,
+            );
+        }
 
+        let status_field = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[2]);
         hud.draw_hfx_tiled_scaled(
             hud::HFX_STATUS_WHITE_TEXTURE,
-            64.0 * scale_x,
-            126.0 * scale_y,
-            10.0 * scale_x,
-            22.0 * scale_y,
+            status_field.x as f32,
+            status_field.y as f32,
+            status_field.w as f32,
+            status_field.h as f32,
             scale_x,
             scale_y,
         );
@@ -2911,10 +2928,11 @@ impl App {
         // controls seen in the native capture: mana and follower status.
         // Empty spell slots are not rendered as invented button frames.
         for slot in 0..2 {
-            let cell_x = slot as f32 * 16.0 * scale_x;
-            let cell_y = 153.0 * scale_y;
-            let cell_w = 15.0 * scale_x;
-            let cell_h = 36.0 * scale_y;
+            let cell = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[13 + slot]);
+            let cell_x = cell.x as f32;
+            let cell_y = cell.y as f32;
+            let cell_w = cell.w as f32;
+            let cell_h = cell.h as f32;
             hud.draw_hfx_nine_patch_scaled(
                 &hud::HFX_STATUS_SMALL_FRAME,
                 cell_x,
@@ -2939,22 +2957,27 @@ impl App {
                 );
             }
             if slot == 1 {
-                hud.draw_hfx_scaled(
-                    hud::HFX_STATUS_FOLLOWER_GLYPH,
-                    cell_x + (cell_w - 13.0 * scale_x) * 0.5,
-                    cell_y + (cell_h - 23.0 * scale_y) * 0.5,
-                    scale_x,
-                    scale_y,
-                );
+                if let Some((width, height)) = hud.hfx_size(hud::HFX_STATUS_FOLLOWER_GLYPH) {
+                    let art_w = width as f32 * scale_x;
+                    let art_h = height as f32 * scale_y;
+                    hud.draw_hfx_scaled(
+                        hud::HFX_STATUS_FOLLOWER_GLYPH,
+                        cell_x + (cell_w - art_w) * 0.5,
+                        cell_y + (cell_h - art_h) * 0.5,
+                        scale_x,
+                        scale_y,
+                    );
+                }
             }
         }
 
         // The native meter is stored left-to-right; the original sidebar
         // presents its available capacity from the right edge.
+        let population_meter = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[20]);
         hud.draw_hfx_flipped_scaled(
             hud::HFX_POPULATION_METER,
-            4.0 * scale_x,
-            190.0 * scale_y,
+            population_meter.x as f32,
+            population_meter.y as f32,
             scale_x,
             scale_y,
         );
@@ -2963,14 +2986,23 @@ impl App {
         // column grid.  The supported eight building silhouettes occupy the
         // first slots; the remaining original cells stay visibly present but
         // inert until their mechanics are implemented.
-        let grid_x = 2.0 * scale_x;
-        let grid_y = layout.panel_y + 8.0 * scale_y;
-        let cell_w = layout.construction_cell_w;
-        let cell_h = layout.construction_cell_h;
         for row in 0..6usize {
             for col in 0..3usize {
-                let x = grid_x + col as f32 * (cell_w + scale_x);
-                let y = grid_y + row as f32 * (cell_h + scale_y);
+                // The binary table is stored right-to-left.  Convert it to
+                // screen order while retaining its original fixed-point
+                // position and extent (rather than reconstructing a grid by
+                // multiplying float scales).
+                let source_index = row * 3 + (2 - col);
+                let cell = hud::layout::element_rect(
+                    &hud::layout::PANEL_TAB_PAGE,
+                    &hud::layout::BUILDINGS_PAGE[source_index],
+                    screen_w,
+                    screen_h,
+                );
+                let x = cell.x as f32;
+                let y = cell.y as f32;
+                let cell_w = cell.w as f32;
+                let cell_h = cell.h as f32;
                 let slot = row * 3 + col;
                 if slot == 0 {
                     hud.draw_hfx_nine_patch_scaled(

@@ -646,18 +646,29 @@ pub fn detect_construction_slot_click(
     mouse_y: f32,
     layout: &HudLayout,
 ) -> Option<usize> {
-    let x = mouse_x - 2.0 * layout.scale_x;
-    let y = mouse_y - (layout.panel_y + 8.0 * layout.scale_y);
-    if x < 0.0
-        || y < 0.0
-        || x >= layout.construction_cell_w * 3.0
-        || y >= layout.construction_cell_h * 6.0
-    {
-        return None;
+    let screen_w = layout.screen_w as i32;
+    let screen_h = layout.screen_h as i32;
+    for row in 0..6usize {
+        for col in 0..3usize {
+            // BUILDINGS_PAGE is in binary/right-to-left order; input slots
+            // remain in visual left-to-right order.
+            let source_index = row * 3 + (2 - col);
+            let rect = layout::element_rect(
+                &layout::PANEL_TAB_PAGE,
+                &layout::BUILDINGS_PAGE[source_index],
+                screen_w,
+                screen_h,
+            );
+            if mouse_x >= rect.x as f32
+                && mouse_x < (rect.x + rect.w) as f32
+                && mouse_y >= rect.y as f32
+                && mouse_y < (rect.y + rect.h) as f32
+            {
+                return Some(row * 3 + col);
+            }
+        }
     }
-    let col = (x / layout.construction_cell_w) as usize;
-    let row = (y / layout.construction_cell_h) as usize;
-    Some(row * 3 + col)
+    None
 }
 
 /// Depressed in-game tab frame tiles from `hfx0-0.dat`, in nine-patch order
@@ -1497,6 +1508,13 @@ impl HudRenderer {
     /// Native pixel dimensions of a verified HFX UI sprite.
     pub fn hfx_size(&self, sprite_id: u16) -> Option<(u16, u16)> {
         self.hfx_regions
+            .get(&sprite_id)
+            .and_then(|&sprite_idx| self.sprite_size(sprite_idx))
+    }
+
+    /// Native pixel dimensions of a verified HSPR HUD sprite.
+    pub fn hspr_size(&self, sprite_id: u16) -> Option<(u16, u16)> {
+        self.hspr_regions
             .get(&sprite_id)
             .and_then(|&sprite_idx| self.sprite_size(sprite_idx))
     }
