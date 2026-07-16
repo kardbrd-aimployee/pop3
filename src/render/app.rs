@@ -2828,7 +2828,7 @@ impl App {
         let globe_x = 6.0 * scale_x;
         let globe_y = 122.0 * scale_y;
         let globe_w = 24.0 * scale_x;
-        let globe_h = 24.0 * scale_y;
+        let globe_h = 18.0 * scale_y;
         hud.draw_hfx_nine_patch_scaled(
             &hud::HFX_STATUS_GLOBE_FRAME,
             globe_x,
@@ -2838,19 +2838,16 @@ impl App {
             scale_x,
             scale_y,
         );
-        if self.engine.hud_panel_sprite_count > hud::PANEL_STATUS_GLOBE {
-            let globe = hud.panel_sprite_index(hud::PANEL_STATUS_GLOBE);
-            if let Some((width, height)) = hud.sprite_size(globe) {
-                let globe_w = width as f32 * scale_x;
-                let globe_h = height as f32 * scale_y;
-                hud.draw_sprite(
-                    globe,
-                    globe_x + (24.0 * scale_x - globe_w) * 0.5,
-                    globe_y + (24.0 * scale_y - globe_h) * 0.5,
-                    scale_x,
-                    scale_y,
-                );
-            }
+        if let Some((width, height)) = hud.hfx_size(hud::HFX_STATUS_GLOBE) {
+            let globe_w = width as f32 * scale_x;
+            let globe_h = height as f32 * scale_y;
+            hud.draw_hfx_scaled(
+                hud::HFX_STATUS_GLOBE,
+                globe_x + (24.0 * scale_x - globe_w) * 0.5,
+                globe_y + (18.0 * scale_y - globe_h) * 0.5,
+                scale_x,
+                scale_y,
+            );
         }
 
         let avatar_x = 33.0 * scale_x;
@@ -2866,14 +2863,12 @@ impl App {
             scale_x,
             scale_y,
         );
-        hud.draw_hfx_nine_patch_scaled(
-            &hud::HFX_STATUS_AVATAR_FRAME,
+        hud.draw_hfx_stretched(
+            hud::HFX_STATUS_AVATAR_COMPOSITE,
             avatar_x,
             avatar_y,
             avatar_w,
             avatar_h,
-            scale_x,
-            scale_y,
         );
         hud.draw_hspr_scaled(
             hud::HSPR_STATUS_AVATAR_BLUE,
@@ -2904,8 +2899,8 @@ impl App {
             scale_y,
         );
 
-        hud.draw_hfx_nine_patch_scaled(
-            &hud::HFX_STATUS_TALL_FRAME,
+        hud.draw_hfx_tiled_scaled(
+            hud::HFX_STATUS_WHITE_TEXTURE,
             64.0 * scale_x,
             126.0 * scale_y,
             10.0 * scale_x,

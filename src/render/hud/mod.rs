@@ -683,16 +683,22 @@ pub const HFX_MINIMAP_FRAME: [u16; 9] = [690, 694, 691, 696, 0, 697, 692, 695, 6
 pub const HFX_SHAMAN_WIDGET: u16 = 664;
 
 /// Native assets that form the compact in-game status strip.
-pub const PANEL_STATUS_GLOBE: usize = 1;
 /// e01's normal (not hover) avatar frame, from callback 0x404130.
 pub const HFX_STATUS_AVATAR_FRAME: [u16; 9] = [713, 717, 714, 719, 721, 720, 715, 718, 716];
+/// The precomposed 16-bit e01 border retains the original narrow outline and
+/// black interior at the status widget's native size.
+pub const HFX_STATUS_AVATAR_COMPOSITE: u16 = 469;
 /// e12's globe-toggle frame, from callback 0x405c80.
 pub const HFX_STATUS_GLOBE_FRAME: [u16; 9] = [767, 771, 768, 773, 775, 774, 769, 772, 770];
+/// e12's normal globe state. 876–878 are hover/toggle variants; 875 matches
+/// the idle construction HUD in the native capture.
+pub const HFX_STATUS_GLOBE: u16 = 875;
 /// e19's small help-button frame and e13–18's quick-row cells.
 pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
 /// e02's tall status field frame.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
+pub const HFX_STATUS_WHITE_TEXTURE: u16 = 503;
 pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
 pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
 pub const HFX_STATUS_RED_CHIP: u16 = 65;
@@ -722,6 +728,7 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_STATUS_TEXTURE,
     HFX_CONSTRUCTION_TEXTURE,
     HFX_SHAMAN_WIDGET,
+    HFX_STATUS_AVATAR_COMPOSITE,
     713,
     714,
     715,
@@ -759,6 +766,8 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     1021,
     1022,
     HFX_STATUS_BLACK_TEXTURE,
+    HFX_STATUS_WHITE_TEXTURE,
+    HFX_STATUS_GLOBE,
     HFX_STATUS_HELP_GLYPH,
     HFX_STATUS_BLUE_CHIP,
     HFX_STATUS_RED_CHIP,
@@ -2317,7 +2326,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 84);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 87);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -2339,7 +2348,10 @@ mod tests {
             )
             .chain(
                 [
+                    HFX_STATUS_AVATAR_COMPOSITE,
                     HFX_STATUS_BLACK_TEXTURE,
+                    HFX_STATUS_WHITE_TEXTURE,
+                    HFX_STATUS_GLOBE,
                     HFX_STATUS_HELP_GLYPH,
                     HFX_STATUS_BLUE_CHIP,
                     HFX_STATUS_RED_CHIP,
