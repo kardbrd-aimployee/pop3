@@ -1648,8 +1648,10 @@ impl App {
         let point_path = data_dir.join("POINT0-0.DAT");
         let hfx_path = data_dir.join("hfx0-0.dat");
         let hspr_path = data_dir.join("HSPR0-0.DAT");
+        let font4_path = data_dir.join("font4-0.dat");
         let panel_palette_path = data_dir.join("plspal.dat");
         let point_palette_path = data_dir.join("PAL1-0.DAT");
+        let font4_palette_path = data_dir.join("pal0-0.dat");
 
         let Some(panel_container) = ContainerPSFB::from_file(&panel_path) else {
             self.engine.hud_panel_sprite_count = 0;
@@ -1698,9 +1700,29 @@ impl App {
                 return;
             }
         };
+        let font4_palette = match fs::read(&font4_palette_path) {
+            Ok(palette) if palette.len() >= 1024 => palette,
+            Ok(palette) => {
+                log::warn!(
+                    "[hud] invalid FONT4 palette at {:?}: expected at least 1024 bytes, got {}",
+                    font4_palette_path,
+                    palette.len()
+                );
+                return;
+            }
+            Err(error) => {
+                log::warn!(
+                    "[hud] failed to read FONT4 palette {:?}: {}",
+                    font4_palette_path,
+                    error
+                );
+                return;
+            }
+        };
         let point_container = ContainerPSFB::from_file(&point_path);
         let hfx_container = ContainerPSFB::from_file(&hfx_path);
         let hspr_container = ContainerPSFB::from_file(&hspr_path);
+        let font4_container = ContainerPSFB::from_file(&font4_path);
         self.engine.hud_panel_sprite_count = panel_container.len();
         self.engine.hud_point_sprite_count = point_container.as_ref().map_or(0, ContainerPSFB::len);
 
@@ -1718,7 +1740,11 @@ impl App {
                 hspr_container
                     .as_ref()
                     .map(|sprites| (sprites, hud::HSPR_HUD_SPRITE_IDS.as_slice())),
+                font4_container
+                    .as_ref()
+                    .map(|sprites| (sprites, hud::FONT4_HUD_GLYPH_IDS)),
                 level_palette,
+                &font4_palette,
             );
         }
     }
@@ -2988,6 +3014,26 @@ impl App {
                         scale_y,
                     );
                 }
+            }
+            if let Some((glyph_w, glyph_h)) = hud.font4_size(hud::FONT4_STATUS_GLYPH_I) {
+                let glyph_w = glyph_w as f32 * scale_x;
+                let glyph_h = glyph_h as f32 * scale_y;
+                let label_x = cell_x + (cell_w - glyph_w * 2.0) * 0.5;
+                let label_y = cell_y + cell_h - glyph_h;
+                hud.draw_font4_scaled(
+                    hud::FONT4_STATUS_GLYPH_I,
+                    label_x,
+                    label_y,
+                    scale_x,
+                    scale_y,
+                );
+                hud.draw_font4_scaled(
+                    hud::FONT4_STATUS_GLYPH_I,
+                    label_x + glyph_w,
+                    label_y,
+                    scale_x,
+                    scale_y,
+                );
             }
         }
 
