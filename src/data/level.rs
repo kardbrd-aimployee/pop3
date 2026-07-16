@@ -9,6 +9,20 @@ use crate::data::units::{ModelType, TribeConfigRaw, UnitRaw};
 
 const LEVEL_UNIT_SLOTS: usize = 2000;
 
+/// Extract Populous' initial player-building availability from the shared
+/// campaign special-data file.  `popTB.exe` seeds the active player-state
+/// record from the first dword of `LEVLSPC2.DAT` before it opens a level;
+/// each construction command is represented by its corresponding bit.
+pub fn initial_construction_availability(base: &Path) -> Option<u32> {
+    let data = std::fs::read(base.join("levels").join("levlspc2.dat")).ok()?;
+    construction_availability_from_bytes(&data)
+}
+
+fn construction_availability_from_bytes(data: &[u8]) -> Option<u32> {
+    let bytes: [u8; 4] = data.get(..4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(bytes))
+}
+
 pub struct LevelPaths {
     pub palette: PathBuf,
     pub disp0: PathBuf,
@@ -324,10 +338,17 @@ fn read_disp(path: &Path) -> Vec<i8> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_fixed_unit_slots;
+    use super::{construction_availability_from_bytes, read_fixed_unit_slots};
     use crate::data::types::BinDeserializer;
     use crate::data::units::UnitRaw;
     use std::io::Cursor;
+
+    #[test]
+    fn special_data_building_availability_is_little_endian() {
+        let bytes = [0x04, 0x00, 0x00, 0x00];
+        assert_eq!(construction_availability_from_bytes(&bytes), Some(0b100));
+        assert_eq!(construction_availability_from_bytes(&bytes[..3]), None);
+    }
 
     fn unit_raw_bytes(
         subtype: u8,

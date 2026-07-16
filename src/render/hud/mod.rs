@@ -829,6 +829,19 @@ pub fn construction_button_state(
     }
 }
 
+/// Whether the native player availability bitfield enables a construction
+/// grid cell.  The bit positions are the executable's construction command
+/// ids, not the visual slot order.
+pub fn construction_slot_is_available(availability: u32, slot: usize) -> bool {
+    let Some(element) = layout::CONSTRUCTION_PAGE.get(slot) else {
+        return false;
+    };
+    let Ok(command) = u32::try_from(element.cmd) else {
+        return false;
+    };
+    availability & (1_u32 << command) != 0
+}
+
 /// Native POINT building-menu silhouettes in the active game's eight
 /// supported slots. These are buildings (hut through airship hut); HFX
 /// `354..361` are spell glyphs and must not be substituted here.
@@ -2852,6 +2865,17 @@ mod tests {
                 "HFX sprite {sprite_id} must be packed into the HUD atlas"
             );
         }
+    }
+
+    #[test]
+    fn construction_availability_uses_command_bits_not_grid_order() {
+        // LEVLSPC2.DAT's shipped initial value is bit 2 only, which unlocks
+        // the hut in slot zero.  The next left-column cell is command 6.
+        assert!(construction_slot_is_available(0b100, 0));
+        assert!(!construction_slot_is_available(0b100, 1));
+        assert!(!construction_slot_is_available(0b100, 2));
+        assert!(construction_slot_is_available(1 << 6, 2));
+        assert!(!construction_slot_is_available(u32::MAX, 9));
     }
 
     #[test]

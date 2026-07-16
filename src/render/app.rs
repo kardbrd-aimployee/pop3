@@ -36,7 +36,9 @@ use crate::data::bl320::make_bl320_texture_rgba;
 use crate::data::landscape::common::{LandPos, LandscapeFull};
 use crate::data::landscape::minimap::texture_minimap;
 use crate::data::landscape::{draw_texture_u8, make_texture_land};
-use crate::data::level::{LevelDefinition, LevelRes, ObjectPaths};
+use crate::data::level::{
+    initial_construction_availability, LevelDefinition, LevelRes, ObjectPaths,
+};
 use crate::data::objects::{Object3D, Shape, ShapeFootprints};
 use crate::data::units::{object_3d_index, ModelType};
 use crate::render::terrain::{
@@ -218,6 +220,8 @@ pub struct GameEngine {
     walkability_visible: bool,
     hud_panel_sprite_count: usize,
     hud_point_sprite_count: usize,
+    /// Native player building-availability bitfield, seeded by LEVLSPC2.DAT.
+    hud_construction_availability: u32,
     native_minimap_terrain_rgba: Option<Arc<[u8]>>,
     native_minimap_palette: Option<Arc<[u8]>>,
 
@@ -1331,6 +1335,9 @@ impl App {
                 walkability_visible: false,
                 hud_panel_sprite_count: 0,
                 hud_point_sprite_count: 0,
+                // Preserve a usable construction HUD in no-original-data
+                // runs; real levels replace this from LEVLSPC2.DAT below.
+                hud_construction_availability: u32::MAX,
                 native_minimap_terrain_rgba: None,
                 native_minimap_palette: None,
                 unit_coordinator: UnitCoordinator::new(),
@@ -1501,6 +1508,8 @@ impl App {
             .unwrap_or_else(|| Path::new("/opt/sandbox/pop").to_path_buf());
         let level_type = self.engine.config.landtype.as_deref();
         let level_res = LevelRes::new(&base, self.engine.level_num, level_type);
+        self.engine.hud_construction_availability =
+            initial_construction_availability(&base).unwrap_or(u32::MAX);
         let catalog = BuildingCatalog::from_assets(
             &self.engine.building_objects,
             &self.engine.shape_footprints,
@@ -2957,7 +2966,10 @@ impl App {
                     &layout,
                 )
             })
-            .flatten();
+            .flatten()
+            .filter(|&slot| {
+                hud::construction_slot_is_available(self.engine.hud_construction_availability, slot)
+            });
         for (slot, element) in hud::layout::CONSTRUCTION_PAGE.iter().enumerate() {
             let cell = hud::layout::element_rect(
                 &hud::layout::PANEL_TAB_PAGE,
@@ -2970,21 +2982,27 @@ impl App {
             let cell_w = cell.w as f32;
             let cell_h = cell.h as f32;
             if let Some(&icon) = hud::POINT_CONSTRUCTION_ICONS.get(slot) {
-                let frame_state = hud::construction_button_state(
+                let available = hud::construction_slot_is_available(
+                    self.engine.hud_construction_availability,
                     slot,
-                    hovered_slot,
-                    self.input.construction_slot_pressed,
                 );
-                hud.draw_hfx_nine_patch_scaled(
-                    hud::construction_button_frame(frame_state),
-                    x,
-                    y,
-                    cell_w,
-                    cell_h,
-                    scale_x,
-                    scale_y,
-                );
-                if self.engine.hud_point_sprite_count > icon {
+                if available {
+                    let frame_state = hud::construction_button_state(
+                        slot,
+                        hovered_slot,
+                        self.input.construction_slot_pressed,
+                    );
+                    hud.draw_hfx_nine_patch_scaled(
+                        hud::construction_button_frame(frame_state),
+                        x,
+                        y,
+                        cell_w,
+                        cell_h,
+                        scale_x,
+                        scale_y,
+                    );
+                }
+                if available && self.engine.hud_point_sprite_count > icon {
                     let icon = hud.point_sprite_index(icon);
                     if let Some((width, height)) = hud.sprite_size(icon) {
                         let icon_w = width as f32 * scale_x;
@@ -4835,6 +4853,8 @@ impl ApplicationHandler for App {
             .unwrap_or_else(|| Path::new("/opt/sandbox/pop").to_path_buf());
         let level_type2 = self.engine.config.landtype.as_deref();
         let level_res2 = LevelRes::new(&base2, self.engine.level_num, level_type2);
+        self.engine.hud_construction_availability =
+            initial_construction_availability(&base2).unwrap_or(u32::MAX);
         let catalog = BuildingCatalog::from_assets(
             &self.engine.building_objects,
             &self.engine.shape_footprints,
@@ -5004,10 +5024,15 @@ impl ApplicationHandler for App {
                                     self.input.mouse_pos.y,
                                     &layout,
                                 ) {
-                                    self.input.construction_slot_pressed = Some(slot);
-                                    if slot == 0 {
-                                        self.input.placement = Some(BuildingSubtype::SmallHut);
-                                        self.input.placement_rotation = 0;
+                                    if hud::construction_slot_is_available(
+                                        self.engine.hud_construction_availability,
+                                        slot,
+                                    ) {
+                                        self.input.construction_slot_pressed = Some(slot);
+                                        if slot == 0 {
+                                            self.input.placement = Some(BuildingSubtype::SmallHut);
+                                            self.input.placement_rotation = 0;
+                                        }
                                     }
                                 }
                             }
