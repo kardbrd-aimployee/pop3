@@ -786,14 +786,18 @@ pub const FONT4_HUD_GLYPH_IDS: &[u16] = &[FONT4_STATUS_GLYPH_I];
 pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 
 /// In-game construction-button frame tiles, in nine-patch order.
-pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826, 824];
+///
+/// The house tab's two-column element list at `popTB.exe` `0x576c20` is
+/// rendered by `FUN_004018a0`; its normal table is `0x575448`. The nearby
+/// `0x575490` table is for the unrelated three-column stats/building page,
+/// not the construction tab visible in the gameplay HUD.
+pub const HFX_BUILDING_FRAME: [u16; 9] = [794, 798, 795, 800, 802, 801, 796, 799, 797];
 
-/// The original construction-button hover frame (`popTB.exe` 0x5754a8).
-/// `GUI_RenderBuildingButton` chooses this table while the button is focused.
-pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [839, 843, 840, 845, 847, 846, 841, 844, 842];
+/// The original construction-button hover frame (`popTB.exe` `0x575460`).
+pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [812, 816, 813, 818, 820, 819, 814, 817, 815];
 
-/// The original construction-button pressed frame (`popTB.exe` 0x5754c0).
-pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [830, 834, 831, 836, 838, 837, 832, 835, 833];
+/// The original construction-button pressed frame (`popTB.exe` `0x575478`).
+pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [803, 807, 804, 809, 811, 810, 805, 808, 806];
 
 /// Visual state selected by the original construction-button renderer.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -943,33 +947,33 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     760,
     763,
     761,
-    821,
-    825,
-    822,
-    827,
-    829,
-    828,
-    823,
-    826,
-    824,
-    839,
-    843,
-    840,
-    845,
-    847,
-    846,
-    841,
-    844,
-    842,
-    830,
-    834,
-    831,
-    836,
-    838,
-    837,
-    832,
-    835,
-    833,
+    794,
+    798,
+    795,
+    800,
+    802,
+    801,
+    796,
+    799,
+    797,
+    812,
+    816,
+    813,
+    818,
+    820,
+    819,
+    814,
+    817,
+    815,
+    803,
+    807,
+    804,
+    809,
+    811,
+    810,
+    805,
+    808,
+    806,
     676,
     678,
     680,
@@ -2780,15 +2784,15 @@ mod tests {
         assert_eq!(FONT4_HUD_GLYPH_IDS, [FONT4_STATUS_GLYPH_I]);
         assert_eq!(
             HFX_BUILDING_FRAME,
-            [821, 825, 822, 827, 829, 828, 823, 826, 824]
+            [794, 798, 795, 800, 802, 801, 796, 799, 797]
         );
         assert_eq!(
             HFX_BUILDING_FRAME_HOVER,
-            [839, 843, 840, 845, 847, 846, 841, 844, 842]
+            [812, 816, 813, 818, 820, 819, 814, 817, 815]
         );
         assert_eq!(
             HFX_BUILDING_FRAME_PRESSED,
-            [830, 834, 831, 836, 838, 837, 832, 835, 833]
+            [803, 807, 804, 809, 811, 810, 805, 808, 806]
         );
         assert_eq!(
             HFX_PANEL_SURFACE_TILES,
