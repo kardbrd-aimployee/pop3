@@ -1029,7 +1029,10 @@ pub const HFX_STATUS_GLOBE: u16 = 875;
 pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
 /// e02's tall status field frame and e20's mana-meter outer rim.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
-pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
+/// Sidebar element e19's HFX parameter at `popTB.exe` `0x575b7a` is
+/// `0x0069` (HFX #105).  The adjacent #106 glyph is a larger purple variant,
+/// not the compact dark question mark in the native construction HUD.
+pub const HFX_STATUS_HELP_GLYPH: u16 = 105;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
 
 /// Blue tribe's side-facing idle shaman frame from `HSPR0-0.DAT`.
@@ -3722,6 +3725,10 @@ mod tests {
             [701, 703, 702, 704, 706, 705, 559, 562, 560]
         );
         assert_eq!(HFX_SIDEBAR_STATUS_TEXTURE, 700);
+        // Sidebar element e19 stores its original question-mark HFX parameter
+        // as 0x0069 at 0x575b7a; #106 is a different, non-HUD variant.
+        assert_eq!(HFX_STATUS_HELP_GLYPH, 105);
+        assert_eq!(HFX_STATUS_FOLLOWER_GLYPH, 666);
         assert_eq!(
             HFX_STATUS_TRIBE_BUTTON_FRAMES,
             [
