@@ -2847,8 +2847,10 @@ impl App {
         // renders them in reverse element-table order: e24's canvas first,
         // then e23, e22, e21, and finally the status controls.  e23 is the
         // native #700 texture behind the lower part of the tab/status seam.
+        // `FUN_00405ec0` tiles it from virtual `(0, 0)` and uses e23 only as
+        // a clipping rectangle, so preserve the source texture phase here.
         let status_surface = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[23]);
-        hud.draw_hfx_tiled_scaled(
+        hud.draw_hfx_tiled_screen_aligned_scaled(
             hud::HFX_SIDEBAR_STATUS_TEXTURE,
             status_surface.x as f32,
             status_surface.y as f32,

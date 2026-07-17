@@ -2264,6 +2264,43 @@ impl HudRenderer {
         scale_x: f32,
         scale_y: f32,
     ) -> bool {
+        self.draw_hfx_tiled_from_origin_scaled(
+            sprite_id, x, y, width, height, x, y, scale_x, scale_y,
+        )
+    }
+
+    /// Tile original HFX art with a virtual-screen origin, clipping the
+    /// leading and trailing pieces to `x/y/width/height`.  PopTB's
+    /// `FUN_00405ec0` starts status texture #700 at `(0, 0)` before clipping
+    /// it to sidebar element e23; restarting at that element's y=90 shifts
+    /// the native texture phase.
+    pub fn draw_hfx_tiled_screen_aligned_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
+        self.draw_hfx_tiled_from_origin_scaled(
+            sprite_id, x, y, width, height, 0.0, 0.0, scale_x, scale_y,
+        )
+    }
+
+    fn draw_hfx_tiled_from_origin_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        origin_x: f32,
+        origin_y: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
             return false;
         };
@@ -2274,21 +2311,29 @@ impl HudRenderer {
             return false;
         }
 
-        let mut tile_y = y;
-        while tile_y < y + height {
-            let draw_h = tile_h.min(y + height - tile_y);
-            let v1 = region.v0 + (region.v1 - region.v0) * (draw_h / tile_h);
-            let mut tile_x = x;
-            while tile_x < x + width {
-                let draw_w = tile_w.min(x + width - tile_x);
-                let u1 = region.u0 + (region.u1 - region.u0) * (draw_w / tile_w);
+        let right = x + width;
+        let bottom = y + height;
+        let mut tile_y = first_tiled_position(y, tile_h, origin_y);
+        while tile_y < bottom {
+            let draw_y = tile_y.max(y);
+            let draw_bottom = (tile_y + tile_h).min(bottom);
+            let draw_h = draw_bottom - draw_y;
+            let v0 = region.v0 + (region.v1 - region.v0) * ((draw_y - tile_y) / tile_h);
+            let v1 = region.v0 + (region.v1 - region.v0) * ((draw_bottom - tile_y) / tile_h);
+            let mut tile_x = first_tiled_position(x, tile_w, origin_x);
+            while tile_x < right {
+                let draw_x = tile_x.max(x);
+                let draw_right = (tile_x + tile_w).min(right);
+                let draw_w = draw_right - draw_x;
+                let u0 = region.u0 + (region.u1 - region.u0) * ((draw_x - tile_x) / tile_w);
+                let u1 = region.u0 + (region.u1 - region.u0) * ((draw_right - tile_x) / tile_w);
                 self.push_quad(
-                    tile_x,
-                    tile_y,
-                    tile_x + draw_w,
-                    tile_y + draw_h,
-                    region.u0,
-                    region.v0,
+                    draw_x,
+                    draw_y,
+                    draw_x + draw_w,
+                    draw_y + draw_h,
+                    u0,
+                    v0,
                     u1,
                     v1,
                     [1.0; 4],
@@ -3471,6 +3516,16 @@ mod tests {
         // The ordinary local-panel path remains available for callers that
         // intentionally restart a texture at their own origin.
         assert_eq!(first_tiled_position(203.0, 32.0, 203.0), 203.0);
+    }
+
+    #[test]
+    fn screen_aligned_status_surface_keeps_the_native_hfx0_phase() {
+        // `FUN_00405ec0` begins HFX #700 at virtual zero and clips it to
+        // sidebar element e23, whose native top edge is y=90.
+        assert_eq!(first_tiled_position(90.0, 32.0, 0.0), 64.0);
+        // The ordinary HFX path must still be able to start at a local panel
+        // origin for callers whose source routine does that deliberately.
+        assert_eq!(first_tiled_position(90.0, 32.0, 90.0), 90.0);
     }
 
     #[test]
