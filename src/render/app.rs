@@ -2823,7 +2823,7 @@ impl App {
         // `FUN_00405a10` first tiles HFX #712, then applies the distinct
         // page border table at 0x575208.  The generic #1450 panel tiles are
         // not part of the house-tab path.
-        hud.draw_hfx1_tiled_scaled(
+        hud.draw_hfx1_tiled_screen_aligned_scaled(
             hud::HFX_CONSTRUCTION_PAGE_TEXTURE,
             0.0,
             layout.panel_y,

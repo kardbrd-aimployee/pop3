@@ -104,6 +104,14 @@ fn native_nine_patch_vertical_edge_bounds(
     ))
 }
 
+/// Locate the source tile that contains the leading edge of a clipped tiled
+/// rectangle.  PopTB starts several texture passes at virtual coordinate zero
+/// and relies on a clipping rectangle rather than restarting the tile pattern
+/// at each panel.
+fn first_tiled_position(rect_start: f32, tile_extent: f32, tile_origin: f32) -> f32 {
+    tile_origin + ((rect_start - tile_origin) / tile_extent).floor() * tile_extent
+}
+
 // ---------------------------------------------------------------------------
 // Data contract: game logic → HUD
 // ---------------------------------------------------------------------------
@@ -2305,6 +2313,43 @@ impl HudRenderer {
         scale_x: f32,
         scale_y: f32,
     ) -> bool {
+        self.draw_hfx1_tiled_from_origin_scaled(
+            sprite_id, x, y, width, height, x, y, scale_x, scale_y,
+        )
+    }
+
+    /// Tile the original HFX1 construction-page art with a virtual-screen
+    /// origin, clipping the leading and trailing pieces to `x/y/width/height`.
+    /// `FUN_00405a10` starts HFX #712 at `(0, 0)` before installing the page
+    /// scissor; restarting at the page top would shift its native 32px texture
+    /// phase by eleven pixels at 640×480.
+    pub fn draw_hfx1_tiled_screen_aligned_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
+        self.draw_hfx1_tiled_from_origin_scaled(
+            sprite_id, x, y, width, height, 0.0, 0.0, scale_x, scale_y,
+        )
+    }
+
+    fn draw_hfx1_tiled_from_origin_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        origin_x: f32,
+        origin_y: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
         let Some(&sprite_idx) = self.hfx1_regions.get(&sprite_id) else {
             return false;
         };
@@ -2315,21 +2360,29 @@ impl HudRenderer {
             return false;
         }
 
-        let mut tile_y = y;
-        while tile_y < y + height {
-            let draw_h = tile_h.min(y + height - tile_y);
-            let v1 = region.v0 + (region.v1 - region.v0) * (draw_h / tile_h);
-            let mut tile_x = x;
-            while tile_x < x + width {
-                let draw_w = tile_w.min(x + width - tile_x);
-                let u1 = region.u0 + (region.u1 - region.u0) * (draw_w / tile_w);
+        let right = x + width;
+        let bottom = y + height;
+        let mut tile_y = first_tiled_position(y, tile_h, origin_y);
+        while tile_y < bottom {
+            let draw_y = tile_y.max(y);
+            let draw_bottom = (tile_y + tile_h).min(bottom);
+            let draw_h = draw_bottom - draw_y;
+            let v0 = region.v0 + (region.v1 - region.v0) * ((draw_y - tile_y) / tile_h);
+            let v1 = region.v0 + (region.v1 - region.v0) * ((draw_bottom - tile_y) / tile_h);
+            let mut tile_x = first_tiled_position(x, tile_w, origin_x);
+            while tile_x < right {
+                let draw_x = tile_x.max(x);
+                let draw_right = (tile_x + tile_w).min(right);
+                let draw_w = draw_right - draw_x;
+                let u0 = region.u0 + (region.u1 - region.u0) * ((draw_x - tile_x) / tile_w);
+                let u1 = region.u0 + (region.u1 - region.u0) * ((draw_right - tile_x) / tile_w);
                 self.push_quad(
-                    tile_x,
-                    tile_y,
-                    tile_x + draw_w,
-                    tile_y + draw_h,
-                    region.u0,
-                    region.v0,
+                    draw_x,
+                    draw_y,
+                    draw_x + draw_w,
+                    draw_y + draw_h,
+                    u0,
+                    v0,
                     u1,
                     v1,
                     [1.0; 4],
@@ -3408,6 +3461,16 @@ mod tests {
         positions.push(final_y);
 
         assert_eq!(positions, vec![8.0, 16.0, 24.0, 32.0, 36.0]);
+    }
+
+    #[test]
+    fn screen_aligned_construction_page_keeps_the_native_hfx1_phase() {
+        // `FUN_00405a10` begins the 32px HFX #712 repetition at virtual zero
+        // and only then clips to the native construction-page top (203).
+        assert_eq!(first_tiled_position(203.0, 32.0, 0.0), 192.0);
+        // The ordinary local-panel path remains available for callers that
+        // intentionally restart a texture at their own origin.
+        assert_eq!(first_tiled_position(203.0, 32.0, 203.0), 203.0);
     }
 
     #[test]
