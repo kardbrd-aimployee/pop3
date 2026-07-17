@@ -949,9 +949,8 @@ pub const HFX_SIDEBAR_INFO_FRAME: [u16; 9] = [701, 703, 702, 704, 706, 705, 559,
 /// frames and status controls.
 pub const HFX_SIDEBAR_STATUS_TEXTURE: u16 = 700;
 
-/// Native normal-state blue and red nine-patch families used by the compact
-/// two-colour tribe indicator at sidebar element e06. Their tile tables are
-/// stored consecutively at `0x575520` and `0x575568` in `popTB.exe`.
+/// Native blue and red status-panel frame families from the in-game HUD
+/// reference. The two compact 10×11 fields share sidebar element e06.
 pub const HFX_STATUS_TRIBE_BUTTON_FRAMES: [[u16; 9]; 2] = [
     [879, 883, 880, 885, 887, 886, 881, 884, 882],
     [906, 910, 907, 912, 914, 913, 908, 911, 909],
@@ -1069,7 +1068,7 @@ fn panel_surface_interior_tile(tile_ids: &[u16; 16], row: usize, column: usize) 
     tile_ids[12 + ((row + 1) & 1) + 2 * ((column + 1) & 1)]
 }
 
-/// Verified original HFX art required by the construction HUD.
+/// Verified original HFX0 art required by the construction HUD.
 pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_SHAMAN_WIDGET,
     713,
@@ -1184,7 +1183,6 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     805,
     808,
     806,
-    HFX_CONSTRUCTION_PAGE_TEXTURE,
     707,
     708,
     709,
@@ -1239,6 +1237,11 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     1465,
 ];
 
+/// The construction-page texture is the sole HFX1 source image in the HUD.
+/// The native reference's fine-grain page field is sprite #712 from this
+/// sibling bank; frame and control art stays in HFX0.
+pub const HFX1_HUD_SPRITE_IDS: &[u16] = &[HFX_CONSTRUCTION_PAGE_TEXTURE];
+
 /// Verified original HSPR art required by the construction HUD.
 pub const HSPR_HUD_SPRITE_IDS: [u16; 1] = [HSPR_STATUS_AVATAR_BLUE];
 
@@ -1270,8 +1273,10 @@ pub struct HudRenderer {
     panel_sprite_count: usize,
     /// Index where POINT0-0.DAT sprites start in sprite_regions.
     point_region_start: usize,
-    /// Atlas regions for the verified in-game HFX UI sprites.
+    /// Atlas regions for the verified HFX0 HUD sprites.
     hfx_regions: HashMap<u16, usize>,
+    /// Atlas regions for the source HFX1 construction-page texture.
+    hfx1_regions: HashMap<u16, usize>,
     /// Atlas regions for the verified in-game HSPR status-avatar sprites.
     hspr_regions: HashMap<u16, usize>,
     /// Original HFX palette, retained for palette-indexed UI primitives.
@@ -1501,6 +1506,7 @@ impl HudRenderer {
             panel_sprite_count: 0,
             point_region_start: 97,
             hfx_regions: HashMap::new(),
+            hfx1_regions: HashMap::new(),
             hspr_regions: HashMap::new(),
             hfx_palette_rgb: [[0; 3]; 256],
             vertices: Vec::with_capacity(4096),
@@ -1510,7 +1516,7 @@ impl HudRenderer {
         }
     }
 
-    /// Build the HUD atlas from the original panel, POINT, HFX, and HSPR banks.
+    /// Build the HUD atlas from the original panel, POINT, HFX0, HFX1, and HSPR banks.
     ///
     /// The panel and POINT banks use separate native palettes.
     pub fn build_atlas(
@@ -1522,6 +1528,7 @@ impl HudRenderer {
         point_sprites: Option<&ContainerPSFB>,
         point_palette: &[u8],
         hfx_sprites: Option<(&ContainerPSFB, &[u16])>,
+        hfx1_sprites: Option<(&ContainerPSFB, &[u16])>,
         hspr_sprites: Option<(&ContainerPSFB, &[u16])>,
         hfx_palette: &[u8],
     ) {
@@ -1563,6 +1570,18 @@ impl HudRenderer {
                     let rgba = convert_indexed_to_rgba(&img.data, hfx_palette, 255);
                     sprite_images.push((w, h, rgba));
                     hfx_sprite_ids.push(sprite_id);
+                }
+            }
+        }
+        let mut hfx1_sprite_ids = Vec::new();
+        if let Some((hfx1_sprites, sprite_ids)) = hfx1_sprites {
+            for &sprite_id in sprite_ids {
+                if let Some(img) = hfx1_sprites.get_image(sprite_id as usize) {
+                    let w = img.width as u16;
+                    let h = img.height as u16;
+                    let rgba = convert_indexed_to_rgba(&img.data, hfx_palette, 255);
+                    sprite_images.push((w, h, rgba));
+                    hfx1_sprite_ids.push(sprite_id);
                 }
             }
         }
@@ -1723,13 +1742,19 @@ impl HudRenderer {
         self.panel_sprite_count = panel_sprite_count;
         self.point_region_start = font_start + 96 + panel_sprite_count;
         self.hfx_regions.clear();
+        self.hfx1_regions.clear();
         self.hspr_regions.clear();
         let hfx_region_start = self.point_region_start + point_sprite_count;
         for (offset, sprite_id) in hfx_sprite_ids.iter().enumerate() {
             self.hfx_regions
                 .insert(*sprite_id, hfx_region_start + offset);
         }
-        let hspr_region_start = hfx_region_start + hfx_sprite_ids.len();
+        let hfx1_region_start = hfx_region_start + hfx_sprite_ids.len();
+        for (offset, sprite_id) in hfx1_sprite_ids.iter().enumerate() {
+            self.hfx1_regions
+                .insert(*sprite_id, hfx1_region_start + offset);
+        }
+        let hspr_region_start = hfx1_region_start + hfx1_sprite_ids.len();
         for (offset, sprite_id) in hspr_sprite_ids.iter().enumerate() {
             self.hspr_regions
                 .insert(*sprite_id, hspr_region_start + offset);
@@ -2070,6 +2095,55 @@ impl HudRenderer {
         scale_y: f32,
     ) -> bool {
         let Some(&sprite_idx) = self.hfx_regions.get(&sprite_id) else {
+            return false;
+        };
+        let region = self.sprite_regions[sprite_idx].clone();
+        let tile_w = region.width as f32 * scale_x;
+        let tile_h = region.height as f32 * scale_y;
+        if tile_w <= 0.0 || tile_h <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return false;
+        }
+
+        let mut tile_y = y;
+        while tile_y < y + height {
+            let draw_h = tile_h.min(y + height - tile_y);
+            let v1 = region.v0 + (region.v1 - region.v0) * (draw_h / tile_h);
+            let mut tile_x = x;
+            while tile_x < x + width {
+                let draw_w = tile_w.min(x + width - tile_x);
+                let u1 = region.u0 + (region.u1 - region.u0) * (draw_w / tile_w);
+                self.push_quad(
+                    tile_x,
+                    tile_y,
+                    tile_x + draw_w,
+                    tile_y + draw_h,
+                    region.u0,
+                    region.v0,
+                    u1,
+                    v1,
+                    [1.0; 4],
+                );
+                tile_x += tile_w;
+            }
+            tile_y += tile_h;
+        }
+        true
+    }
+
+    /// Repeat the verified HFX1 construction-page texture using the native
+    /// panel scales. This remains distinct from the HFX0 frame and control
+    /// atlas regions even though both banks share numeric sprite indices.
+    pub fn draw_hfx1_tiled_scaled(
+        &mut self,
+        sprite_id: u16,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        scale_x: f32,
+        scale_y: f32,
+    ) -> bool {
+        let Some(&sprite_idx) = self.hfx1_regions.get(&sprite_id) else {
             return false;
         };
         let region = self.sprite_regions[sprite_idx].clone();
@@ -3134,6 +3208,7 @@ mod tests {
                 [906, 910, 907, 912, 914, 913, 908, 911, 909],
             ]
         );
+        assert_eq!(HFX1_HUD_SPRITE_IDS, [HFX_CONSTRUCTION_PAGE_TEXTURE]);
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
@@ -3263,7 +3338,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 166);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 165);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3274,7 +3349,6 @@ mod tests {
             .chain(HFX_CONSTRUCTION_ICONS.iter())
             .chain(HFX_CONSTRUCTION_ICONS_HOVER.iter())
             .chain(std::iter::once(&HFX_CONSTRUCTION_BLOCKED_OVERLAY))
-            .chain(std::iter::once(&HFX_CONSTRUCTION_PAGE_TEXTURE))
             .chain(
                 HFX_CONSTRUCTION_PAGE_FRAME
                     .iter()
@@ -3305,6 +3379,8 @@ mod tests {
                 "HFX sprite {sprite_id} must be packed into the HUD atlas"
             );
         }
+
+        assert!(HFX1_HUD_SPRITE_IDS.contains(&HFX_CONSTRUCTION_PAGE_TEXTURE));
 
         assert_eq!(HSPR_HUD_SPRITE_IDS, [HSPR_STATUS_AVATAR_BLUE]);
 

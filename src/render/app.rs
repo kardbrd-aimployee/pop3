@@ -1660,6 +1660,7 @@ impl App {
         let panel_path = data_dir.join("plspanel.spr");
         let point_path = data_dir.join("POINT0-0.DAT");
         let hfx_path = data_dir.join("hfx0-0.dat");
+        let hfx1_path = data_dir.join("hfx1-0.dat");
         let hspr_path = data_dir.join("HSPR0-0.DAT");
         let panel_palette_path = data_dir.join("plspal.dat");
         let point_palette_path = data_dir.join("PAL1-0.DAT");
@@ -1713,6 +1714,7 @@ impl App {
         };
         let point_container = ContainerPSFB::from_file(&point_path);
         let hfx_container = ContainerPSFB::from_file(&hfx_path);
+        let hfx1_container = ContainerPSFB::from_file(&hfx1_path);
         let hspr_container = ContainerPSFB::from_file(&hspr_path);
         self.engine.hud_panel_sprite_count = panel_container.len();
         self.engine.hud_point_sprite_count = point_container.as_ref().map_or(0, ContainerPSFB::len);
@@ -1728,6 +1730,9 @@ impl App {
                 hfx_container
                     .as_ref()
                     .map(|sprites| (sprites, hud::HFX_HUD_SPRITE_IDS)),
+                hfx1_container
+                    .as_ref()
+                    .map(|sprites| (sprites, hud::HFX1_HUD_SPRITE_IDS)),
                 hspr_container
                     .as_ref()
                     .map(|sprites| (sprites, hud::HSPR_HUD_SPRITE_IDS.as_slice())),
@@ -2736,7 +2741,7 @@ impl App {
         // `FUN_00405a10` first tiles HFX #712, then applies the distinct
         // page border table at 0x575208.  The generic #1450 panel tiles are
         // not part of the house-tab path.
-        hud.draw_hfx_tiled_scaled(
+        hud.draw_hfx1_tiled_scaled(
             hud::HFX_CONSTRUCTION_PAGE_TEXTURE,
             0.0,
             layout.panel_y,
