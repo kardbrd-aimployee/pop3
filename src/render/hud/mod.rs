@@ -1029,7 +1029,6 @@ pub const HFX_STATUS_GLOBE: u16 = 875;
 pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
 /// e02's tall status field frame and e20's mana-meter outer rim.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
-pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
 pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
 
@@ -1316,7 +1315,6 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     1020,
     1021,
     1022,
-    HFX_STATUS_BLACK_TEXTURE,
     HFX_STATUS_GLOBE,
     HFX_STATUS_HELP_GLYPH,
     HFX_STATUS_FOLLOWER_GLYPH,
@@ -3844,10 +3842,12 @@ mod tests {
     #[test]
     fn native_status_palette_resolution_uses_nearest_original_entry() {
         let mut palette = [[0; 3]; 256];
+        palette[11] = HFX_STATUS_PALETTE_DARK;
         palette[17] = HFX_STATUS_PALETTE_WHITE;
         palette[42] = [1, 255, 0];
         palette[43] = [0, 253, 0];
 
+        assert_eq!(nearest_palette_index(&palette, HFX_STATUS_PALETTE_DARK), 11);
         assert_eq!(
             nearest_palette_index(&palette, HFX_STATUS_PALETTE_WHITE),
             17
@@ -3861,7 +3861,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 165);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 164);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3888,7 +3888,6 @@ mod tests {
             .chain(std::iter::once(&HFX_TAB_ICON_BUILDINGS_SELECTED))
             .chain(
                 [
-                    HFX_STATUS_BLACK_TEXTURE,
                     HFX_STATUS_GLOBE,
                     HFX_STATUS_HELP_GLYPH,
                     HFX_STATUS_FOLLOWER_GLYPH,

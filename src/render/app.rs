@@ -2960,7 +2960,8 @@ impl App {
         // e01 (the shaman/status button) is composed by the original game,
         // not supplied as a large replacement panel.  Callback 0x404130
         // first tiles its normal 8x8 HFX frame, then overpaints a 2px/3px
-        // inset portrait field before drawing the HSPR portrait.  Keeping
+        // inset portrait field with its palette-resolved dark colour before
+        // drawing the HSPR portrait.  Keeping
         // that order preserves the unusually narrow native rim and avoids
         // stretching the unrelated 38x45 HFX #469 composite.
         hud.draw_hfx_nine_patch_scaled(
@@ -2976,14 +2977,13 @@ impl App {
         let portrait_inset_top = 2.0 * scale_y;
         let portrait_inset_right = 3.0 * scale_x;
         let portrait_inset_bottom = 3.0 * scale_y;
-        hud.draw_hfx_tiled_scaled(
-            hud::HFX_STATUS_BLACK_TEXTURE,
+        let avatar_palette_dark = hud.resolve_hfx_palette_color(hud::HFX_STATUS_PALETTE_DARK);
+        hud.draw_hfx_palette_rect(
             avatar_x + portrait_inset_left,
             avatar_y + portrait_inset_top,
             (avatar_w - portrait_inset_left - portrait_inset_right).max(0.0),
             (avatar_h - portrait_inset_top - portrait_inset_bottom).max(0.0),
-            scale_x,
-            scale_y,
+            avatar_palette_dark,
         );
         if let Some((width, height)) = hud.hspr_size(hud::HSPR_STATUS_AVATAR_BLUE) {
             let art_w = width as f32 * scale_x;
