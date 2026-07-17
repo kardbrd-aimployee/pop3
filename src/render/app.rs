@@ -3047,10 +3047,15 @@ impl App {
             let cell_w = cell.w as f32;
             let cell_h = cell.h as f32;
             let availability = self.engine.construction_slot_availability(slot);
-            // The native panel keeps its nine-patch cell surface even when a
-            // command has no glyph and cannot be selected.  Availability
-            // controls the icon, overlay, and interaction—not whether the
-            // underlying two-column grid is drawn.
+            // `FUN_004018a0` exits before drawing its nine-patch whenever
+            // the panel manager marks an element hidden (`element + 0x10 ==
+            // 0`).  A hidden construction command is therefore uninterrupted
+            // panel texture, not an invented empty button frame.  This is
+            // particularly visible in the native Level 1 HUD, which draws
+            // only the hut, warrior-training, and firewarrior controls.
+            if !availability.is_visible() {
+                continue;
+            }
             let frame_state = if availability.is_interactive() {
                 hud::construction_button_state(
                     slot,
@@ -3069,23 +3074,21 @@ impl App {
                 scale_x,
                 scale_y,
             );
-            if availability != hud::ConstructionSlotAvailability::Hidden {
-                if let Some(icon) = hud::construction_icon_sprite(
-                    slot,
-                    availability.is_interactive()
-                        && frame_state != hud::ConstructionButtonState::Normal,
-                ) {
-                    if let Some((width, height)) = hud.hfx_size(icon) {
-                        let icon_w = width as f32 * scale_x;
-                        let icon_h = height as f32 * scale_y;
-                        hud.draw_hfx_scaled(
-                            icon,
-                            x + (cell_w - icon_w) * 0.5,
-                            y + (cell_h - icon_h) * 0.5,
-                            scale_x,
-                            scale_y,
-                        );
-                    }
+            if let Some(icon) = hud::construction_icon_sprite(
+                slot,
+                availability.is_interactive()
+                    && frame_state != hud::ConstructionButtonState::Normal,
+            ) {
+                if let Some((width, height)) = hud.hfx_size(icon) {
+                    let icon_w = width as f32 * scale_x;
+                    let icon_h = height as f32 * scale_y;
+                    hud.draw_hfx_scaled(
+                        icon,
+                        x + (cell_w - icon_w) * 0.5,
+                        y + (cell_h - icon_h) * 0.5,
+                        scale_x,
+                        scale_y,
+                    );
                 }
             }
             if availability == hud::ConstructionSlotAvailability::Blocked {

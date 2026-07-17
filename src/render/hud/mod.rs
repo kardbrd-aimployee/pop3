@@ -883,8 +883,7 @@ pub const fn construction_command_for_level_building_subtype(subtype: u8) -> Opt
 
 /// The three construction-cell outcomes produced by the original HUD setup
 /// callback. A command can be available to the player, visibly blocked
-/// because its building occurs on the level, or have an empty, noninteractive
-/// cell with no construction glyph.
+/// because its building occurs on the level, or wholly absent from the panel.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConstructionSlotAvailability {
     Hidden,
@@ -893,6 +892,12 @@ pub enum ConstructionSlotAvailability {
 }
 
 impl ConstructionSlotAvailability {
+    /// A hidden native element bypasses `FUN_004018a0` entirely, including
+    /// the nine-patch frame; only visible states reach the compositor.
+    pub const fn is_visible(self) -> bool {
+        !matches!(self, Self::Hidden)
+    }
+
     pub const fn is_interactive(self) -> bool {
         matches!(self, Self::Available)
     }
@@ -3031,6 +3036,9 @@ mod tests {
             construction_slot_availability(1, available, present),
             ConstructionSlotAvailability::Hidden
         );
+        assert!(ConstructionSlotAvailability::Available.is_visible());
+        assert!(ConstructionSlotAvailability::Blocked.is_visible());
+        assert!(!ConstructionSlotAvailability::Hidden.is_visible());
     }
 
     #[test]
