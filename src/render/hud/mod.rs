@@ -785,9 +785,6 @@ pub const HFX_SHAMAN_WIDGET: u16 = 664;
 /// Native assets that form the compact in-game status strip.
 /// e01's normal (not hover) avatar frame, from callback 0x404130.
 pub const HFX_STATUS_AVATAR_FRAME: [u16; 9] = [713, 717, 714, 719, 721, 720, 715, 718, 716];
-/// The precomposed 16-bit e01 border retains the original narrow outline and
-/// black interior at the status widget's native size.
-pub const HFX_STATUS_AVATAR_COMPOSITE: u16 = 469;
 /// e12's globe-toggle frame, from callback 0x405c80.
 pub const HFX_STATUS_GLOBE_FRAME: [u16; 9] = [767, 771, 768, 773, 775, 774, 769, 772, 770];
 /// e12's normal globe state. 876–878 are hover/toggle variants; 875 matches
@@ -990,7 +987,6 @@ fn panel_surface_interior_tile(tile_ids: &[u16; 16], row: usize, column: usize) 
 /// Verified original HFX art required by the construction HUD.
 pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_SHAMAN_WIDGET,
-    HFX_STATUS_AVATAR_COMPOSITE,
     713,
     714,
     715,
@@ -3112,7 +3108,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 136);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 135);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3131,7 +3127,6 @@ mod tests {
             .chain(std::iter::once(&HFX_TAB_ICON_BUILDINGS_SELECTED))
             .chain(
                 [
-                    HFX_STATUS_AVATAR_COMPOSITE,
                     HFX_STATUS_BLACK_TEXTURE,
                     HFX_STATUS_WHITE_TEXTURE,
                     HFX_STATUS_GLOBE,
