@@ -37,7 +37,6 @@ use crate::data::landscape::common::{LandPos, LandscapeFull};
 use crate::data::landscape::minimap::texture_minimap;
 use crate::data::landscape::{draw_texture_u8, make_texture_land};
 use crate::data::level::{LevelDefinition, LevelRes, ObjectPaths};
-use crate::data::level_special::LevelSpecialData;
 use crate::data::objects::{Object3D, Shape, ShapeFootprints};
 use crate::data::units::{object_3d_index, ModelType};
 use crate::render::terrain::{
@@ -150,29 +149,39 @@ fn confirm_quit(deadline: &mut Option<Instant>, now: Instant) -> bool {
     }
 }
 
-/// The construction-only HUD keeps its native hut tab raised and the two
-/// inert tab silhouettes dark, as in the reference capture.
-fn construction_slice_tab_frame(index: usize) -> &'static [u16; 9] {
-    if index == 0 {
-        &hud::HFX_TAB_FRAME_SELECTED
-    } else {
-        &hud::HFX_TAB_FRAME
-    }
+/// The native in-game construction reference draws all three top cells with
+/// the dark idle frame. The active mode is represented by the page below it,
+/// not by the bright hover/pressed frame family.
+fn construction_slice_tab_frame(_index: usize) -> &'static [u16; 9] {
+    &hud::HFX_TAB_FRAME
 }
 
-/// Collect the construction-page masks selected by the original new-game
-/// setup. `SaveGame_LoadStateFromBuffer` copies this field from
-/// `LEVLSPC2.DAT` into player state; `FUN_00435ec0` then reads it directly
-/// when deciding whether to show each command.
+/// The playable construction slice starts with the native Level 1 baseline:
+/// the Small Hut and the Vault.  The original explicitly grants Vault
+/// command 17 to every loaded player at `popTB.exe` `0x00452cbd`; the Hut is
+/// the observed initial command in the native Level 1 HUD reference.
+///
+/// `LEVLSPC2.DAT` is only a shared setup template.  Its command-four bit is
+/// subsequently reconciled with campaign player state by the original, so it
+/// cannot be used as the final HUD mask in this standalone level loader.
+const CONSTRUCTION_SLICE_INITIAL_COMMANDS: &[u8] = &[1, 17];
+
+fn construction_slice_initial_capabilities() -> u32 {
+    CONSTRUCTION_SLICE_INITIAL_COMMANDS
+        .iter()
+        .fold(0, |capabilities, &command| {
+            capabilities | hud::construction_command_bit(command)
+        })
+}
+
+/// Collect the two construction-page masks represented by this playable
+/// level slice.
 ///
 /// The original blocked-command mask is populated by `General/2` level
 /// records during initial level creation. Their command is explicitly encoded
-/// in the raw record, so use that native source rather than treating visible
+/// in the raw record, so keep that native source rather than treating visible
 /// buildings as a proxy for unavailable construction commands.
-fn construction_hud_command_masks(base: &Path, level: &LevelRes) -> (u32, u32) {
-    let special = LevelSpecialData::from_base(base).unwrap_or_else(|error| {
-        panic!("could not load native levels/levlspc2.dat for construction HUD: {error}")
-    });
+fn construction_hud_command_masks(level: &LevelRes) -> (u32, u32) {
     let disabled_commands = level
         .units
         .iter()
@@ -180,10 +189,7 @@ fn construction_hud_command_masks(base: &Path, level: &LevelRes) -> (u32, u32) {
         .fold(0_u32, |mask, command| {
             mask | hud::construction_command_bit(command)
         });
-    (
-        special.initial_construction_capabilities(),
-        disabled_commands,
-    )
+    (construction_slice_initial_capabilities(), disabled_commands)
 }
 
 /******************************************************************************/
@@ -1582,7 +1588,7 @@ impl App {
         (
             self.engine.hud_construction_available_commands,
             self.engine.hud_construction_present_commands,
-        ) = construction_hud_command_masks(&base, &level_res);
+        ) = construction_hud_command_masks(&level_res);
 
         self.engine
             .landscape_mesh
@@ -5037,7 +5043,7 @@ impl ApplicationHandler for App {
         (
             self.engine.hud_construction_available_commands,
             self.engine.hud_construction_present_commands,
-        ) = construction_hud_command_masks(&base2, &level_res2);
+        ) = construction_hud_command_masks(&level_res2);
         self.rebuild_landscape_variants(&level_res2);
 
         // Build per-unit-type sprite atlases
@@ -5578,13 +5584,18 @@ mod tests {
     }
 
     #[test]
-    fn construction_tab_uses_the_bright_native_active_frame() {
-        assert_eq!(
-            construction_slice_tab_frame(0),
-            &hud::HFX_TAB_FRAME_SELECTED
-        );
+    fn construction_tab_uses_the_dark_native_reference_frame() {
+        assert_eq!(construction_slice_tab_frame(0), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(1), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(2), &hud::HFX_TAB_FRAME);
+    }
+
+    #[test]
+    fn construction_slice_starts_with_the_native_level_one_commands() {
+        assert_eq!(
+            construction_slice_initial_capabilities(),
+            hud::construction_command_bit(1) | hud::construction_command_bit(17)
+        );
     }
 
     #[test]
