@@ -3248,7 +3248,7 @@ impl App {
             if let Some(icon) = hud::construction_icon_sprite(
                 slot,
                 availability.is_interactive()
-                    && frame_state != hud::ConstructionButtonState::Normal,
+                    && hud::construction_button_uses_highlight_glyph(frame_state),
             ) {
                 if let Some((width, height)) = hud.hfx_size(icon) {
                     let icon_w = width as f32 * scale_x;

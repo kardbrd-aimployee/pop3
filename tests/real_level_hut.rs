@@ -11,7 +11,7 @@ use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
     HFX1_HUD_SPRITE_IDS, HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS,
-    HFX_CONSTRUCTION_ICONS_HOVER, HFX_CONSTRUCTION_PAGE_TEXTURE, HFX_HUD_SPRITE_IDS,
+    HFX_CONSTRUCTION_ICONS_PRESSED, HFX_CONSTRUCTION_PAGE_TEXTURE, HFX_HUD_SPRITE_IDS,
     HFX_MINIMAP_LOCAL_SHAMAN_FILL, HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE, HSPR_HUD_SPRITE_IDS,
 };
 
@@ -62,7 +62,7 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
             "original HFX construction icon {sprite_id} must have an image extent"
         );
     }
-    for &sprite_id in &HFX_CONSTRUCTION_ICONS_HOVER {
+    for &sprite_id in &HFX_CONSTRUCTION_ICONS_PRESSED {
         let image = hfx.get_image(sprite_id as usize).unwrap_or_else(|| {
             panic!("original HFX highlighted construction icon {sprite_id} must decode")
         });

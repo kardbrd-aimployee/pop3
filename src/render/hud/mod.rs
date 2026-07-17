@@ -1039,11 +1039,20 @@ pub const HFX_STATUS_METER_OVERRUN_START_DENOMINATOR: u32 = 256;
 /// normal frame table is `popTB.exe` `0x575448`.
 pub const HFX_BUILDING_FRAME: [u16; 9] = [794, 798, 795, 800, 802, 801, 796, 799, 797];
 
-/// Native construction-button hover frame (`FUN_004018a0`, `0x575460`).
-pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [812, 816, 813, 818, 820, 819, 814, 817, 815];
+/// Native construction-button hover frame (`FUN_004018a0`, `0x575478`).
+///
+/// `Panel_TickManager` clears element `+0x0c` for every control and sets it
+/// only on the current pointer target before rendering. `GUI_RenderButton`
+/// selects this third table when that hover flag is present without a held
+/// mouse button.
+pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [803, 807, 804, 809, 811, 810, 805, 808, 806];
 
-/// Native construction-button pressed frame (`FUN_004018a0`, `0x575478`).
-pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [803, 807, 804, 809, 811, 810, 805, 808, 806];
+/// Native construction-button pressed frame (`FUN_004018a0`, `0x575460`).
+///
+/// The panel manager stores its left/right held-button counters at element
+/// `+0x18/+0x1c`; `GUI_RenderButton` checks those first, so they override
+/// hover art while the button is held.
+pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [812, 816, 813, 818, 820, 819, 814, 817, 815];
 
 /// Visual state selected by the original construction-button renderer.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1062,15 +1071,19 @@ pub fn construction_button_frame(state: ConstructionButtonState) -> &'static [u1
     }
 }
 
-/// Resolve the native visual state for one construction-button cell.  A
-/// pressed frame only remains while the pointer is still over the same cell,
-/// matching the original button compositor's active-pointer behavior.
+/// Resolve the native visual state for one construction-button cell.
+///
+/// `GUI_RenderButton` (`popTB.exe` `0x405fc0`) selects its held-button table
+/// before the hover table: panel tick stores left/right held-button counters
+/// at element `+0x18/+0x1c`, then marks only the current pointer target at
+/// `+0x0c`. A held construction cell therefore keeps pressed art whether or
+/// not the pointer remains over it.
 pub fn construction_button_state(
     slot: usize,
     hovered_slot: Option<usize>,
     pressed_slot: Option<usize>,
 ) -> ConstructionButtonState {
-    if hovered_slot == Some(slot) && pressed_slot == Some(slot) {
+    if pressed_slot == Some(slot) {
         ConstructionButtonState::Pressed
     } else if hovered_slot == Some(slot) {
         ConstructionButtonState::Hovered
@@ -1079,12 +1092,18 @@ pub fn construction_button_state(
     }
 }
 
+/// Whether `FUN_004018a0` selects the companion (+18) construction glyph.
+/// The original checks its held-button counters, rather than the hover flag.
+pub const fn construction_button_uses_highlight_glyph(state: ConstructionButtonState) -> bool {
+    matches!(state, ConstructionButtonState::Pressed)
+}
+
 /// Native HFX icon params from the nine `0x576c20` construction records.
 /// `FUN_004018a0` adds 18 while a button is active, selecting the companion
 /// highlight family.  The non-sequential third row reflects the original
 /// record order; it must not be normalized.
 pub const HFX_CONSTRUCTION_ICONS: [u16; 9] = [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036];
-pub const HFX_CONSTRUCTION_ICONS_HOVER: [u16; 9] =
+pub const HFX_CONSTRUCTION_ICONS_PRESSED: [u16; 9] =
     [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054];
 
 /// Native `?` overlay used by the original blocked construction state.
@@ -1209,7 +1228,7 @@ pub fn construction_slot_availability(
 /// Resolve the exact construction icon for a native element slot.
 pub fn construction_icon_sprite(slot: usize, highlighted: bool) -> Option<u16> {
     let icons = if highlighted {
-        &HFX_CONSTRUCTION_ICONS_HOVER
+        &HFX_CONSTRUCTION_ICONS_PRESSED
     } else {
         &HFX_CONSTRUCTION_ICONS
     };
@@ -3666,7 +3685,7 @@ mod tests {
             [1028, 1029, 1030, 1032, 1033, 1031, 1034, 1035, 1036]
         );
         assert_eq!(
-            HFX_CONSTRUCTION_ICONS_HOVER,
+            HFX_CONSTRUCTION_ICONS_PRESSED,
             [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054]
         );
         assert_eq!(HFX_CONSTRUCTION_BLOCKED_OVERLAY, 1055);
@@ -3697,11 +3716,11 @@ mod tests {
         );
         assert_eq!(
             HFX_BUILDING_FRAME_HOVER,
-            [812, 816, 813, 818, 820, 819, 814, 817, 815]
+            [803, 807, 804, 809, 811, 810, 805, 808, 806]
         );
         assert_eq!(
             HFX_BUILDING_FRAME_PRESSED,
-            [803, 807, 804, 809, 811, 810, 805, 808, 806]
+            [812, 816, 813, 818, 820, 819, 814, 817, 815]
         );
         assert_eq!(
             HFX_PANEL_SURFACE_TILES,
@@ -3826,7 +3845,7 @@ mod tests {
             .chain(HFX_BUILDING_FRAME_HOVER.iter())
             .chain(HFX_BUILDING_FRAME_PRESSED.iter())
             .chain(HFX_CONSTRUCTION_ICONS.iter())
-            .chain(HFX_CONSTRUCTION_ICONS_HOVER.iter())
+            .chain(HFX_CONSTRUCTION_ICONS_PRESSED.iter())
             .chain(std::iter::once(&HFX_CONSTRUCTION_BLOCKED_OVERLAY))
             .chain(
                 HFX_CONSTRUCTION_PAGE_FRAME
@@ -3878,6 +3897,14 @@ mod tests {
     #[test]
     fn construction_button_frames_match_original_renderer_state_tables() {
         assert_eq!(
+            HFX_BUILDING_FRAME_HOVER,
+            [803, 807, 804, 809, 811, 810, 805, 808, 806]
+        );
+        assert_eq!(
+            HFX_BUILDING_FRAME_PRESSED,
+            [812, 816, 813, 818, 820, 819, 814, 817, 815]
+        );
+        assert_eq!(
             construction_button_frame(ConstructionButtonState::Normal),
             &HFX_BUILDING_FRAME
         );
@@ -3892,7 +3919,7 @@ mod tests {
     }
 
     #[test]
-    fn construction_button_state_requires_same_slot_for_pressed_art() {
+    fn construction_button_state_matches_native_pressed_then_hover_priority() {
         assert_eq!(
             construction_button_state(3, None, None),
             ConstructionButtonState::Normal
@@ -3907,8 +3934,21 @@ mod tests {
         );
         assert_eq!(
             construction_button_state(3, Some(4), Some(3)),
-            ConstructionButtonState::Normal
+            ConstructionButtonState::Pressed
         );
+    }
+
+    #[test]
+    fn construction_button_glyph_highlight_uses_only_the_native_pressed_path() {
+        assert!(!construction_button_uses_highlight_glyph(
+            ConstructionButtonState::Normal
+        ));
+        assert!(!construction_button_uses_highlight_glyph(
+            ConstructionButtonState::Hovered
+        ));
+        assert!(construction_button_uses_highlight_glyph(
+            ConstructionButtonState::Pressed
+        ));
     }
 
     // -- panel_sprite_index --
