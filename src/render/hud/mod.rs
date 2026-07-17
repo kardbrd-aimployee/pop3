@@ -841,8 +841,6 @@ pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
 pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
-pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
-pub const HFX_STATUS_RED_CHIP: u16 = 65;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
 
 /// Blue tribe's side-facing idle shaman frame from `HSPR0-0.DAT`.
@@ -950,6 +948,14 @@ pub const HFX_SIDEBAR_INFO_FRAME: [u16; 9] = [701, 703, 702, 704, 706, 705, 559,
 /// creation order, so this sits above the minimap canvas but below the tab
 /// frames and status controls.
 pub const HFX_SIDEBAR_STATUS_TEXTURE: u16 = 700;
+
+/// Native normal-state blue and red nine-patch families used by the compact
+/// two-colour tribe indicator at sidebar element e06. Their tile tables are
+/// stored consecutively at `0x575520` and `0x575568` in `popTB.exe`.
+pub const HFX_STATUS_TRIBE_BUTTON_FRAMES: [[u16; 9]; 2] = [
+    [879, 883, 880, 885, 887, 886, 881, 884, 882],
+    [906, 910, 907, 912, 914, 913, 908, 911, 909],
+];
 
 /// Native construction commands represented by the original house-tab
 /// glyphs.  These are command ids, not the `cmd` values used by the panel
@@ -1105,8 +1111,6 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_STATUS_BLACK_TEXTURE,
     HFX_STATUS_GLOBE,
     HFX_STATUS_HELP_GLYPH,
-    HFX_STATUS_BLUE_CHIP,
-    HFX_STATUS_RED_CHIP,
     HFX_STATUS_FOLLOWER_GLYPH,
     1028,
     1029,
@@ -1190,6 +1194,24 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     560,
     562,
     HFX_SIDEBAR_STATUS_TEXTURE,
+    879,
+    880,
+    881,
+    882,
+    883,
+    884,
+    885,
+    886,
+    887,
+    906,
+    907,
+    908,
+    909,
+    910,
+    911,
+    912,
+    913,
+    914,
     701,
     702,
     703,
@@ -3105,6 +3127,13 @@ mod tests {
             [701, 703, 702, 704, 706, 705, 559, 562, 560]
         );
         assert_eq!(HFX_SIDEBAR_STATUS_TEXTURE, 700);
+        assert_eq!(
+            HFX_STATUS_TRIBE_BUTTON_FRAMES,
+            [
+                [879, 883, 880, 885, 887, 886, 881, 884, 882],
+                [906, 910, 907, 912, 914, 913, 908, 911, 909],
+            ]
+        );
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
@@ -3234,7 +3263,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 150);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 166);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3253,6 +3282,7 @@ mod tests {
             )
             .chain(HFX_SIDEBAR_INFO_FRAME.iter())
             .chain(std::iter::once(&HFX_SIDEBAR_STATUS_TEXTURE))
+            .chain(HFX_STATUS_TRIBE_BUTTON_FRAMES.iter().flatten())
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())
@@ -3264,8 +3294,6 @@ mod tests {
                     HFX_STATUS_BLACK_TEXTURE,
                     HFX_STATUS_GLOBE,
                     HFX_STATUS_HELP_GLYPH,
-                    HFX_STATUS_BLUE_CHIP,
-                    HFX_STATUS_RED_CHIP,
                     HFX_STATUS_FOLLOWER_GLYPH,
                 ]
                 .iter(),

@@ -2962,20 +2962,19 @@ impl App {
             (status_h - status_inset_y * 2.0).max(0.0),
             status_palette_white,
         );
-        hud.draw_hfx_stretched(
-            hud::HFX_STATUS_BLUE_CHIP,
-            78.0 * scale_x,
-            114.0 * scale_y,
-            10.0 * scale_x,
-            11.0 * scale_y,
-        );
-        hud.draw_hfx_stretched(
-            hud::HFX_STATUS_RED_CHIP,
-            89.0 * scale_x,
-            114.0 * scale_y,
-            10.0 * scale_x,
-            11.0 * scale_y,
-        );
+        let tribe_status = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[6]);
+        let tribe_status_cell_w = tribe_status.w as f32 * 0.5;
+        for (cell, frame) in hud::HFX_STATUS_TRIBE_BUTTON_FRAMES.iter().enumerate() {
+            hud.draw_hfx_nine_patch_scaled(
+                frame,
+                tribe_status.x as f32 + cell as f32 * tribe_status_cell_w,
+                tribe_status.y as f32,
+                tribe_status_cell_w,
+                tribe_status.h as f32,
+                scale_x,
+                scale_y,
+            );
+        }
 
         // The construction-only sidebar has only the two live quick-row
         // controls seen in the native capture: population and follower status.
