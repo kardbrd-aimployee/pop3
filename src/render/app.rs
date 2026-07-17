@@ -85,6 +85,7 @@ type LandscapeMeshS = LandscapeMesh<128>;
 const APP_TITLE: &str = "Populous: The Beginning — Faithful";
 const QUIT_CONFIRM_TITLE: &str = "Press Escape again to quit — Populous: The Beginning";
 const QUIT_CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
+const NATIVE_MINIMAP_DIMENSION: usize = 128;
 
 /// Expand the original level's BIGF0 minimap pass through its companion
 /// palette. This follows the same extractor path exposed by `pop_res minimap`
@@ -94,9 +95,8 @@ fn native_minimap_terrain_rgba(level_res: &LevelRes) -> Option<Arc<[u8]>> {
     let land = LandPos::from_landscape_sun(&level_res.landscape);
     let landscape = LandscapeFull::new(land_size, land);
     let indices = texture_minimap(land_size, true, &landscape, &level_res.params.bigf0).data;
-    Some(expand_native_minimap_indices(
-        &indices,
-        &level_res.params.palette,
+    Some(orient_native_minimap_terrain(
+        &expand_native_minimap_indices(&indices, &level_res.params.palette),
     ))
 }
 
@@ -119,6 +119,58 @@ fn expand_native_minimap_indices(indices: &[u8], palette: &[u8]) -> Arc<[u8]> {
         rgba.push(255);
     }
     rgba.into()
+}
+
+/// Convert the extractor's renderer-oriented landscape image into the source
+/// buffer convention used by PopTB's minimap routines.  The level parser
+/// presents it as `(render_y, render_x)`; `Minimap_RenderTerrain` and
+/// `Minimap_RenderObjects` instead use raw world X and vertically inverted
+/// world Y.  Keeping the terrain in this convention lets the native camera
+/// scroll and the object pass share one coordinate system.
+fn orient_native_minimap_terrain(source: &[u8]) -> Arc<[u8]> {
+    let side = NATIVE_MINIMAP_DIMENSION;
+    let expected_len = side * side * 4;
+    if source.len() != expected_len {
+        return source.to_vec().into();
+    }
+
+    let mut oriented = vec![0u8; expected_len];
+    for source_y in 0..side {
+        for source_x in 0..side {
+            // `texture_minimap` writes x=render_y and y=render_x.  Recover
+            // the raw-X / negative-raw-Y source frame expected at 0x42BA10.
+            let target_x = side - 1 - source_x;
+            let target_y = (side - source_y) & (side - 1);
+            let source_offset = (source_y * side + source_x) * 4;
+            let target_offset = (target_y * side + target_x) * 4;
+            oriented[target_offset..target_offset + 4]
+                .copy_from_slice(&source[source_offset..source_offset + 4]);
+        }
+    }
+    oriented.into()
+}
+
+/// Map renderer cells back to the original minimap's raw world-coordinate
+/// source frame.  `Minimap_RenderObjects` at 0x42BBE0 takes the high bytes of
+/// object X/Y, clears their low bit, and flips Y while drawing.  Renderer cells
+/// have already swapped those axes, so using them directly rotates markers
+/// ninety degrees away from the native terrain pass.
+fn native_minimap_marker_coords(render_cell_x: f32, render_cell_y: f32) -> (u8, u8) {
+    let side = NATIVE_MINIMAP_DIMENSION as f32;
+    let raw_world_x = (side - 1.0 - render_cell_y).floor().rem_euclid(side) as u8;
+    let inverted_raw_world_y = (-render_cell_x.floor()).rem_euclid(side) as u8;
+    (raw_world_x, inverted_raw_world_y)
+}
+
+/// Recreate the native minimap's camera scroll from the renderer landscape
+/// shift.  With the camera focus at vertex 63, 0x42BA10/0x42BBE0 yield
+/// `(world_x - camera_x + 64, camera_y - world_y + 61)` in the 128px target.
+fn native_minimap_scroll(render_shift_x: i32, render_shift_y: i32) -> (u8, u8) {
+    let side = NATIVE_MINIMAP_DIMENSION as i32;
+    (
+        (-render_shift_y).rem_euclid(side) as u8,
+        (4 - render_shift_x).rem_euclid(side) as u8,
+    )
 }
 
 fn preferred_window_size(
@@ -270,7 +322,7 @@ pub struct GameEngine {
     hud_construction_present_commands: u32,
     native_minimap_terrain_rgba: Option<Arc<[u8]>>,
     native_minimap_palette: Option<Arc<[u8]>>,
-    native_minimap_shaman_outline_mask: Option<hud::MinimapSpriteMask>,
+    native_minimap_shaman_marker: Option<hud::MinimapShamanMarker>,
 
     // Game simulation
     unit_coordinator: UnitCoordinator,
@@ -645,17 +697,21 @@ impl GameEngine {
             let mut dots: Vec<_> = snapshot
                 .persons
                 .iter()
-                .map(|person| MinimapDot {
-                    cell_x: (person.cell_x as u8).min(127),
-                    cell_y: (person.cell_y as u8).min(127),
-                    tribe_index: person.tribe,
-                    kind: if person.tribe == u8::MAX {
-                        MinimapMarkerKind::WildPerson
-                    } else if person.tribe == 0 && person.subtype == PERSON_SUBTYPE_SHAMAN {
-                        MinimapMarkerKind::Shaman
-                    } else {
-                        MinimapMarkerKind::Person
-                    },
+                .map(|person| {
+                    let (cell_x, cell_y) =
+                        native_minimap_marker_coords(person.cell_x, person.cell_y);
+                    MinimapDot {
+                        cell_x,
+                        cell_y,
+                        tribe_index: person.tribe,
+                        kind: if person.tribe == u8::MAX {
+                            MinimapMarkerKind::WildPerson
+                        } else if person.tribe == 0 && person.subtype == PERSON_SUBTYPE_SHAMAN {
+                            MinimapMarkerKind::Shaman
+                        } else {
+                            MinimapMarkerKind::Person
+                        },
+                    }
                 })
                 .collect();
             dots.extend(
@@ -663,11 +719,15 @@ impl GameEngine {
                     .objects
                     .iter()
                     .filter(|object| object.model_type == ModelType::Building)
-                    .map(|building| MinimapDot {
-                        cell_x: (building.cell_x as u8).min(127),
-                        cell_y: (building.cell_y as u8).min(127),
-                        tribe_index: building.tribe,
-                        kind: MinimapMarkerKind::Building,
+                    .map(|building| {
+                        let (cell_x, cell_y) =
+                            native_minimap_marker_coords(building.cell_x, building.cell_y);
+                        MinimapDot {
+                            cell_x,
+                            cell_y,
+                            tribe_index: building.tribe,
+                            kind: MinimapMarkerKind::Building,
+                        }
                     }),
             );
             dots
@@ -677,17 +737,20 @@ impl GameEngine {
                 .units()
                 .iter()
                 .filter(|u| u.alive)
-                .map(|u| MinimapDot {
-                    cell_x: (u.cell_x as u8).min(127),
-                    cell_y: (u.cell_y as u8).min(127),
-                    tribe_index: u.tribe_index,
-                    kind: if u.tribe_index == u8::MAX {
-                        MinimapMarkerKind::WildPerson
-                    } else if u.tribe_index == 0 && u.subtype == PERSON_SUBTYPE_SHAMAN {
-                        MinimapMarkerKind::Shaman
-                    } else {
-                        MinimapMarkerKind::Person
-                    },
+                .map(|u| {
+                    let (cell_x, cell_y) = native_minimap_marker_coords(u.cell_x, u.cell_y);
+                    MinimapDot {
+                        cell_x,
+                        cell_y,
+                        tribe_index: u.tribe_index,
+                        kind: if u.tribe_index == u8::MAX {
+                            MinimapMarkerKind::WildPerson
+                        } else if u.tribe_index == 0 && u.subtype == PERSON_SUBTYPE_SHAMAN {
+                            MinimapMarkerKind::Shaman
+                        } else {
+                            MinimapMarkerKind::Person
+                        },
+                    }
                 })
                 .collect();
             // Before a simulation session is started, people have been moved
@@ -697,22 +760,28 @@ impl GameEngine {
                 self.level_objects
                     .iter()
                     .filter(|object| object.model_type == ModelType::Building)
-                    .map(|building| MinimapDot {
-                        cell_x: (building.cell_x as u8).min(127),
-                        cell_y: (building.cell_y as u8).min(127),
-                        tribe_index: building.tribe_index,
-                        kind: MinimapMarkerKind::Building,
+                    .map(|building| {
+                        let (cell_x, cell_y) =
+                            native_minimap_marker_coords(building.cell_x, building.cell_y);
+                        MinimapDot {
+                            cell_x,
+                            cell_y,
+                            tribe_index: building.tribe_index,
+                            kind: MinimapMarkerKind::Building,
+                        }
                     }),
             );
             dots
         };
+        let shift = self.landscape_mesh.get_shift_vector();
+        let (scroll_x, scroll_y) = native_minimap_scroll(shift.x, shift.y);
         let minimap = MinimapData {
             heights: *self.landscape_mesh.heights(),
             native_terrain_rgba: self.native_minimap_terrain_rgba.clone(),
             native_palette: self.native_minimap_palette.clone(),
-            scroll_x: self.landscape_mesh.get_shift_vector().x as u8,
-            scroll_y: self.landscape_mesh.get_shift_vector().y as u8,
-            shaman_outline_mask: self.native_minimap_shaman_outline_mask.clone(),
+            scroll_x,
+            scroll_y,
+            shaman_marker: self.native_minimap_shaman_marker.clone(),
             dots,
         };
         let panel_entries = match self.hud_tab {
@@ -1417,7 +1486,7 @@ impl App {
                 hud_construction_present_commands: 0,
                 native_minimap_terrain_rgba: None,
                 native_minimap_palette: None,
-                native_minimap_shaman_outline_mask: None,
+                native_minimap_shaman_marker: None,
                 unit_coordinator: UnitCoordinator::new(),
                 game_world: {
                     let mut w = GameWorld::new(20);
@@ -1726,10 +1795,8 @@ impl App {
         let hspr_container = ContainerPSFB::from_file(&hspr_path);
         self.engine.hud_panel_sprite_count = panel_container.len();
         self.engine.hud_point_sprite_count = point_container.as_ref().map_or(0, ContainerPSFB::len);
-        self.engine.native_minimap_shaman_outline_mask =
-            hfx_container.as_ref().and_then(|sprites| {
-                hud::minimap_sprite_mask(sprites, hud::HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE)
-            });
+        self.engine.native_minimap_shaman_marker =
+            hfx_container.as_ref().and_then(hud::minimap_shaman_marker);
 
         if let (Some(hud), Some(gpu)) = (self.hud.as_mut(), self.gpu.as_ref()) {
             hud.build_atlas(
@@ -5635,6 +5702,43 @@ mod tests {
         assert_eq!(
             &*expand_native_minimap_indices(&[7], &palette),
             &[0x12, 0x34, 0x56, 0xff]
+        );
+    }
+
+    #[test]
+    fn native_minimap_orients_extracted_terrain_into_raw_world_space() {
+        let mut source = vec![0u8; NATIVE_MINIMAP_DIMENSION * NATIVE_MINIMAP_DIMENSION * 4];
+        let source_offset = (107 * NATIVE_MINIMAP_DIMENSION + 119) * 4;
+        source[source_offset..source_offset + 4].copy_from_slice(&[0x12, 0x34, 0x56, 0xff]);
+
+        let oriented = orient_native_minimap_terrain(&source);
+        let target_offset = (21 * NATIVE_MINIMAP_DIMENSION + 8) * 4;
+        assert_eq!(
+            &oriented[target_offset..target_offset + 4],
+            &[0x12, 0x34, 0x56, 0xff]
+        );
+    }
+
+    #[test]
+    fn native_minimap_markers_undo_renderer_axis_mapping() {
+        // A Level 1 brave at raw coarse world coordinate (7, 107) reaches
+        // the renderer as (107.5, 119.5). The minimap uses raw X and -raw Y.
+        assert_eq!(native_minimap_marker_coords(107.5, 119.5), (7, 21));
+    }
+
+    #[test]
+    fn native_minimap_scroll_matches_original_camera_offset() {
+        // Camera focus vertex 63: a raw camera location (8, 107) produces
+        // renderer shift (44, 56). The native shaman ends at (64, 61), the
+        // position emitted by 0x42BBE0 including its six-byte vertical bias.
+        let marker = native_minimap_marker_coords(107.5, 118.5);
+        let (scroll_x, scroll_y) = native_minimap_scroll(44, 56);
+        assert_eq!(
+            (
+                marker.0.wrapping_sub(scroll_x) & 127,
+                marker.1.wrapping_sub(scroll_y) & 127,
+            ),
+            (64, 61)
         );
     }
 }
