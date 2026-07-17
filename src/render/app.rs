@@ -2916,12 +2916,30 @@ impl App {
         }
 
         let status_field = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[2]);
+        let status_x = status_field.x as f32;
+        let status_y = status_field.y as f32;
+        let status_w = status_field.w as f32;
+        let status_h = status_field.h as f32;
+        // e02 uses the same native tall frame family as the population meter,
+        // then fills only its two-pixel inset.  Filling the element's whole
+        // rect concealed the original gold rim beside the help button.
+        hud.draw_hfx_nine_patch_scaled(
+            &hud::HFX_STATUS_TALL_FRAME,
+            status_x,
+            status_y,
+            status_w,
+            status_h,
+            scale_x,
+            scale_y,
+        );
+        let status_inset_x = 2.0 * scale_x;
+        let status_inset_y = 2.0 * scale_y;
         hud.draw_hfx_tiled_scaled(
             hud::HFX_STATUS_WHITE_TEXTURE,
-            status_field.x as f32,
-            status_field.y as f32,
-            status_field.w as f32,
-            status_field.h as f32,
+            status_x + status_inset_x,
+            status_y + status_inset_y,
+            (status_w - status_inset_x * 2.0).max(0.0),
+            (status_h - status_inset_y * 2.0).max(0.0),
             scale_x,
             scale_y,
         );
