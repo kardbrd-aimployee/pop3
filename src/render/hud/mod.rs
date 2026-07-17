@@ -521,6 +521,51 @@ fn palette_rgb_entries(palette: &[u8]) -> [[u8; 3]; 256] {
     })
 }
 
+/// Resolve a source RGB colour through the active game palette exactly like
+/// `GUI_InitColours`'s `0x50f7f0` helper. It first minimizes squared RGB
+/// distance; ties are resolved by the smallest Manhattan distance.
+fn nearest_palette_index(palette: &[[u8; 3]; 256], target: [u8; 3]) -> u8 {
+    let squared_distance = |entry: [u8; 3]| {
+        entry
+            .into_iter()
+            .zip(target)
+            .map(|(component, wanted)| {
+                let difference = component as i32 - wanted as i32;
+                difference * difference
+            })
+            .sum::<i32>()
+    };
+    let best_distance = palette
+        .iter()
+        .copied()
+        .map(squared_distance)
+        .min()
+        .unwrap_or_default();
+    let candidates: Vec<_> = palette
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            (squared_distance(entry) == best_distance).then_some((index, entry))
+        })
+        .collect();
+    if candidates.len() == 1 {
+        return candidates[0].0 as u8;
+    }
+
+    candidates
+        .into_iter()
+        .min_by_key(|(_, entry)| {
+            entry
+                .iter()
+                .copied()
+                .zip(target)
+                .map(|(component, wanted)| (component as i32 - wanted as i32).abs())
+                .sum::<i32>()
+        })
+        .map_or(0, |(index, _)| index as u8)
+}
+
 /// Convert an original palette colour to the linear vertex tint expected by
 /// the sRGB HUD texture and output surface.
 fn srgb_u8_to_linear(component: u8) -> f32 {
@@ -795,7 +840,6 @@ pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012
 /// e02's tall status field frame and e20's population-meter outer rim.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
-pub const HFX_STATUS_WHITE_TEXTURE: u16 = 503;
 pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
 pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
 pub const HFX_STATUS_RED_CHIP: u16 = 65;
@@ -810,6 +854,12 @@ pub const FONT4_HUD_GLYPH_IDS: &[u16] = &[FONT4_STATUS_GLYPH_I];
 /// Blue tribe's side-facing idle shaman frame from `HSPR0-0.DAT`.
 /// It is the original status-avatar pose used by the reference HUD.
 pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
+
+/// `GUI_InitColours` (`popTB.exe` 0x450fc0) resolves these source RGB values
+/// to the closest entry in the active landscape palette. They are then used
+/// by the status callbacks through the four-byte colour table at 0x884c8c.
+pub const HFX_STATUS_PALETTE_WHITE: [u8; 3] = [255, 255, 255];
+pub const HFX_STATUS_PALETTE_GREEN: [u8; 3] = [0, 255, 0];
 
 /// In-game construction-button frame tiles, in nine-patch order.  Every
 /// house-tab element record at `0x576c20` points to `FUN_004018a0`; its
@@ -1024,7 +1074,6 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     1021,
     1022,
     HFX_STATUS_BLACK_TEXTURE,
-    HFX_STATUS_WHITE_TEXTURE,
     HFX_STATUS_GLOBE,
     HFX_STATUS_HELP_GLYPH,
     HFX_STATUS_BLUE_CHIP,
@@ -1705,6 +1754,12 @@ impl HudRenderer {
                 1.0,
             ],
         );
+    }
+
+    /// Convert a native RGB status colour to its current landscape palette
+    /// index. `popTB.exe` recomputes this table when it loads a palette.
+    pub fn resolve_hfx_palette_color(&self, target: [u8; 3]) -> u8 {
+        nearest_palette_index(&self.hfx_palette_rgb, target)
     }
 
     /// Draw a solid triangle using the atlas' white pixel.
@@ -3106,9 +3161,26 @@ mod tests {
     }
 
     #[test]
+    fn native_status_palette_resolution_uses_nearest_original_entry() {
+        let mut palette = [[0; 3]; 256];
+        palette[17] = HFX_STATUS_PALETTE_WHITE;
+        palette[42] = [1, 255, 0];
+        palette[43] = [0, 253, 0];
+
+        assert_eq!(
+            nearest_palette_index(&palette, HFX_STATUS_PALETTE_WHITE),
+            17
+        );
+        assert_eq!(
+            nearest_palette_index(&palette, HFX_STATUS_PALETTE_GREEN),
+            42
+        );
+    }
+
+    #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 135);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 134);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3128,7 +3200,6 @@ mod tests {
             .chain(
                 [
                     HFX_STATUS_BLACK_TEXTURE,
-                    HFX_STATUS_WHITE_TEXTURE,
                     HFX_STATUS_GLOBE,
                     HFX_STATUS_HELP_GLYPH,
                     HFX_STATUS_BLUE_CHIP,

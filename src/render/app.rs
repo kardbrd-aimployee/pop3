@@ -2934,14 +2934,14 @@ impl App {
         );
         let status_inset_x = 2.0 * scale_x;
         let status_inset_y = 2.0 * scale_y;
-        hud.draw_hfx_tiled_scaled(
-            hud::HFX_STATUS_WHITE_TEXTURE,
+        let status_palette_white = hud.resolve_hfx_palette_color(hud::HFX_STATUS_PALETTE_WHITE);
+        let status_palette_green = hud.resolve_hfx_palette_color(hud::HFX_STATUS_PALETTE_GREEN);
+        hud.draw_hfx_palette_rect(
             status_x + status_inset_x,
             status_y + status_inset_y,
             (status_w - status_inset_x * 2.0).max(0.0),
             (status_h - status_inset_y * 2.0).max(0.0),
-            scale_x,
-            scale_y,
+            status_palette_white,
         );
         hud.draw_hfx_stretched(
             hud::HFX_STATUS_BLUE_CHIP,
@@ -2988,26 +2988,16 @@ impl App {
                 let meter_y = cell_y + inset_y;
                 let meter_w = cell_w - inset_x * 2.0;
                 let meter_h = cell_h - inset_y * 2.0;
-                hud.draw_hfx_tiled_scaled(
-                    hud::HFX_STATUS_WHITE_TEXTURE,
-                    meter_x,
-                    meter_y,
-                    meter_w,
-                    meter_h,
-                    scale_x,
-                    scale_y,
-                );
+                hud.draw_hfx_palette_rect(meter_x, meter_y, meter_w, meter_h, status_palette_white);
                 let mana_fraction =
                     compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
                 let fill_h = meter_h * mana_fraction;
-                hud.draw_rect(
+                hud.draw_hfx_palette_rect(
                     meter_x,
                     meter_y + meter_h - fill_h,
                     meter_w,
                     fill_h,
-                    // Sampled from the non-antialiased native meter fill in
-                    // `pop3-original-native-hud.png`: RGB #00A451.
-                    [0.0, 164.0 / 255.0, 81.0 / 255.0, 1.0],
+                    status_palette_green,
                 );
             }
             if slot == 1 {
