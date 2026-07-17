@@ -844,6 +844,80 @@ pub const HFX_CONSTRUCTION_ICONS_HOVER: [u16; 9] =
 /// replacement building icon.
 pub const HFX_CONSTRUCTION_BLOCKED_OVERLAY: u16 = 1055;
 
+/// Native construction commands represented by the original house-tab
+/// glyphs.  These are command ids, not the `cmd` values used by the panel
+/// manager to route clicks between controls.
+pub fn construction_command_for_slot(slot: usize) -> Option<u8> {
+    layout::CONSTRUCTION_PAGE
+        .get(slot)
+        .and_then(|element| u8::try_from(element.icon).ok())
+}
+
+/// Convert an original construction command id into its bitfield member.
+pub const fn construction_command_bit(command: u8) -> u32 {
+    if command < u32::BITS as u8 {
+        1_u32 << command
+    } else {
+        0
+    }
+}
+
+/// Map the building subtype stored in a native level object to the house-tab
+/// command that represents it.  The level's Vault object is subtype 18 while
+/// its house-tab command is 17, so this mapping must not use the engine's
+/// runtime enum directly.
+pub const fn construction_command_for_level_building_subtype(subtype: u8) -> Option<u8> {
+    match subtype {
+        1..=3 => Some(1),
+        4 => Some(4),
+        5 => Some(5),
+        6 => Some(6),
+        7 => Some(7),
+        8 => Some(8),
+        13 => Some(13),
+        15 => Some(15),
+        18 => Some(17),
+        _ => None,
+    }
+}
+
+/// The three construction-cell outcomes produced by the original HUD setup
+/// callback.  A command can be available to the player, visibly blocked
+/// because its building occurs on the level, or wholly absent from the panel.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ConstructionSlotAvailability {
+    Hidden,
+    Available,
+    Blocked,
+}
+
+impl ConstructionSlotAvailability {
+    pub const fn is_interactive(self) -> bool {
+        matches!(self, Self::Available)
+    }
+}
+
+/// Resolve one native construction cell from player capability and
+/// level-presence bitfields.  State four in `FUN_00401c60` is represented by
+/// `Blocked`; its renderer draws the normal HFX glyph plus sprite 1055.
+pub fn construction_slot_availability(
+    slot: usize,
+    available_commands: u32,
+    present_commands: u32,
+) -> ConstructionSlotAvailability {
+    let Some(command) = construction_command_for_slot(slot) else {
+        return ConstructionSlotAvailability::Hidden;
+    };
+    let command_bit = construction_command_bit(command);
+    if available_commands & command_bit != 0 {
+        ConstructionSlotAvailability::Available
+    } else if present_commands & command_bit != 0 {
+        ConstructionSlotAvailability::Blocked
+    } else {
+        ConstructionSlotAvailability::Hidden
+    }
+}
+
 /// Resolve the exact construction icon for a native element slot.
 pub fn construction_icon_sprite(slot: usize, highlighted: bool) -> Option<u16> {
     let icons = if highlighted {
@@ -2839,6 +2913,73 @@ mod tests {
                 1450, 1451, 1452, 1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 1462, 1463,
                 1464, 1465,
             ]
+        );
+    }
+
+    #[test]
+    fn construction_command_ids_follow_native_icons_not_panel_commands() {
+        assert_eq!(
+            (0..layout::CONSTRUCTION_PAGE.len())
+                .map(construction_command_for_slot)
+                .collect::<Vec<_>>(),
+            vec![
+                Some(1),
+                Some(4),
+                Some(7),
+                Some(5),
+                Some(6),
+                Some(8),
+                Some(13),
+                Some(15),
+                Some(17),
+            ]
+        );
+        // Panel control ids intentionally differ, e.g. the first cell is
+        // cmd 2 but represents construction command 1 (Small Hut).
+        assert_eq!(layout::CONSTRUCTION_PAGE[0].cmd, 2);
+    }
+
+    #[test]
+    fn level_building_subtypes_match_house_tab_commands() {
+        assert_eq!(construction_command_for_level_building_subtype(1), Some(1));
+        assert_eq!(construction_command_for_level_building_subtype(3), Some(1));
+        assert_eq!(construction_command_for_level_building_subtype(4), Some(4));
+        assert_eq!(construction_command_for_level_building_subtype(7), Some(7));
+        assert_eq!(
+            construction_command_for_level_building_subtype(13),
+            Some(13)
+        );
+        assert_eq!(
+            construction_command_for_level_building_subtype(15),
+            Some(15)
+        );
+        assert_eq!(
+            construction_command_for_level_building_subtype(18),
+            Some(17)
+        );
+        assert_eq!(construction_command_for_level_building_subtype(14), None);
+    }
+
+    #[test]
+    fn construction_availability_matches_native_level_one_pattern() {
+        let available = construction_command_bit(1) | construction_command_bit(17);
+        let present = available | construction_command_bit(7);
+
+        assert_eq!(
+            construction_slot_availability(0, available, present),
+            ConstructionSlotAvailability::Available
+        );
+        assert_eq!(
+            construction_slot_availability(2, available, present),
+            ConstructionSlotAvailability::Blocked
+        );
+        assert_eq!(
+            construction_slot_availability(8, available, present),
+            ConstructionSlotAvailability::Available
+        );
+        assert_eq!(
+            construction_slot_availability(1, available, present),
+            ConstructionSlotAvailability::Hidden
         );
     }
 

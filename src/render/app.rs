@@ -151,6 +151,39 @@ fn construction_slice_tab_frame(index: usize) -> &'static [u16; 9] {
     }
 }
 
+/// Collect the two bitfields used by the original construction-page setup:
+/// which construction commands the local player can issue, and which commands
+/// are represented by buildings on the current level.  The latter turns an
+/// otherwise hidden button into the native blocked (`?`) state.
+///
+/// Campaign save-state technology is not yet modeled by `GameSession`; the
+/// playable slice therefore starts with the Small Hut command, adds commands
+/// already owned by the local tribe, and preserves the native Vault exception
+/// for an unowned Vault object.  It intentionally does not make every menu
+/// glyph visible as a renderer fallback.
+fn construction_hud_command_masks(level: &LevelRes, player_tribe: u8) -> (u32, u32) {
+    let mut available = hud::construction_command_bit(1);
+    let mut present = 0_u32;
+
+    for unit in &level.units {
+        if unit.model_type() != Some(ModelType::Building) {
+            continue;
+        }
+        let Some(command) = hud::construction_command_for_level_building_subtype(unit.subtype)
+        else {
+            continue;
+        };
+        let command_bit = hud::construction_command_bit(command);
+        present |= command_bit;
+
+        if unit.tribe_index() == player_tribe || (command == 17 && unit.tribe_index() == u8::MAX) {
+            available |= command_bit;
+        }
+    }
+
+    (available, present)
+}
+
 /******************************************************************************/
 
 #[rustfmt::skip]
@@ -218,6 +251,8 @@ pub struct GameEngine {
     walkability_visible: bool,
     hud_panel_sprite_count: usize,
     hud_point_sprite_count: usize,
+    hud_construction_available_commands: u32,
+    hud_construction_present_commands: u32,
     native_minimap_terrain_rgba: Option<Arc<[u8]>>,
     native_minimap_palette: Option<Arc<[u8]>>,
 
@@ -258,6 +293,14 @@ pub struct InputState {
 }
 
 impl GameEngine {
+    fn construction_slot_availability(&self, slot: usize) -> hud::ConstructionSlotAvailability {
+        hud::construction_slot_availability(
+            slot,
+            self.hud_construction_available_commands,
+            self.hud_construction_present_commands,
+        )
+    }
+
     fn reset_camera(&mut self) {
         self.camera.angle_x = -55;
         self.camera.angle_y = 0;
@@ -1331,6 +1374,8 @@ impl App {
                 walkability_visible: false,
                 hud_panel_sprite_count: 0,
                 hud_point_sprite_count: 0,
+                hud_construction_available_commands: hud::construction_command_bit(1),
+                hud_construction_present_commands: 0,
                 native_minimap_terrain_rgba: None,
                 native_minimap_palette: None,
                 unit_coordinator: UnitCoordinator::new(),
@@ -1514,6 +1559,16 @@ impl App {
                     )
                 }),
         );
+        let player_tribe = self
+            .engine
+            .session
+            .as_ref()
+            .map(|session| session.player_tribe)
+            .unwrap_or(0);
+        (
+            self.engine.hud_construction_available_commands,
+            self.engine.hud_construction_present_commands,
+        ) = construction_hud_command_masks(&level_res, player_tribe);
 
         self.engine
             .landscape_mesh
@@ -2956,7 +3011,12 @@ impl App {
                     &layout,
                 )
             })
-            .flatten();
+            .flatten()
+            .filter(|&slot| {
+                self.engine
+                    .construction_slot_availability(slot)
+                    .is_interactive()
+            });
         for (slot, element) in hud::layout::CONSTRUCTION_PAGE.iter().enumerate() {
             let cell = hud::layout::element_rect(
                 &hud::layout::PANEL_TAB_PAGE,
@@ -2968,11 +3028,19 @@ impl App {
             let y = cell.y as f32;
             let cell_w = cell.w as f32;
             let cell_h = cell.h as f32;
-            let frame_state = hud::construction_button_state(
-                slot,
-                hovered_slot,
-                self.input.construction_slot_pressed,
-            );
+            let availability = self.engine.construction_slot_availability(slot);
+            if availability == hud::ConstructionSlotAvailability::Hidden {
+                continue;
+            }
+            let frame_state = if availability.is_interactive() {
+                hud::construction_button_state(
+                    slot,
+                    hovered_slot,
+                    self.input.construction_slot_pressed,
+                )
+            } else {
+                hud::ConstructionButtonState::Normal
+            };
             hud.draw_hfx_nine_patch_scaled(
                 hud::construction_button_frame(frame_state),
                 x,
@@ -2984,7 +3052,8 @@ impl App {
             );
             if let Some(icon) = hud::construction_icon_sprite(
                 slot,
-                frame_state != hud::ConstructionButtonState::Normal,
+                availability.is_interactive()
+                    && frame_state != hud::ConstructionButtonState::Normal,
             ) {
                 if let Some((width, height)) = hud.hfx_size(icon) {
                     let icon_w = width as f32 * scale_x;
@@ -2993,6 +3062,19 @@ impl App {
                         icon,
                         x + (cell_w - icon_w) * 0.5,
                         y + (cell_h - icon_h) * 0.5,
+                        scale_x,
+                        scale_y,
+                    );
+                }
+            }
+            if availability == hud::ConstructionSlotAvailability::Blocked {
+                if let Some((width, height)) = hud.hfx_size(hud::HFX_CONSTRUCTION_BLOCKED_OVERLAY) {
+                    let overlay_w = width as f32 * scale_x;
+                    let overlay_h = height as f32 * scale_y;
+                    hud.draw_hfx_scaled(
+                        hud::HFX_CONSTRUCTION_BLOCKED_OVERLAY,
+                        x + (cell_w - overlay_w) * 0.5,
+                        y + (cell_h - overlay_h) * 0.5,
                         scale_x,
                         scale_y,
                     );
@@ -4847,6 +4929,16 @@ impl ApplicationHandler for App {
                     )
                 }),
         );
+        let player_tribe = self
+            .engine
+            .session
+            .as_ref()
+            .map(|session| session.player_tribe)
+            .unwrap_or(0);
+        (
+            self.engine.hud_construction_available_commands,
+            self.engine.hud_construction_present_commands,
+        ) = construction_hud_command_masks(&level_res2, player_tribe);
         self.rebuild_landscape_variants(&level_res2);
 
         // Build per-unit-type sprite atlases
@@ -5003,10 +5095,16 @@ impl ApplicationHandler for App {
                                     self.input.mouse_pos.y,
                                     &layout,
                                 ) {
-                                    self.input.construction_slot_pressed = Some(slot);
-                                    if slot == 0 {
-                                        self.input.placement = Some(BuildingSubtype::SmallHut);
-                                        self.input.placement_rotation = 0;
+                                    if self
+                                        .engine
+                                        .construction_slot_availability(slot)
+                                        .is_interactive()
+                                    {
+                                        self.input.construction_slot_pressed = Some(slot);
+                                        if slot == 0 {
+                                            self.input.placement = Some(BuildingSubtype::SmallHut);
+                                            self.input.placement_rotation = 0;
+                                        }
                                     }
                                 }
                             }
