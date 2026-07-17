@@ -10,7 +10,7 @@ use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
     FONT4_HUD_GLYPH_IDS, HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS,
-    HFX_CONSTRUCTION_ICONS_HOVER, HFX_HUD_SPRITE_IDS, HFX_POPULATION_METER, HSPR_HUD_SPRITE_IDS,
+    HFX_CONSTRUCTION_ICONS_HOVER, HFX_HUD_SPRITE_IDS, HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
@@ -31,11 +31,6 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
             "original HFX sprite {sprite_id} must have an image extent"
         );
     }
-    let population_meter = hfx
-        .get_image(HFX_POPULATION_METER as usize)
-        .expect("native population meter must decode");
-    assert_eq!((population_meter.width, population_meter.height), (104, 10));
-
     for &sprite_id in &HFX_CONSTRUCTION_ICONS {
         let image = hfx
             .get_image(sprite_id as usize)

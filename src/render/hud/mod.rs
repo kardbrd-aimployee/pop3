@@ -231,6 +231,14 @@ pub fn compute_mana_fraction(mana: u32, max_mana: u32) -> f32 {
     (mana as f32 / max_mana as f32).min(1.0)
 }
 
+/// Compute the occupied fraction of the player's housing capacity.
+pub fn compute_population_fraction(population: u32, max_population: u16) -> f32 {
+    if max_population == 0 {
+        return 0.0;
+    }
+    (population as f32 / max_population as f32).min(1.0)
+}
+
 /// Convert a minimap pixel click to cell coordinates (0-127).
 pub fn minimap_click_to_cell(
     click_x: f32,
@@ -500,6 +508,30 @@ pub fn convert_indexed_to_rgba(indexed: &[u8], palette: &[u8], transparent_idx: 
     rgba
 }
 
+/// Decode the original RGB/RGBX palette layout for native-colour UI primitives.
+fn palette_rgb_entries(palette: &[u8]) -> [[u8; 3]; 256] {
+    let stride = if palette.len() == 768 { 3 } else { 4 };
+    std::array::from_fn(|index| {
+        let offset = index * stride;
+        if offset + 2 < palette.len() {
+            [palette[offset], palette[offset + 1], palette[offset + 2]]
+        } else {
+            [0; 3]
+        }
+    })
+}
+
+/// Convert an original palette colour to the linear vertex tint expected by
+/// the sRGB HUD texture and output surface.
+fn srgb_u8_to_linear(component: u8) -> f32 {
+    let srgb = component as f32 / 255.0;
+    if srgb <= 0.04045 {
+        srgb / 12.92
+    } else {
+        ((srgb + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 /// Generate 128x128 RGBA minimap texture from terrain heights and unit positions.
 pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
     let mut rgba = data
@@ -763,7 +795,7 @@ pub const HFX_STATUS_GLOBE_FRAME: [u16; 9] = [767, 771, 768, 773, 775, 774, 769,
 pub const HFX_STATUS_GLOBE: u16 = 875;
 /// e19's small help-button frame and e13–18's quick-row cells.
 pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
-/// e02's tall status field frame.
+/// e02's tall status field frame and e20's population-meter outer rim.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
 pub const HFX_STATUS_WHITE_TEXTURE: u16 = 503;
@@ -771,7 +803,6 @@ pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
 pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
 pub const HFX_STATUS_RED_CHIP: u16 = 65;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
-pub const HFX_POPULATION_METER: u16 = 1603;
 
 /// The small shaded status-control text comes from `font4-0.dat`, not the
 /// fallback HUD bitmap font. FONT4 is indexed from ASCII space, so glyph 41
@@ -1003,7 +1034,6 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     HFX_STATUS_BLUE_CHIP,
     HFX_STATUS_RED_CHIP,
     HFX_STATUS_FOLLOWER_GLYPH,
-    HFX_POPULATION_METER,
     1028,
     1029,
     1030,
@@ -1134,6 +1164,8 @@ pub struct HudRenderer {
     hspr_regions: HashMap<u16, usize>,
     /// Atlas regions for the native small FONT4 status-control glyphs.
     font4_regions: HashMap<u16, usize>,
+    /// Original HFX palette, retained for palette-indexed UI primitives.
+    hfx_palette_rgb: [[u8; 3]; 256],
     vertices: Vec<HudVertex>,
     /// Number of HUD vertices drawn beneath the separate minimap canvas.
     minimap_split: usize,
@@ -1361,6 +1393,7 @@ impl HudRenderer {
             hfx_regions: HashMap::new(),
             hspr_regions: HashMap::new(),
             font4_regions: HashMap::new(),
+            hfx_palette_rgb: [[0; 3]; 256],
             vertices: Vec::with_capacity(4096),
             minimap_split: 0,
             minimap_bind_group: None,
@@ -1385,6 +1418,8 @@ impl HudRenderer {
         hfx_palette: &[u8],
         font4_palette: &[u8],
     ) {
+        self.hfx_palette_rgb = palette_rgb_entries(hfx_palette);
+
         // Phase 1: Convert all sprites to RGBA
         let mut sprite_images: Vec<(u16, u16, Vec<u8>)> = Vec::new(); // (w, h, rgba)
         for i in 0..panel_sprites.len() {
@@ -1657,6 +1692,25 @@ impl HudRenderer {
         self.push_quad(x, y, x + w, y + h, r.u0, r.v0, r.u1, r.v1, color);
     }
 
+    /// Draw a solid rectangle using one exact colour from the loaded original
+    /// HFX palette. Palette colours are converted to linear space because the
+    /// HUD atlas and render surface are sRGB textures.
+    pub fn draw_hfx_palette_rect(&mut self, x: f32, y: f32, w: f32, h: f32, index: u8) {
+        let [r, g, b] = self.hfx_palette_rgb[index as usize];
+        self.draw_rect(
+            x,
+            y,
+            w,
+            h,
+            [
+                srgb_u8_to_linear(r),
+                srgb_u8_to_linear(g),
+                srgb_u8_to_linear(b),
+                1.0,
+            ],
+        );
+    }
+
     /// Draw a solid triangle using the atlas' white pixel.
     pub fn draw_triangle(&mut self, points: [[f32; 2]; 3], color: [f32; 4]) {
         let r = &self.sprite_regions[self.white_region_idx];
@@ -1849,8 +1903,7 @@ impl HudRenderer {
         true
     }
 
-    /// Draw a verified HFX UI sprite mirrored horizontally. The original
-    /// population meter fills from the right edge in the construction HUD.
+    /// Draw a verified HFX UI sprite mirrored horizontally.
     pub fn draw_hfx_flipped(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
         self.draw_hfx_flipped_scaled(sprite_id, x, y, scale, scale)
     }
@@ -3059,7 +3112,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 137);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 136);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3086,7 +3139,6 @@ mod tests {
                     HFX_STATUS_BLUE_CHIP,
                     HFX_STATUS_RED_CHIP,
                     HFX_STATUS_FOLLOWER_GLYPH,
-                    HFX_POPULATION_METER,
                 ]
                 .iter(),
             )
@@ -3183,6 +3235,28 @@ mod tests {
     #[test]
     fn mana_fraction_overflow_clamped() {
         assert_eq!(compute_mana_fraction(2_000_000, 1_000_000), 1.0);
+    }
+
+    #[test]
+    fn population_fraction_zero_capacity_returns_zero() {
+        assert_eq!(compute_population_fraction(1, 0), 0.0);
+    }
+
+    #[test]
+    fn population_fraction_is_clamped_to_housing_capacity() {
+        assert_eq!(compute_population_fraction(3, 6), 0.5);
+        assert_eq!(compute_population_fraction(7, 6), 1.0);
+    }
+
+    #[test]
+    fn native_palette_entries_support_rgb_and_rgbx_sources() {
+        let mut rgb = vec![0; 768];
+        rgb[0xe1 * 3..0xe1 * 3 + 3].copy_from_slice(&[0x0f, 0x47, 0x2b]);
+        assert_eq!(palette_rgb_entries(&rgb)[0xe1], [0x0f, 0x47, 0x2b]);
+
+        let mut rgbx = vec![0; 1024];
+        rgbx[0xe7 * 4..0xe7 * 4 + 3].copy_from_slice(&[0x93, 0xf3, 0xcb]);
+        assert_eq!(palette_rgb_entries(&rgbx)[0xe7], [0x93, 0xf3, 0xcb]);
     }
 
     // -- SpellCooldown --

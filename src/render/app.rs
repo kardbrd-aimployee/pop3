@@ -73,9 +73,9 @@ use crate::engine::{translate_key, FrameState, GameCommand};
 use crate::engine::{GameAction, GameSession};
 
 use crate::render::hud::{
-    self, compute_mana_fraction, HealthBarEntry, HealthBarType, HudRenderer, HudState, HudTab,
-    MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry, SelectedEntityInfo, TribePopulation,
-    HUD_TRIBE_COLORS,
+    self, compute_mana_fraction, compute_population_fraction, HealthBarEntry, HealthBarType,
+    HudRenderer, HudState, HudTab, MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry,
+    SelectedEntityInfo, TribePopulation, HUD_TRIBE_COLORS,
 };
 
 /******************************************************************************/
@@ -3018,16 +3018,39 @@ impl App {
             }
         }
 
-        // The native meter is stored left-to-right; the original sidebar
-        // presents its available capacity from the right edge.
+        // e20 is not a precomposed meter sprite. The original callback draws
+        // the e02-style outer rim, then fills its inset in two-pixel palette
+        // columns. These palette entries are the original HUD colours.
         let population_meter = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[20]);
-        hud.draw_hfx_flipped_scaled(
-            hud::HFX_POPULATION_METER,
-            population_meter.x as f32,
-            population_meter.y as f32,
+        let meter_x = population_meter.x as f32;
+        let meter_y = population_meter.y as f32;
+        let meter_w = population_meter.w as f32;
+        let meter_h = population_meter.h as f32;
+        hud.draw_hfx_nine_patch_border_scaled(
+            &hud::HFX_STATUS_TALL_FRAME,
+            meter_x,
+            meter_y,
+            meter_w,
+            meter_h,
             scale_x,
             scale_y,
         );
+        let inset_x = 2.0 * scale_x;
+        let inset_y = 2.0 * scale_y;
+        let inner_x = meter_x + inset_x;
+        let inner_y = meter_y + inset_y;
+        let inner_w = (meter_w - inset_x * 2.0).max(0.0);
+        let inner_h = (meter_h - inset_y * 2.0).max(0.0);
+        hud.draw_hfx_palette_rect(inner_x, inner_y, inner_w, inner_h, 0xe1);
+        let population_fraction = compute_population_fraction(
+            hud_state.player_population,
+            hud_state.player_max_population,
+        );
+        let column_w = 2.0 * scale_x;
+        let fill_w = ((inner_w * population_fraction) / column_w).floor() * column_w;
+        if fill_w > 0.0 {
+            hud.draw_hfx_palette_rect(inner_x + inner_w - fill_w, inner_y, fill_w, inner_h, 0xe7);
+        }
 
         // Construction page: the original house tab uses a two-column HFX
         // button table.  Its HFX param sprites are the source of the large
