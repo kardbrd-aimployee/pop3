@@ -202,6 +202,9 @@ pub struct PersonRenderRecord {
     pub handle: ObjectHandle,
     pub subtype: u8,
     pub tribe: u8,
+    /// The sidebar's native person-class counters omit dead people even while
+    /// their render records remain available for the death animation.
+    pub alive: bool,
     pub cell_x: f32,
     pub cell_y: f32,
     pub angle: u16,
@@ -1349,6 +1352,7 @@ impl World {
                 handle,
                 subtype: header.subtype,
                 tribe: header.tribe,
+                alive: person.alive,
                 cell_x,
                 cell_y,
                 angle: header.angle,

@@ -965,6 +965,30 @@ impl GameEngine {
                 },
                 |tribe| (tribe.mana, tribe.population, tribe.max_population),
             );
+        // Sidebar e14 is not a generic follower indicator: its source
+        // callback reads the local tribe's person-class slot 2, i.e. braves.
+        // Count the same live render records used by the in-world pass so the
+        // compact native caption tracks conversions and spawns.
+        let player_braves = snapshot.as_ref().map_or_else(
+            || {
+                self.unit_coordinator
+                    .units()
+                    .iter()
+                    .filter(|unit| {
+                        unit.alive && unit.tribe_index == 0 && unit.subtype == PERSON_SUBTYPE_BRAVE
+                    })
+                    .count() as u32
+            },
+            |snapshot| {
+                snapshot
+                    .persons
+                    .iter()
+                    .filter(|person| {
+                        person.alive && person.tribe == 0 && person.subtype == PERSON_SUBTYPE_BRAVE
+                    })
+                    .count() as u32
+            },
+        );
         HudState {
             active_tab: self.hud_tab,
             minimap,
@@ -975,6 +999,7 @@ impl GameEngine {
             player_mana,
             player_max_mana: 1_000_000,
             player_population,
+            player_braves,
             player_max_population,
             spell_cooldowns: Vec::new(), // Phase 4 will populate from SpellSystem
             spell_charges: crate::engine::economy::mana::compute_spell_charges(player_mana),
@@ -3126,6 +3151,26 @@ impl App {
                     );
                 }
             }
+            // Both visible quick-status callbacks finish by formatting their
+            // live count as `%02d`/`%03d` and drawing PopTB's compact native
+            // glyphs at the bottom of the cell.  Do not use the port's
+            // embedded fallback font here: the original stores a dedicated
+            // six-pixel digit set in its executable.
+            let status_count = if slot == 0 {
+                hud_state.player_population
+            } else {
+                hud_state.player_braves
+            };
+            hud.draw_native_status_count(
+                status_count,
+                cell_x,
+                cell_y,
+                cell_w,
+                cell_h,
+                scale_x,
+                scale_y,
+                status_palette_white,
+            );
         }
 
         // e20 is not a precomposed meter sprite. `FUN_00402b70` draws the

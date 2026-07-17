@@ -149,6 +149,8 @@ pub struct HudState {
     pub player_mana: u32,
     pub player_max_mana: u32,
     pub player_population: u32,
+    /// e14's original callback renders the subtype-2 (brave) count.
+    pub player_braves: u32,
     pub player_max_population: u16,
     pub spell_cooldowns: Vec<SpellCooldown>,
     pub spell_charges: [u8; 16],
@@ -291,6 +293,36 @@ pub const FONT_COLS: u32 = 16;
 pub const FONT_ROWS: u32 = 6;
 pub const FONT_ATLAS_W: u32 = FONT_COLS * FONT_GLYPH_W; // 128
 pub const FONT_ATLAS_H: u32 = FONT_ROWS * FONT_GLYPH_H; // 48
+
+/// The compact status-count digits embedded directly in `popTB.exe` at
+/// `0x0059a768`.  `FUN_004a0c50` uses these instead of the general UI font
+/// when rendering e13 (population) and e14 (braves) on the in-game sidebar.
+///
+/// These are source assets, not a redrawn approximation.  The native renderer
+/// scans bits 5..0 for every digit except `1`, which scans bits 1..0 and
+/// advances only two pixels.  The atlas builder below preserves that exact
+/// variable-width treatment.
+pub const NATIVE_STATUS_DIGIT_BITS: [[u8; 8]; 10] = [
+    [0x08, 0x14, 0x22, 0x22, 0x22, 0x22, 0x14, 0x08],
+    [0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00],
+    [0x1c, 0x22, 0x22, 0x04, 0x18, 0x20, 0x3e, 0x00],
+    [0x3e, 0x04, 0x08, 0x04, 0x22, 0x22, 0x1c, 0x00],
+    [0x04, 0x0c, 0x14, 0x24, 0x3e, 0x04, 0x04, 0x00],
+    [0x0e, 0x10, 0x38, 0x04, 0x22, 0x22, 0x1c, 0x00],
+    [0x08, 0x10, 0x1c, 0x22, 0x22, 0x22, 0x1c, 0x00],
+    [0x3e, 0x02, 0x04, 0x04, 0x08, 0x10, 0x20, 0x00],
+    [0x08, 0x14, 0x14, 0x1c, 0x22, 0x22, 0x1c, 0x00],
+    [0x1c, 0x22, 0x22, 0x22, 0x1e, 0x04, 0x18, 0x00],
+];
+
+pub const NATIVE_STATUS_DIGIT_H: u32 = 8;
+pub const NATIVE_STATUS_DIGIT_MAX_W: u32 = 6;
+pub const NATIVE_STATUS_DIGIT_ATLAS_W: u32 = NATIVE_STATUS_DIGIT_MAX_W * 10;
+pub const NATIVE_STATUS_DIGIT_ATLAS_H: u32 = NATIVE_STATUS_DIGIT_H;
+
+/// `FUN_004a0c20`'s text advances: `1` is two pixels wide; the remaining
+/// digits each occupy six pixels.
+pub const NATIVE_STATUS_DIGIT_ADVANCES: [u32; 10] = [6, 2, 6, 6, 6, 6, 6, 6, 6, 6];
 
 /// Palette indices loaded by the original `Minimap_RenderObjects` pass.
 /// The executable stores these as 5-byte tribe records at `0x5A17A9`:
@@ -528,6 +560,56 @@ pub fn build_font_rgba() -> Vec<u8> {
         }
     }
     rgba
+}
+
+/// Build a single-row atlas for PopTB's compact e13/e14 status digits.
+///
+/// The native routine tests bit positions from the glyph's active width down
+/// to zero.  In particular, the narrow `1` consumes bits 1 and 0, not the
+/// rightmost two columns of a six-pixel cell.  Keep that scan order here so
+/// the packed source bitmap and its two-pixel advance agree exactly.
+pub fn build_native_status_digit_rgba() -> Vec<u8> {
+    let mut rgba =
+        vec![0u8; (NATIVE_STATUS_DIGIT_ATLAS_W * NATIVE_STATUS_DIGIT_ATLAS_H * 4) as usize];
+    for (digit, glyph) in NATIVE_STATUS_DIGIT_BITS.iter().enumerate() {
+        let advance = NATIVE_STATUS_DIGIT_ADVANCES[digit];
+        let origin_x = digit as u32 * NATIVE_STATUS_DIGIT_MAX_W;
+        for (y, &bits) in glyph.iter().enumerate() {
+            for x in 0..advance {
+                let bit = advance - 1 - x;
+                if bits & (1 << bit) != 0 {
+                    let offset =
+                        (((y as u32 * NATIVE_STATUS_DIGIT_ATLAS_W) + origin_x + x) * 4) as usize;
+                    rgba[offset] = 255;
+                    rgba[offset + 1] = 255;
+                    rgba[offset + 2] = 255;
+                    rgba[offset + 3] = 255;
+                }
+            }
+        }
+    }
+    rgba
+}
+
+/// Format the two native quick-status counters.  The original callbacks use
+/// `%02d` below 100 and `%03d` from 100 onward; widths are minimum widths, so
+/// larger values retain every digit.
+pub fn native_status_count_text(value: u32) -> String {
+    if value < 100 {
+        format!("{value:02}")
+    } else {
+        format!("{value:03}")
+    }
+}
+
+/// Pixel width used by PopTB's special status-count renderer before panel
+/// scaling.  This is `FUN_004a0c20` in the original executable.
+pub fn native_status_count_width(value: u32) -> u32 {
+    native_status_count_text(value)
+        .bytes()
+        .filter_map(|byte| byte.checked_sub(b'0'))
+        .map(|digit| NATIVE_STATUS_DIGIT_ADVANCES[digit as usize])
+        .sum()
 }
 
 /// Generate 6 vertices (2 triangles) for a textured quad.
@@ -1479,6 +1561,9 @@ pub struct HudRenderer {
     white_region_idx: usize,
     /// Index where font glyphs start in sprite_regions
     font_region_start: usize,
+    /// First region for PopTB's source-extracted e13/e14 status digits.
+    /// Absent until the native-resource atlas has been built.
+    native_status_digit_region_start: Option<usize>,
     /// Number of sprites loaded from plspanel.spr before the POINT bank.
     panel_sprite_count: usize,
     /// Index where POINT0-0.DAT sprites start in sprite_regions.
@@ -1713,6 +1798,7 @@ impl HudRenderer {
             sprite_regions,
             white_region_idx: 0,
             font_region_start: 1,
+            native_status_digit_region_start: None,
             panel_sprite_count: 0,
             point_region_start: 97,
             hfx_regions: HashMap::new(),
@@ -1812,10 +1898,17 @@ impl HudRenderer {
         let font_h = FONT_ATLAS_H as u16;
         let atlas_w: u32 = 1024;
 
-        // Pack all items: white pixel (1x1), font atlas, then sprite images
-        let mut all_items: Vec<(u16, u16)> = Vec::with_capacity(2 + sprite_images.len());
+        // Pack all items: white pixel, general text font, source status digits,
+        // then the original sprite banks.  The compact count glyphs come from
+        // the executable, but stay separate from the remake's legacy font so
+        // the two rendering paths cannot be confused.
+        let native_status_digit_rgba = build_native_status_digit_rgba();
+        let native_status_digit_w = NATIVE_STATUS_DIGIT_ATLAS_W as u16;
+        let native_status_digit_h = NATIVE_STATUS_DIGIT_ATLAS_H as u16;
+        let mut all_items: Vec<(u16, u16)> = Vec::with_capacity(3 + sprite_images.len());
         all_items.push((1, 1)); // white pixel
         all_items.push((font_w, font_h)); // font atlas
+        all_items.push((native_status_digit_w, native_status_digit_h));
         for (w, h, _) in &sprite_images {
             all_items.push((*w, *h));
         }
@@ -1825,8 +1918,9 @@ impl HudRenderer {
         // Extract placements
         let font_placement_x = all_placements[1].0;
         let font_placement_y = all_placements[1].1;
-        // Sprite placements start at index 2
-        let placements: Vec<(u32, u32)> = all_placements[2..].to_vec();
+        let (native_status_digit_x, native_status_digit_y) = all_placements[2];
+        // Sprite placements start after the source digit strip.
+        let placements: Vec<(u32, u32)> = all_placements[3..].to_vec();
 
         // Phase 3: Blit into atlas
         let mut atlas_data = vec![0u8; (atlas_w * atlas_h * 4) as usize];
@@ -1849,6 +1943,16 @@ impl HudRenderer {
                 if dst + 3 < atlas_data.len() && src + 3 < font_atlas_rgba.len() {
                     atlas_data[dst..dst + 4].copy_from_slice(&font_atlas_rgba[src..src + 4]);
                 }
+            }
+        }
+
+        // Blit the status-count source glyphs from popTB.exe.
+        for y in 0..native_status_digit_h as u32 {
+            for x in 0..native_status_digit_w as u32 {
+                let src = ((y * native_status_digit_w as u32 + x) * 4) as usize;
+                let dst = (((native_status_digit_y + y) * atlas_w + native_status_digit_x + x) * 4)
+                    as usize;
+                atlas_data[dst..dst + 4].copy_from_slice(&native_status_digit_rgba[src..src + 4]);
             }
         }
 
@@ -1913,6 +2017,24 @@ impl HudRenderer {
             });
         }
 
+        // Native e13/e14 status-count regions.  Keep these at the end of the
+        // region vector so the existing panel/POINT/HFX indices retain their
+        // source-bank order.  The strip reserves six pixels per digit, while
+        // `1` exposes only the first two to preserve the callback's advance.
+        let native_status_digit_region_start = regions.len();
+        for digit in 0..10u32 {
+            let x = native_status_digit_x + digit * NATIVE_STATUS_DIGIT_MAX_W;
+            let width = NATIVE_STATUS_DIGIT_ADVANCES[digit as usize];
+            regions.push(SpriteRegion {
+                u0: x as f32 / aw,
+                v0: native_status_digit_y as f32 / ah,
+                u1: (x + width) as f32 / aw,
+                v1: (native_status_digit_y + NATIVE_STATUS_DIGIT_ATLAS_H) as f32 / ah,
+                width: width as u16,
+                height: NATIVE_STATUS_DIGIT_H as u16,
+            });
+        }
+
         // Phase 5: Upload atlas
         let atlas_tex = GpuTexture::new_2d(
             device,
@@ -1949,6 +2071,7 @@ impl HudRenderer {
         self.sprite_regions = regions;
         self.white_region_idx = 0;
         self.font_region_start = font_start;
+        self.native_status_digit_region_start = Some(native_status_digit_region_start);
         self.panel_sprite_count = panel_sprite_count;
         self.point_region_start = font_start + 96 + panel_sprite_count;
         self.hfx_regions.clear();
@@ -2143,6 +2266,61 @@ impl HudRenderer {
     ) {
         let px_size = (font_scale * FONT_GLYPH_W) as f32;
         self.draw_text(text, x0, y0, px_size, color);
+    }
+
+    /// Draw PopTB's source-extracted compact number inside one quick-status
+    /// cell.  `FUN_00404ae0` and `FUN_004047e0` centre the variable-width
+    /// `%02d`/`%03d` text at the cell bottom, beginning nine source pixels
+    /// above its lower edge after their renderer's one-pixel Y increment.
+    pub fn draw_native_status_count(
+        &mut self,
+        value: u32,
+        cell_x: f32,
+        cell_y: f32,
+        cell_w: f32,
+        cell_h: f32,
+        scale_x: f32,
+        scale_y: f32,
+        palette_index: u8,
+    ) -> bool {
+        let Some(region_start) = self.native_status_digit_region_start else {
+            return false;
+        };
+        let text = native_status_count_text(value);
+        let source_width = native_status_count_width(value) as f32;
+        let mut x = cell_x + ((cell_w - source_width * scale_x) * 0.5).floor();
+        let y = cell_y + cell_h - 9.0 * scale_y;
+        let [r, g, b] = self.hfx_palette_rgb[palette_index as usize];
+        let color = [
+            srgb_u8_to_linear(r),
+            srgb_u8_to_linear(g),
+            srgb_u8_to_linear(b),
+            1.0,
+        ];
+
+        for digit in text.bytes().filter_map(|byte| byte.checked_sub(b'0')) {
+            let Some(region) = self
+                .sprite_regions
+                .get(region_start + digit as usize)
+                .cloned()
+            else {
+                return false;
+            };
+            let width = region.width as f32 * scale_x;
+            self.push_quad(
+                x,
+                y,
+                x + width,
+                y + region.height as f32 * scale_y,
+                region.u0,
+                region.v0,
+                region.u1,
+                region.v1,
+                color,
+            );
+            x += width;
+        }
+        true
     }
 
     /// Get the sprite region index for panel sprites (offset past white pixel + font glyphs).
@@ -3097,6 +3275,54 @@ mod tests {
                 assert_eq!(rgba[i + 2], 255, "B at offset {}", i);
             }
         }
+    }
+
+    #[test]
+    fn native_status_digits_match_pop_tb_executable_table() {
+        assert_eq!(
+            NATIVE_STATUS_DIGIT_BITS[0],
+            [0x08, 0x14, 0x22, 0x22, 0x22, 0x22, 0x14, 0x08]
+        );
+        assert_eq!(
+            NATIVE_STATUS_DIGIT_BITS[1],
+            [0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00]
+        );
+        assert_eq!(
+            NATIVE_STATUS_DIGIT_BITS[9],
+            [0x1c, 0x22, 0x22, 0x22, 0x1e, 0x04, 0x18, 0x00]
+        );
+        assert_eq!(NATIVE_STATUS_DIGIT_ADVANCES[1], 2);
+        assert!(NATIVE_STATUS_DIGIT_ADVANCES
+            .iter()
+            .enumerate()
+            .all(|(digit, &width)| digit == 1 || width == 6));
+    }
+
+    #[test]
+    fn native_status_digit_atlas_uses_source_narrow_one_scan() {
+        let rgba = build_native_status_digit_rgba();
+        assert_eq!(
+            rgba.len(),
+            (NATIVE_STATUS_DIGIT_ATLAS_W * NATIVE_STATUS_DIGIT_ATLAS_H * 4) as usize
+        );
+        // `1` starts in the first column of its two-pixel region.  This is
+        // the original routine's bit-1/bit-0 scan, not a cropped 6px glyph.
+        let one_origin = NATIVE_STATUS_DIGIT_MAX_W;
+        assert_eq!(rgba[(one_origin * 4) as usize + 3], 255);
+        assert_eq!(rgba[((one_origin + 1) * 4) as usize + 3], 0);
+        assert_eq!(rgba[((one_origin + 2) * 4) as usize + 3], 0);
+    }
+
+    #[test]
+    fn native_status_count_keeps_source_padding_and_widths() {
+        assert_eq!(native_status_count_text(1), "01");
+        assert_eq!(native_status_count_text(10), "10");
+        assert_eq!(native_status_count_text(99), "99");
+        assert_eq!(native_status_count_text(100), "100");
+        assert_eq!(native_status_count_text(1_000), "1000");
+        assert_eq!(native_status_count_width(10), 8);
+        assert_eq!(native_status_count_width(99), 12);
+        assert_eq!(native_status_count_width(100), 14);
     }
 
     // -- generate_quad_vertices --
