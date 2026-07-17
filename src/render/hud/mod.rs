@@ -116,13 +116,44 @@ pub struct MinimapData {
     /// map, while this offset keeps the current view centred in the canvas.
     pub scroll_x: u8,
     pub scroll_y: u8,
+    /// Original monochrome HFX outline used by the local shaman marker.
+    pub shaman_outline_mask: Option<MinimapSpriteMask>,
     pub dots: Vec<MinimapDot>,
+}
+
+/// Original indexed sprite used by the minimap's recolour path.
+///
+/// PSFB expands transparent runs to index `255`; every other index belongs to
+/// the native silhouette and is recoloured by PopTB's marker draw pass.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MinimapSpriteMask {
+    width: usize,
+    height: usize,
+    pixels: Arc<[u8]>,
+}
+
+impl MinimapSpriteMask {
+    fn from_indexed(width: usize, height: usize, pixels: Vec<u8>) -> Option<Self> {
+        (width > 0 && height > 0 && pixels.len() == width * height).then(|| Self {
+            width,
+            height,
+            pixels: pixels.into(),
+        })
+    }
+}
+
+/// Decode a raw HFX image as an indexed minimap recolour mask, without normal
+/// palette conversion (which would incorrectly turn index zero into artwork).
+pub fn minimap_sprite_mask(sprites: &ContainerPSFB, sprite_id: usize) -> Option<MinimapSpriteMask> {
+    let image = sprites.get_image(sprite_id)?;
+    MinimapSpriteMask::from_indexed(image.width, image.height, image.data)
 }
 
 /// Object classes rendered by the original minimap object pass.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum MinimapMarkerKind {
     Person,
+    Shaman,
     Building,
     WildPerson,
 }
@@ -193,7 +224,13 @@ pub const FONT_ATLAS_H: u32 = FONT_ROWS * FONT_GLYPH_H; // 48
 /// person at byte zero, building at byte one.
 pub const MINIMAP_PERSON_PALETTE_INDICES: [u8; 4] = [0xDF, 0xF6, 0xEF, 0xE5];
 pub const MINIMAP_BUILDING_PALETTE_INDICES: [u8; 4] = [0xDA, 0xF2, 0xEC, 0xE2];
+/// Precedes the blue tribe's five-byte record at `popTB.exe` `0x5A17A8` and
+/// is the local-player ring colour selected by the native shaman marker call.
+pub const MINIMAP_LOCAL_SHAMAN_OUTLINE_PALETTE_INDEX: u8 = 0xDB;
 pub const MINIMAP_WILD_PERSON_PALETTE_INDEX: u8 = 0xBF;
+
+/// HFX #1526 is the 13×13 outer ring in the original minimap marker family.
+pub const HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE: usize = 1526;
 
 // The source palette is supplied at runtime.  These values are the matching
 // entries from the shipped level palettes and only cover no-asset/test runs.
@@ -209,6 +246,7 @@ const MINIMAP_BUILDING_FALLBACK_COLORS: [[u8; 3]; 4] = [
     [0xA3, 0x77, 0x13],
     [0x17, 0x67, 0x3F],
 ];
+const MINIMAP_LOCAL_SHAMAN_OUTLINE_FALLBACK_COLOR: [u8; 3] = [0x2B, 0x3B, 0x9B];
 const MINIMAP_WILD_PERSON_FALLBACK_COLOR: [u8; 3] = [0x7F, 0x77, 0x57];
 
 /// Native minimap water sampled from the uniform ocean in the owner's
@@ -633,14 +671,31 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
     }
 
     // The original object pass draws normal people and buildings as 2x2
-    // palette-indexed blocks.  Wild people use its separate one-pixel path.
+    // palette-indexed blocks. The local shaman takes a separate native HFX
+    // outline path; wild people use the one-pixel path.
     for dot in &data.dots {
         let cx = dot.cell_x.wrapping_sub(data.scroll_x) as usize & 127;
         let cy = dot.cell_y.wrapping_sub(data.scroll_y) as usize & 127;
+        if dot.kind == MinimapMarkerKind::Shaman {
+            if let Some(outline) = data.shaman_outline_mask.as_ref() {
+                draw_minimap_mask(
+                    &mut rgba,
+                    outline,
+                    cx,
+                    cy,
+                    palette_color(
+                        data.native_palette.as_deref(),
+                        MINIMAP_LOCAL_SHAMAN_OUTLINE_PALETTE_INDEX,
+                        MINIMAP_LOCAL_SHAMAN_OUTLINE_FALLBACK_COLOR,
+                    ),
+                );
+                continue;
+            }
+        }
         let color = minimap_marker_color(dot, data.native_palette.as_deref());
         let pixels: &[(usize, usize)] = match dot.kind {
             MinimapMarkerKind::WildPerson => &[(cx, cy)],
-            MinimapMarkerKind::Person | MinimapMarkerKind::Building => {
+            MinimapMarkerKind::Person | MinimapMarkerKind::Shaman | MinimapMarkerKind::Building => {
                 &[(cx, cy), (cx + 1, cy), (cx, cy + 1), (cx + 1, cy + 1)]
             }
         };
@@ -675,7 +730,7 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
 fn minimap_marker_color(dot: &MinimapDot, palette: Option<&[u8]>) -> [u8; 3] {
     let tribe = (dot.tribe_index as usize).min(3);
     let (palette_index, fallback) = match dot.kind {
-        MinimapMarkerKind::Person => (
+        MinimapMarkerKind::Person | MinimapMarkerKind::Shaman => (
             MINIMAP_PERSON_PALETTE_INDICES[tribe],
             MINIMAP_PERSON_FALLBACK_COLORS[tribe],
         ),
@@ -688,6 +743,10 @@ fn minimap_marker_color(dot: &MinimapDot, palette: Option<&[u8]>) -> [u8; 3] {
             MINIMAP_WILD_PERSON_FALLBACK_COLOR,
         ),
     };
+    palette_color(palette, palette_index, fallback)
+}
+
+fn palette_color(palette: Option<&[u8]>, palette_index: u8, fallback: [u8; 3]) -> [u8; 3] {
     palette
         .and_then(|entries| {
             let stride = if entries.len() == 256 * 3 { 3 } else { 4 };
@@ -697,6 +756,32 @@ fn minimap_marker_color(dot: &MinimapDot, palette: Option<&[u8]>) -> [u8; 3] {
                 .map(|rgb| [rgb[0], rgb[1], rgb[2]])
         })
         .unwrap_or(fallback)
+}
+
+fn draw_minimap_mask(
+    rgba: &mut [u8],
+    mask: &MinimapSpriteMask,
+    center_x: usize,
+    center_y: usize,
+    color: [u8; 3],
+) {
+    let left = center_x as isize - (mask.width as isize - 1) / 2;
+    let top = center_y as isize - (mask.height as isize - 1) / 2;
+    for mask_y in 0..mask.height {
+        for mask_x in 0..mask.width {
+            if mask.pixels[mask_y * mask.width + mask_x] == 255 {
+                continue;
+            }
+            let x = left + mask_x as isize;
+            let y = top + mask_y as isize;
+            if !(0..128).contains(&x) || !(0..128).contains(&y) {
+                continue;
+            }
+            let offset = (y as usize * 128 + x as usize) * 4;
+            rgba[offset..offset + 3].copy_from_slice(&color);
+            rgba[offset + 3] = 255;
+        }
+    }
 }
 
 /// Compute the native panel geometry from Populous' 640×480 virtual canvas.
@@ -2951,6 +3036,7 @@ mod tests {
             native_palette: None,
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![],
         };
 
@@ -2977,6 +3063,7 @@ mod tests {
             native_palette: None,
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![],
         };
 
@@ -3000,6 +3087,7 @@ mod tests {
             native_palette: None,
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3019,6 +3107,39 @@ mod tests {
     }
 
     #[test]
+    fn generate_minimap_local_shaman_uses_native_outline_mask() {
+        let outline = MinimapSpriteMask::from_indexed(3, 3, vec![0, 0, 0, 0, 255, 0, 0, 0, 0])
+            .expect("outline mask must have a valid extent");
+        let mut palette = vec![0u8; 256 * 4];
+        palette[MINIMAP_LOCAL_SHAMAN_OUTLINE_PALETTE_INDEX as usize * 4
+            ..MINIMAP_LOCAL_SHAMAN_OUTLINE_PALETTE_INDEX as usize * 4 + 3]
+            .copy_from_slice(&[0x2B, 0x3B, 0x9B]);
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
+            native_palette: Some(palette.into()),
+            scroll_x: 0,
+            scroll_y: 0,
+            shaman_outline_mask: Some(outline),
+            dots: vec![MinimapDot {
+                cell_x: 64,
+                cell_y: 64,
+                tribe_index: 0,
+                kind: MinimapMarkerKind::Shaman,
+            }],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+        let outline_pixel = (63 * 128 + 64) * 4;
+        let center = (64 * 128 + 64) * 4;
+        assert_eq!(
+            &rgba[outline_pixel..outline_pixel + 4],
+            &[0x2B, 0x3B, 0x9B, 0xFF]
+        );
+        assert_eq!(&rgba[center..center + 4], &[0x00, 0x55, 0x6B, 0xFF]);
+    }
+
+    #[test]
     fn generate_minimap_building_marker_uses_its_distinct_native_palette_entry() {
         let mut palette = vec![0u8; 256 * 4];
         palette[0xDA * 4..0xDA * 4 + 3].copy_from_slice(&[0x23, 0x33, 0x6F]);
@@ -3028,6 +3149,7 @@ mod tests {
             native_palette: Some(palette.into()),
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3053,6 +3175,7 @@ mod tests {
             native_palette: Some(palette.into()),
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3074,6 +3197,7 @@ mod tests {
             native_palette: None,
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3100,6 +3224,7 @@ mod tests {
             native_palette: None,
             scroll_x: 0,
             scroll_y: 0,
+            shaman_outline_mask: None,
             dots: vec![],
         };
 
@@ -3119,6 +3244,7 @@ mod tests {
             native_palette: None,
             scroll_x: 1,
             scroll_y: 2,
+            shaman_outline_mask: None,
             dots: vec![MinimapDot {
                 cell_x: 80,
                 cell_y: 80,

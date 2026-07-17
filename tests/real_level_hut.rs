@@ -10,7 +10,7 @@ use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
     HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS, HFX_CONSTRUCTION_ICONS_HOVER,
-    HFX_HUD_SPRITE_IDS, HSPR_HUD_SPRITE_IDS,
+    HFX_HUD_SPRITE_IDS, HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE, HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
@@ -53,6 +53,21 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
     assert!(
         blocked_overlay.width > 0 && blocked_overlay.height > 0,
         "original HFX blocked construction overlay must have an image extent"
+    );
+    let shaman_outline = hfx
+        .get_image(HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE)
+        .expect("original HFX local-shaman minimap outline must decode");
+    assert_eq!(
+        (shaman_outline.width, shaman_outline.height),
+        (13, 13),
+        "native local-shaman marker must retain its 13px outline extent"
+    );
+    assert!(
+        shaman_outline
+            .data
+            .iter()
+            .all(|&pixel| pixel == 0 || pixel == 255),
+        "native local-shaman marker must remain a monochrome indexed mask"
     );
     for &sprite_id in &HSPR_HUD_SPRITE_IDS {
         assert!(

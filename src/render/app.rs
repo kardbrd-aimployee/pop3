@@ -270,6 +270,7 @@ pub struct GameEngine {
     hud_construction_present_commands: u32,
     native_minimap_terrain_rgba: Option<Arc<[u8]>>,
     native_minimap_palette: Option<Arc<[u8]>>,
+    native_minimap_shaman_outline_mask: Option<hud::MinimapSpriteMask>,
 
     // Game simulation
     unit_coordinator: UnitCoordinator,
@@ -650,6 +651,8 @@ impl GameEngine {
                     tribe_index: person.tribe,
                     kind: if person.tribe == u8::MAX {
                         MinimapMarkerKind::WildPerson
+                    } else if person.tribe == 0 && person.subtype == PERSON_SUBTYPE_SHAMAN {
+                        MinimapMarkerKind::Shaman
                     } else {
                         MinimapMarkerKind::Person
                     },
@@ -680,6 +683,8 @@ impl GameEngine {
                     tribe_index: u.tribe_index,
                     kind: if u.tribe_index == u8::MAX {
                         MinimapMarkerKind::WildPerson
+                    } else if u.tribe_index == 0 && u.subtype == PERSON_SUBTYPE_SHAMAN {
+                        MinimapMarkerKind::Shaman
                     } else {
                         MinimapMarkerKind::Person
                     },
@@ -707,6 +712,7 @@ impl GameEngine {
             native_palette: self.native_minimap_palette.clone(),
             scroll_x: self.landscape_mesh.get_shift_vector().x as u8,
             scroll_y: self.landscape_mesh.get_shift_vector().y as u8,
+            shaman_outline_mask: self.native_minimap_shaman_outline_mask.clone(),
             dots,
         };
         let panel_entries = match self.hud_tab {
@@ -1411,6 +1417,7 @@ impl App {
                 hud_construction_present_commands: 0,
                 native_minimap_terrain_rgba: None,
                 native_minimap_palette: None,
+                native_minimap_shaman_outline_mask: None,
                 unit_coordinator: UnitCoordinator::new(),
                 game_world: {
                     let mut w = GameWorld::new(20);
@@ -1719,6 +1726,10 @@ impl App {
         let hspr_container = ContainerPSFB::from_file(&hspr_path);
         self.engine.hud_panel_sprite_count = panel_container.len();
         self.engine.hud_point_sprite_count = point_container.as_ref().map_or(0, ContainerPSFB::len);
+        self.engine.native_minimap_shaman_outline_mask =
+            hfx_container.as_ref().and_then(|sprites| {
+                hud::minimap_sprite_mask(sprites, hud::HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE)
+            });
 
         if let (Some(hud), Some(gpu)) = (self.hud.as_mut(), self.gpu.as_ref()) {
             hud.build_atlas(
