@@ -10,15 +10,17 @@ use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
-    HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS, HFX_CONSTRUCTION_ICONS_HOVER,
-    HFX_HUD_SPRITE_IDS, HFX_MINIMAP_LOCAL_SHAMAN_FILL, HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE,
-    HSPR_HUD_SPRITE_IDS,
+    HFX1_HUD_SPRITE_IDS, HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS,
+    HFX_CONSTRUCTION_ICONS_HOVER, HFX_CONSTRUCTION_PAGE_TEXTURE, HFX_HUD_SPRITE_IDS,
+    HFX_MINIMAP_LOCAL_SHAMAN_FILL, HFX_MINIMAP_LOCAL_SHAMAN_OUTLINE, HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
     let data = base.join("data");
     let hfx = ContainerPSFB::from_file(&data.join("hfx0-0.dat"))
         .expect("original HFX HUD bank must decode");
+    let hfx1 = ContainerPSFB::from_file(&data.join("hfx1-0.dat"))
+        .expect("original HFX1 construction-page bank must decode");
     let hspr = ContainerPSFB::from_file(&data.join("HSPR0-0.DAT"))
         .expect("original HSPR status bank must decode");
 
@@ -31,6 +33,26 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
             "original HFX sprite {sprite_id} must have an image extent"
         );
     }
+    for &sprite_id in HFX1_HUD_SPRITE_IDS {
+        let image = hfx1
+            .get_image(sprite_id as usize)
+            .unwrap_or_else(|| panic!("original HFX1 sprite {sprite_id} must decode"));
+        assert!(
+            image.width > 0 && image.height > 0,
+            "original HFX1 sprite {sprite_id} must have an image extent"
+        );
+    }
+    let construction_page_texture = hfx1
+        .get_image(HFX_CONSTRUCTION_PAGE_TEXTURE as usize)
+        .expect("original construction-page texture must decode from HFX1");
+    assert_eq!(
+        (
+            construction_page_texture.width,
+            construction_page_texture.height
+        ),
+        (32, 32),
+        "HFX1 #712 must remain the native 32px construction-page texture"
+    );
     for &sprite_id in &HFX_CONSTRUCTION_ICONS {
         let image = hfx
             .get_image(sprite_id as usize)
