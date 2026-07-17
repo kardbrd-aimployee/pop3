@@ -9,8 +9,8 @@ use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
 use pop3::render::hud::{
-    FONT4_HUD_GLYPH_IDS, HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS,
-    HFX_CONSTRUCTION_ICONS_HOVER, HFX_HUD_SPRITE_IDS, HSPR_HUD_SPRITE_IDS,
+    HFX_CONSTRUCTION_BLOCKED_OVERLAY, HFX_CONSTRUCTION_ICONS, HFX_CONSTRUCTION_ICONS_HOVER,
+    HFX_HUD_SPRITE_IDS, HSPR_HUD_SPRITE_IDS,
 };
 
 fn assert_native_construction_hud_assets(base: &std::path::Path) {
@@ -19,8 +19,6 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
         .expect("original HFX HUD bank must decode");
     let hspr = ContainerPSFB::from_file(&data.join("HSPR0-0.DAT"))
         .expect("original HSPR status bank must decode");
-    let font4 = ContainerPSFB::from_file(&data.join("font4-0.dat"))
-        .expect("original FONT4 status bank must decode");
 
     for &sprite_id in HFX_HUD_SPRITE_IDS {
         let image = hfx
@@ -60,12 +58,6 @@ fn assert_native_construction_hud_assets(base: &std::path::Path) {
         assert!(
             hspr.get_image(sprite_id as usize).is_some(),
             "original HSPR status sprite {sprite_id} must decode"
-        );
-    }
-    for &sprite_id in FONT4_HUD_GLYPH_IDS {
-        assert!(
-            font4.get_image(sprite_id as usize).is_some(),
-            "original FONT4 status glyph {sprite_id} must decode"
         );
     }
 }

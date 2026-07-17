@@ -845,12 +845,6 @@ pub const HFX_STATUS_BLUE_CHIP: u16 = 54;
 pub const HFX_STATUS_RED_CHIP: u16 = 65;
 pub const HFX_STATUS_FOLLOWER_GLYPH: u16 = 666;
 
-/// The small shaded status-control text comes from `font4-0.dat`, not the
-/// fallback HUD bitmap font. FONT4 is indexed from ASCII space, so glyph 41
-/// is the native `I` used by the two `II` labels in the reference sidebar.
-pub const FONT4_STATUS_GLYPH_I: u16 = 41;
-pub const FONT4_HUD_GLYPH_IDS: &[u16] = &[FONT4_STATUS_GLYPH_I];
-
 /// Blue tribe's side-facing idle shaman frame from `HSPR0-0.DAT`.
 /// It is the original status-avatar pose used by the reference HUD.
 pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
@@ -1218,8 +1212,6 @@ pub struct HudRenderer {
     hfx_regions: HashMap<u16, usize>,
     /// Atlas regions for the verified in-game HSPR status-avatar sprites.
     hspr_regions: HashMap<u16, usize>,
-    /// Atlas regions for the native small FONT4 status-control glyphs.
-    font4_regions: HashMap<u16, usize>,
     /// Original HFX palette, retained for palette-indexed UI primitives.
     hfx_palette_rgb: [[u8; 3]; 256],
     vertices: Vec<HudVertex>,
@@ -1448,7 +1440,6 @@ impl HudRenderer {
             point_region_start: 97,
             hfx_regions: HashMap::new(),
             hspr_regions: HashMap::new(),
-            font4_regions: HashMap::new(),
             hfx_palette_rgb: [[0; 3]; 256],
             vertices: Vec::with_capacity(4096),
             minimap_split: 0,
@@ -1470,9 +1461,7 @@ impl HudRenderer {
         point_palette: &[u8],
         hfx_sprites: Option<(&ContainerPSFB, &[u16])>,
         hspr_sprites: Option<(&ContainerPSFB, &[u16])>,
-        font4_sprites: Option<(&ContainerPSFB, &[u16])>,
         hfx_palette: &[u8],
-        font4_palette: &[u8],
     ) {
         self.hfx_palette_rgb = palette_rgb_entries(hfx_palette);
 
@@ -1527,19 +1516,6 @@ impl HudRenderer {
                 }
             }
         }
-        let mut font4_sprite_ids = Vec::new();
-        if let Some((font4_sprites, sprite_ids)) = font4_sprites {
-            for &sprite_id in sprite_ids {
-                if let Some(img) = font4_sprites.get_image(sprite_id as usize) {
-                    let w = img.width as u16;
-                    let h = img.height as u16;
-                    let rgba = convert_indexed_to_rgba(&img.data, font4_palette, 255);
-                    sprite_images.push((w, h, rgba));
-                    font4_sprite_ids.push(sprite_id);
-                }
-            }
-        }
-
         // Phase 2: Calculate atlas dimensions using shelf packing
         let font_w = FONT_ATLAS_W as u16;
         let font_h = FONT_ATLAS_H as u16;
@@ -1686,7 +1662,6 @@ impl HudRenderer {
         self.point_region_start = font_start + 96 + panel_sprite_count;
         self.hfx_regions.clear();
         self.hspr_regions.clear();
-        self.font4_regions.clear();
         let hfx_region_start = self.point_region_start + point_sprite_count;
         for (offset, sprite_id) in hfx_sprite_ids.iter().enumerate() {
             self.hfx_regions
@@ -1697,12 +1672,6 @@ impl HudRenderer {
             self.hspr_regions
                 .insert(*sprite_id, hspr_region_start + offset);
         }
-        let font4_region_start = hspr_region_start + hspr_sprite_ids.len();
-        for (offset, sprite_id) in font4_sprite_ids.iter().enumerate() {
-            self.font4_regions
-                .insert(*sprite_id, font4_region_start + offset);
-        }
-
         log::info!(
             "[hud] Atlas built: {}x{}, {} sprites, {} font glyphs, {} total regions",
             atlas_w,
@@ -1909,13 +1878,6 @@ impl HudRenderer {
             .and_then(|&sprite_idx| self.sprite_size(sprite_idx))
     }
 
-    /// Native pixel dimensions of a small FONT4 status-control glyph.
-    pub fn font4_size(&self, sprite_id: u16) -> Option<(u16, u16)> {
-        self.font4_regions
-            .get(&sprite_id)
-            .and_then(|&sprite_idx| self.sprite_size(sprite_idx))
-    }
-
     /// Draw a verified HFX UI sprite at native size times `scale`.
     pub fn draw_hfx(&mut self, sprite_id: u16, x: f32, y: f32, scale: f32) -> bool {
         self.draw_hfx_scaled(sprite_id, x, y, scale, scale)
@@ -2013,22 +1975,6 @@ impl HudRenderer {
         scale_y: f32,
     ) -> bool {
         let Some(&sprite_idx) = self.hspr_regions.get(&sprite_id) else {
-            return false;
-        };
-        self.draw_sprite(sprite_idx, x, y, scale_x, scale_y);
-        true
-    }
-
-    /// Draw a native FONT4 glyph with PopTB's independent panel-axis scale.
-    pub fn draw_font4_scaled(
-        &mut self,
-        sprite_id: u16,
-        x: f32,
-        y: f32,
-        scale_x: f32,
-        scale_y: f32,
-    ) -> bool {
-        let Some(&sprite_idx) = self.font4_regions.get(&sprite_id) else {
             return false;
         };
         self.draw_sprite(sprite_idx, x, y, scale_x, scale_y);
@@ -3064,7 +3010,6 @@ mod tests {
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
-        assert_eq!(FONT4_HUD_GLYPH_IDS, [FONT4_STATUS_GLYPH_I]);
         assert_eq!(
             HFX_BUILDING_FRAME,
             [794, 798, 795, 800, 802, 801, 796, 799, 797]
