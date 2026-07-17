@@ -84,6 +84,25 @@ impl UnitRaw {
     pub fn angle(&self) -> u32 {
         self.angle
     }
+
+    /// Return the construction command disabled by this initial-level record.
+    ///
+    /// During level creation the original loader copies bytes 7–10 of a
+    /// `General/2` record into the runtime object at `+0x7c`, `+0x74`,
+    /// `+0x80`, and `+0x7d` (`popTB.exe` `0x0040d5bb`).  The initial HUD
+    /// setup then uses General/2 objects whose copied state is two to populate
+    /// the disabled-construction mask (`0x00452e49`).  This means the command
+    /// lives in byte one of the raw angle field; it is not inferred from which
+    /// building meshes happen to be present on the map.
+    pub fn initial_construction_disabled_command(&self) -> Option<u8> {
+        if self.model_type() != Some(ModelType::General) || self.subtype != 2 {
+            return None;
+        }
+
+        let state = self.angle as u8;
+        let command = (self.angle >> 8) as u8;
+        (state == 2 && command < u32::BITS as u8).then_some(command)
+    }
     pub fn f2(&self) -> u16 {
         self.f2
     }
@@ -98,6 +117,46 @@ impl UnitRaw {
 impl BinDeserializer for UnitRaw {
     fn from_reader<R: Read>(reader: &mut R) -> Option<Self> {
         from_reader::<UnitRaw, { size_of::<UnitRaw>() }, R>(reader)
+    }
+}
+
+#[cfg(test)]
+mod raw_level_tests {
+    use super::{ModelType, UnitRaw};
+
+    fn general_two(angle: u32) -> UnitRaw {
+        UnitRaw {
+            subtype: 2,
+            model: ModelType::General as u8,
+            tribe_index: u8::MAX,
+            loc_x: 0,
+            loc_y: 0,
+            angle,
+            f2: 0,
+            f3: 0,
+            fd: [0; 40],
+        }
+    }
+
+    #[test]
+    fn general_two_uses_raw_angle_bytes_for_initial_construction_lock() {
+        // Level 1's General/2 record is 02 07 01 01 at raw offsets 7–10.
+        assert_eq!(
+            general_two(0x0101_0702).initial_construction_disabled_command(),
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn general_two_only_locks_state_two_and_valid_commands() {
+        assert_eq!(
+            general_two(0x0103_070b).initial_construction_disabled_command(),
+            None
+        );
+        assert_eq!(
+            general_two(0x0000_2002).initial_construction_disabled_command(),
+            None
+        );
     }
 }
 

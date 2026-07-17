@@ -37,6 +37,7 @@ use crate::data::landscape::common::{LandPos, LandscapeFull};
 use crate::data::landscape::minimap::texture_minimap;
 use crate::data::landscape::{draw_texture_u8, make_texture_land};
 use crate::data::level::{LevelDefinition, LevelRes, ObjectPaths};
+use crate::data::level_special::LevelSpecialData;
 use crate::data::objects::{Object3D, Shape, ShapeFootprints};
 use crate::data::units::{object_3d_index, ModelType};
 use crate::render::terrain::{
@@ -159,37 +160,30 @@ fn construction_slice_tab_frame(index: usize) -> &'static [u16; 9] {
     }
 }
 
-/// Collect the two bitfields used by the original construction-page setup:
-/// which construction commands the local player can issue, and which commands
-/// are represented by buildings on the current level.  The latter turns an
-/// otherwise hidden button into the native blocked (`?`) state.
+/// Collect the construction-page masks selected by the original new-game
+/// setup. `SaveGame_LoadStateFromBuffer` copies this field from
+/// `LEVLSPC2.DAT` into player state; `FUN_00435ec0` then reads it directly
+/// when deciding whether to show each command.
 ///
-/// Campaign save-state technology is not yet modeled by `GameSession`; the
-/// playable slice therefore starts with the Small Hut command, adds commands
-/// already owned by the local tribe, and preserves the native Vault exception
-/// for an unowned Vault object.  It intentionally does not make every menu
-/// glyph visible as a renderer fallback.
-fn construction_hud_command_masks(level: &LevelRes, player_tribe: u8) -> (u32, u32) {
-    let mut available = hud::construction_command_bit(1);
-    let mut present = 0_u32;
-
-    for unit in &level.units {
-        if unit.model_type() != Some(ModelType::Building) {
-            continue;
-        }
-        let Some(command) = hud::construction_command_for_level_building_subtype(unit.subtype)
-        else {
-            continue;
-        };
-        let command_bit = hud::construction_command_bit(command);
-        present |= command_bit;
-
-        if unit.tribe_index() == player_tribe || (command == 17 && unit.tribe_index() == u8::MAX) {
-            available |= command_bit;
-        }
-    }
-
-    (available, present)
+/// The original blocked-command mask is populated by `General/2` level
+/// records during initial level creation. Their command is explicitly encoded
+/// in the raw record, so use that native source rather than treating visible
+/// buildings as a proxy for unavailable construction commands.
+fn construction_hud_command_masks(base: &Path, level: &LevelRes) -> (u32, u32) {
+    let special = LevelSpecialData::from_base(base).unwrap_or_else(|error| {
+        panic!("could not load native levels/levlspc2.dat for construction HUD: {error}")
+    });
+    let disabled_commands = level
+        .units
+        .iter()
+        .filter_map(|unit| unit.initial_construction_disabled_command())
+        .fold(0_u32, |mask, command| {
+            mask | hud::construction_command_bit(command)
+        });
+    (
+        special.initial_construction_capabilities(),
+        disabled_commands,
+    )
 }
 
 /******************************************************************************/
@@ -1585,16 +1579,10 @@ impl App {
                     )
                 }),
         );
-        let player_tribe = self
-            .engine
-            .session
-            .as_ref()
-            .map(|session| session.player_tribe)
-            .unwrap_or(0);
         (
             self.engine.hud_construction_available_commands,
             self.engine.hud_construction_present_commands,
-        ) = construction_hud_command_masks(&level_res, player_tribe);
+        ) = construction_hud_command_masks(&base, &level_res);
 
         self.engine
             .landscape_mesh
@@ -3138,8 +3126,8 @@ impl App {
             // the panel manager marks an element hidden (`element + 0x10 ==
             // 0`).  A hidden construction command is therefore uninterrupted
             // panel texture, not an invented empty button frame.  This is
-            // particularly visible in the native Level 1 HUD, which draws
-            // only the hut, warrior-training, and firewarrior controls.
+            // driven by the initial player capability and General/2 masks;
+            // a later save-state can update those masks independently.
             if !availability.is_visible() {
                 continue;
             }
@@ -5046,16 +5034,10 @@ impl ApplicationHandler for App {
                     )
                 }),
         );
-        let player_tribe = self
-            .engine
-            .session
-            .as_ref()
-            .map(|session| session.player_tribe)
-            .unwrap_or(0);
         (
             self.engine.hud_construction_available_commands,
             self.engine.hud_construction_present_commands,
-        ) = construction_hud_command_masks(&level_res2, player_tribe);
+        ) = construction_hud_command_masks(&base2, &level_res2);
         self.rebuild_landscape_variants(&level_res2);
 
         // Build per-unit-type sprite atlases

@@ -994,8 +994,8 @@ pub const fn construction_command_for_level_building_subtype(subtype: u8) -> Opt
 }
 
 /// The three construction-cell outcomes produced by the original HUD setup
-/// callback. A command can be available to the player, visibly blocked
-/// because its building occurs on the level, or wholly absent from the panel.
+/// callback. A command can be available to the player, visibly blocked by a
+/// level `General/2` setup record, or wholly absent from the panel.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConstructionSlotAvailability {
     Hidden,
