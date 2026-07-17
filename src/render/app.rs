@@ -73,9 +73,9 @@ use crate::engine::{translate_key, FrameState, GameCommand};
 use crate::engine::{GameAction, GameSession};
 
 use crate::render::hud::{
-    self, compute_population_fraction, HealthBarEntry, HealthBarType, HudRenderer, HudState,
-    HudTab, MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry, SelectedEntityInfo,
-    TribePopulation, HUD_TRIBE_COLORS,
+    self, compute_mana_fraction, compute_population_fraction, HealthBarEntry, HealthBarType,
+    HudRenderer, HudState, HudTab, MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry,
+    SelectedEntityInfo, TribePopulation, HUD_TRIBE_COLORS,
 };
 
 /******************************************************************************/
@@ -2894,7 +2894,7 @@ impl App {
         let status_y = status_field.y as f32;
         let status_w = status_field.w as f32;
         let status_h = status_field.h as f32;
-        // e02 uses the same native tall frame family as the population meter,
+        // e02 uses the same native tall frame family as the mana meter,
         // then fills only its two-pixel inset.  Filling the element's whole
         // rect concealed the original gold rim beside the help button.
         hud.draw_hfx_nine_patch_scaled(
@@ -2999,11 +2999,13 @@ impl App {
         // e02-style outer rim, fills its inset with the palette-resolved dark
         // base, then paints one native-colour strip every two pixels.  Its
         // static table at 0x577a70 changes colour at 200/256 of the inset.
-        let population_meter = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[20]);
-        let meter_x = population_meter.x as f32;
-        let meter_y = population_meter.y as f32;
-        let meter_w = population_meter.w as f32;
-        let meter_h = population_meter.h as f32;
+        // Its input is the tribe mana resource group (`+0x955/+0x95d/+0x961`),
+        // not the five-class population total used by e13.
+        let mana_meter = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[20]);
+        let meter_x = mana_meter.x as f32;
+        let meter_y = mana_meter.y as f32;
+        let meter_w = mana_meter.w as f32;
+        let meter_h = mana_meter.h as f32;
         hud.draw_hfx_nine_patch_border_scaled(
             &hud::HFX_STATUS_TALL_FRAME,
             meter_x,
@@ -3022,14 +3024,12 @@ impl App {
         let status_palette_dark = hud.resolve_hfx_palette_color(hud::HFX_STATUS_PALETTE_DARK);
         hud.draw_hfx_palette_rect(inner_x, inner_y, inner_w, inner_h, status_palette_dark);
         let inner_width_px = (inner_w / scale_x).round().max(0.0) as u32;
-        // The original callback receives a wider internal counter range than
-        // this Rust HUD exposes.  Its two colour bands remain exact below;
-        // this high-level fill stays saturated at the game's housing cap.
+        // The original callback smooths a resource-display value before it
+        // reaches the stripe painter. The Rust state exposes the same mana
+        // pool and its original cap, while the two native colour bands below
+        // preserve the source compositor exactly.
         let fill_width_px = (inner_width_px as f32
-            * compute_population_fraction(
-                hud_state.player_population,
-                hud_state.player_max_population,
-            ))
+            * compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana))
         .floor() as u32;
         let overrun_start_px = inner_width_px * hud::HFX_STATUS_METER_OVERRUN_START_NUMERATOR
             / hud::HFX_STATUS_METER_OVERRUN_START_DENOMINATOR;

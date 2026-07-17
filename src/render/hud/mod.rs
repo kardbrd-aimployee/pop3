@@ -837,7 +837,7 @@ pub const HFX_STATUS_GLOBE_FRAME: [u16; 9] = [767, 771, 768, 773, 775, 774, 769,
 pub const HFX_STATUS_GLOBE: u16 = 875;
 /// e19's small help-button frame and e13–18's quick-row cells.
 pub const HFX_STATUS_SMALL_FRAME: [u16; 9] = [1005, 1009, 1006, 1011, 1013, 1012, 1007, 1010, 1008];
-/// e02's tall status field frame and e20's population-meter outer rim.
+/// e02's tall status field frame and e20's mana-meter outer rim.
 pub const HFX_STATUS_TALL_FRAME: [u16; 9] = [1014, 1018, 1015, 1020, 1022, 1021, 1016, 1019, 1017];
 pub const HFX_STATUS_BLACK_TEXTURE: u16 = 491;
 pub const HFX_STATUS_HELP_GLYPH: u16 = 106;
