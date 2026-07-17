@@ -213,6 +213,13 @@ fn construction_slice_tab_frame(_index: usize) -> &'static [u16; 9] {
     &hud::HFX_TAB_FRAME
 }
 
+/// Sidebar children are inserted at the front of PopTB's panel list.  The
+/// three overlapping tab rects must therefore be painted e05, e04, e03:
+/// followers, buildings, then spells.  In the visual ordering used below
+/// (buildings, spells, followers), that is 2, 0, 1.  In particular, the
+/// spells tab owns both two-pixel overlaps in the native capture.
+const NATIVE_TAB_DRAW_ORDER: [usize; 3] = [2, 0, 1];
+
 /// The playable construction slice starts with the native Level 1 baseline:
 /// the Small Hut and the Vault.  The original explicitly grants Vault
 /// command 17 to every loaded player at `popTB.exe` `0x00452cbd`; the Hut is
@@ -2955,14 +2962,15 @@ impl App {
 
         // Native three-mode strip. Only Buildings is active in this slice;
         // Spells and Followers remain visible but intentionally inert.
-        for (index, inactive_icon) in hud::HFX_TAB_ICONS.iter().enumerate() {
+        for index in NATIVE_TAB_DRAW_ORDER {
+            let inactive_icon = hud::HFX_TAB_ICONS[index];
             let x = layout.tab_xs[index];
             let selected = index == 0;
             let frame = construction_slice_tab_frame(index);
             let icon = if selected {
                 hud::HFX_TAB_ICON_BUILDINGS_SELECTED
             } else {
-                *inactive_icon
+                inactive_icon
             };
             hud.draw_hfx_nine_patch_scaled(
                 frame,
@@ -5761,6 +5769,11 @@ mod tests {
         assert_eq!(construction_slice_tab_frame(0), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(1), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(2), &hud::HFX_TAB_FRAME);
+    }
+
+    #[test]
+    fn sidebar_tabs_use_native_reverse_element_draw_order() {
+        assert_eq!(NATIVE_TAB_DRAW_ORDER, [2, 0, 1]);
     }
 
     #[test]
