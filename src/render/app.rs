@@ -101,9 +101,14 @@ fn native_minimap_terrain_rgba(level_res: &LevelRes) -> Option<Arc<[u8]>> {
 }
 
 fn expand_native_minimap_indices(indices: &[u8], palette: &[u8]) -> Arc<[u8]> {
+    // The original level resources may retain their palette as 256 RGB
+    // triples (PAL1) or as an RGBX table.  Keep the same stride rule as the
+    // extracted HUD banks so this terrain pass samples the intended native
+    // colour rather than treating a triple palette as RGBX.
+    let stride = if palette.len() == 256 * 3 { 3 } else { 4 };
     let mut rgba = Vec::with_capacity(indices.len() * 4);
     for &index in indices {
-        let palette_offset = index as usize * 4;
+        let palette_offset = index as usize * stride;
         // Preserve the original palette's complete RGBA table.  A malformed
         // palette falls back only for its missing entry rather than rejecting
         // the complete minimap texture.
@@ -700,6 +705,8 @@ impl GameEngine {
             heights: *self.landscape_mesh.heights(),
             native_terrain_rgba: self.native_minimap_terrain_rgba.clone(),
             native_palette: self.native_minimap_palette.clone(),
+            scroll_x: self.landscape_mesh.get_shift_vector().x as u8,
+            scroll_y: self.landscape_mesh.get_shift_vector().y as u8,
             dots,
         };
         let panel_entries = match self.hud_tab {
@@ -5606,6 +5613,17 @@ mod tests {
         assert_eq!(
             &*expand_native_minimap_indices(&[1, 255], &palette),
             &[0x12, 0x34, 0x56, 0xff, 0, 0, 0, 0xff]
+        );
+    }
+
+    #[test]
+    fn native_minimap_palette_accepts_original_rgb_triples() {
+        let mut palette = vec![0u8; 256 * 3];
+        palette[7 * 3..7 * 3 + 3].copy_from_slice(&[0x12, 0x34, 0x56]);
+
+        assert_eq!(
+            &*expand_native_minimap_indices(&[7], &palette),
+            &[0x12, 0x34, 0x56, 0xff]
         );
     }
 }

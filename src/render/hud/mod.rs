@@ -111,6 +111,11 @@ pub struct MinimapData {
     /// indices.  It stays separate from the expanded terrain so people and
     /// buildings retain their distinct native palette colours.
     pub native_palette: Option<Arc<[u8]>>,
+    /// Camera-relative torus scroll applied by the original minimap before
+    /// it draws objects.  The source terrain remains a full 128×128 level
+    /// map, while this offset keeps the current view centred in the canvas.
+    pub scroll_x: u8,
+    pub scroll_y: u8,
     pub dots: Vec<MinimapDot>,
 }
 
@@ -611,11 +616,27 @@ pub fn generate_minimap_rgba(data: &MinimapData) -> Vec<u8> {
             }
             fallback
         });
+    // The native minimap presents a camera-relative, torus-scrolled view of
+    // the pre-rendered terrain buffer.  Move terrain before its object pass
+    // so the original object coordinates and source pixels stay aligned.
+    if data.scroll_x != 0 || data.scroll_y != 0 {
+        let source = rgba.clone();
+        for y in 0..128usize {
+            for x in 0..128usize {
+                let src_x = (x + data.scroll_x as usize) & 127;
+                let src_y = (y + data.scroll_y as usize) & 127;
+                let dst = (y * 128 + x) * 4;
+                let src = (src_y * 128 + src_x) * 4;
+                rgba[dst..dst + 4].copy_from_slice(&source[src..src + 4]);
+            }
+        }
+    }
+
     // The original object pass draws normal people and buildings as 2x2
     // palette-indexed blocks.  Wild people use its separate one-pixel path.
     for dot in &data.dots {
-        let cx = (dot.cell_x as usize).min(127);
-        let cy = (dot.cell_y as usize).min(127);
+        let cx = dot.cell_x.wrapping_sub(data.scroll_x) as usize & 127;
+        let cy = dot.cell_y.wrapping_sub(data.scroll_y) as usize & 127;
         let color = minimap_marker_color(dot, data.native_palette.as_deref());
         let pixels: &[(usize, usize)] = match dot.kind {
             MinimapMarkerKind::WildPerson => &[(cx, cy)],
@@ -669,7 +690,8 @@ fn minimap_marker_color(dot: &MinimapDot, palette: Option<&[u8]>) -> [u8; 3] {
     };
     palette
         .and_then(|entries| {
-            let offset = palette_index as usize * 4;
+            let stride = if entries.len() == 256 * 3 { 3 } else { 4 };
+            let offset = palette_index as usize * stride;
             entries
                 .get(offset..offset + 3)
                 .map(|rgb| [rgb[0], rgb[1], rgb[2]])
@@ -2927,6 +2949,8 @@ mod tests {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
             native_palette: None,
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![],
         };
 
@@ -2951,6 +2975,8 @@ mod tests {
             heights,
             native_terrain_rgba: None,
             native_palette: None,
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![],
         };
 
@@ -2972,6 +2998,8 @@ mod tests {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
             native_palette: None,
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -2998,6 +3026,8 @@ mod tests {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
             native_palette: Some(palette.into()),
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3014,11 +3044,36 @@ mod tests {
     }
 
     #[test]
+    fn generate_minimap_marker_accepts_original_rgb_triple_palette() {
+        let mut palette = vec![0u8; 256 * 3];
+        palette[0xDF * 3..0xDF * 3 + 3].copy_from_slice(&[0x12, 0x34, 0x56]);
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: None,
+            native_palette: Some(palette.into()),
+            scroll_x: 0,
+            scroll_y: 0,
+            dots: vec![MinimapDot {
+                cell_x: 64,
+                cell_y: 64,
+                tribe_index: 0,
+                kind: MinimapMarkerKind::Person,
+            }],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+        let center = (64 * 128 + 64) * 4;
+        assert_eq!(&rgba[center..center + 4], &[0x12, 0x34, 0x56, 0xFF]);
+    }
+
+    #[test]
     fn generate_minimap_wild_person_marker_is_a_single_native_palette_pixel() {
         let data = MinimapData {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: None,
             native_palette: None,
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![MinimapDot {
                 cell_x: 64,
                 cell_y: 64,
@@ -3043,12 +3098,43 @@ mod tests {
             heights: [[0u16; 128]; 128],
             native_terrain_rgba: Some(terrain.into()),
             native_palette: None,
+            scroll_x: 0,
+            scroll_y: 0,
             dots: vec![],
         };
 
         let rgba = generate_minimap_rgba(&data);
 
         assert_eq!(&rgba[center..center + 4], &[0x12, 0x34, 0x56, 0xff]);
+    }
+
+    #[test]
+    fn generate_minimap_applies_camera_scroll_to_terrain_and_markers() {
+        let mut terrain = vec![0u8; 128 * 128 * 4];
+        let source = (64 * 128 + 64) * 4;
+        terrain[source..source + 4].copy_from_slice(&[0x12, 0x34, 0x56, 0xff]);
+        let data = MinimapData {
+            heights: [[0u16; 128]; 128],
+            native_terrain_rgba: Some(terrain.into()),
+            native_palette: None,
+            scroll_x: 1,
+            scroll_y: 2,
+            dots: vec![MinimapDot {
+                cell_x: 80,
+                cell_y: 80,
+                tribe_index: 1,
+                kind: MinimapMarkerKind::Person,
+            }],
+        };
+
+        let rgba = generate_minimap_rgba(&data);
+        let terrain_destination = (62 * 128 + 63) * 4;
+        assert_eq!(
+            &rgba[terrain_destination..terrain_destination + 4],
+            &[0x12, 0x34, 0x56, 0xFF]
+        );
+        let shifted_marker = (78 * 128 + 79) * 4;
+        assert_eq!(&rgba[shifted_marker..shifted_marker + 4], &[0xC7, 0x73, 0x4B, 0xFF]);
     }
 
     // -- compute_hud_layout --
