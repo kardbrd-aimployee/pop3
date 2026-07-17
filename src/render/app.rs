@@ -2721,10 +2721,9 @@ impl App {
         let sidebar_element_rect = |element: &hud::layout::ElementDef| {
             hud::layout::element_rect(&hud::layout::PANEL_SIDEBAR, element, screen_w, screen_h)
         };
-        // The original renders two tiled UI panels: the full sidebar and the
-        // open construction page over its lower portion.  Each surface uses
-        // the 16 original corner/edge/interior sprites rather than a newly
-        // drawn or uniformly repeated background.
+        // The generic sidebar surface is a 16-tile original UI panel, not a
+        // generated fill.  The open construction page below uses its own
+        // compositor and texture family, drawn immediately after this layer.
         hud.draw_hfx_panel_surface_scaled(
             &hud::HFX_PANEL_SURFACE_TILES,
             0.0,
@@ -2734,8 +2733,20 @@ impl App {
             scale_x,
             scale_y,
         );
-        hud.draw_hfx_panel_surface_scaled(
-            &hud::HFX_PANEL_SURFACE_TILES,
+        // `FUN_00405a10` first tiles HFX #712, then applies the distinct
+        // page border table at 0x575208.  The generic #1450 panel tiles are
+        // not part of the house-tab path.
+        hud.draw_hfx_tiled_scaled(
+            hud::HFX_CONSTRUCTION_PAGE_TEXTURE,
+            0.0,
+            layout.panel_y,
+            layout.sidebar_w,
+            layout.screen_h - layout.panel_y,
+            scale_x,
+            scale_y,
+        );
+        hud.draw_hfx_nine_patch_border_scaled(
+            &hud::HFX_CONSTRUCTION_PAGE_FRAME,
             0.0,
             layout.panel_y,
             layout.sidebar_w,
@@ -2744,6 +2755,25 @@ impl App {
             scale_y,
         );
         hud.mark_minimap_split();
+
+        // Elements e21 and e22 are overlapping textured information panels
+        // behind the compact status widgets.  `FUN_00405e40` draws them in
+        // this native order using the #706-centred table at 0x575250.
+        for element in [
+            &hud::layout::SIDEBAR_ELEMENTS[21],
+            &hud::layout::SIDEBAR_ELEMENTS[22],
+        ] {
+            let block = sidebar_element_rect(element);
+            hud.draw_hfx_nine_patch_scaled(
+                &hud::HFX_SIDEBAR_INFO_FRAME,
+                block.x as f32,
+                block.y as f32,
+                block.w as f32,
+                block.h as f32,
+                scale_x,
+                scale_y,
+            );
+        }
 
         // Native rock arch on top of the minimap canvas.
         hud.draw_hfx_nine_patch_border_scaled(

@@ -927,6 +927,24 @@ pub const HFX_CONSTRUCTION_ICONS_HOVER: [u16; 9] =
 /// replacement building icon.
 pub const HFX_CONSTRUCTION_BLOCKED_OVERLAY: u16 = 1055;
 
+/// The construction page compositor (`FUN_00405a10`) tiles this 32×32 HFX
+/// texture beneath the house-tab controls.  It is separate from the generic
+/// 16px `GUI_RenderTiledPanel` surface family used by other UI screens.
+pub const HFX_CONSTRUCTION_PAGE_TEXTURE: u16 = 712;
+
+/// Border table passed by the construction-page compositor to
+/// `GUI_RenderNinePatch` at `popTB.exe` `0x575208`.  The centre is empty
+/// because the callback has already tiled [`HFX_CONSTRUCTION_PAGE_TEXTURE`].
+/// The lower row deliberately comes from the older 559/562/560 family; it is
+/// not interchangeable with the visually similar 707–711 edge sprites.
+pub const HFX_CONSTRUCTION_PAGE_FRAME: [u16; 9] = [707, 709, 708, 710, 0, 711, 559, 562, 560];
+
+/// The overlapping information blocks in the upper sidebar (elements e21
+/// and e22) use this `GUI_RenderNinePatch` table at `0x575250`.  Their
+/// centre is the full 32×32 HFX #706 texture, not the generic 16px panel
+/// cycle underneath the rest of the sidebar.
+pub const HFX_SIDEBAR_INFO_FRAME: [u16; 9] = [701, 703, 702, 704, 706, 705, 559, 562, 560];
+
 /// Native construction commands represented by the original house-tab
 /// glyphs.  These are command ids, not the `cmd` values used by the panel
 /// manager to route clicks between controls.
@@ -1156,6 +1174,21 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     805,
     808,
     806,
+    HFX_CONSTRUCTION_PAGE_TEXTURE,
+    707,
+    708,
+    709,
+    710,
+    711,
+    559,
+    560,
+    562,
+    701,
+    702,
+    703,
+    704,
+    705,
+    706,
     676,
     678,
     680,
@@ -2256,10 +2289,10 @@ impl HudRenderer {
     }
 
     /// Draw one original HFX nine-patch at an independently scaled panel
-    /// rectangle.  PopTB repeats the 8-pixel source tiles along each edge and
-    /// through the centre, clipping the final tile.  It does not stretch one
-    /// source tile over an entire cell: doing that loses the original dither
-    /// and makes construction-frame borders visibly too smooth.
+    /// rectangle.  PopTB queries every table member's native dimensions: the
+    /// information-panel centre is a 32×32 texture while its edges are 4–8px,
+    /// for example.  Repeating every member at the top-left corner's size
+    /// would crop that texture into an invented 8px checkerboard.
     pub fn draw_hfx_nine_patch_scaled(
         &mut self,
         sprite_ids: &[u16; 9],
@@ -2270,77 +2303,125 @@ impl HudRenderer {
         scale_x: f32,
         scale_y: f32,
     ) -> bool {
-        let Some((corner_w, corner_h)) = self.hfx_size(sprite_ids[0]) else {
+        let Some((top_left_w, top_left_h)) = self.hfx_size(sprite_ids[0]) else {
             return false;
         };
-        let tile_w = corner_w as f32 * scale_x;
-        let tile_h = corner_h as f32 * scale_y;
-        if width <= 0.0 || height <= 0.0 || tile_w <= 0.0 || tile_h <= 0.0 {
+        let Some((top_right_w, top_right_h)) = self.hfx_size(sprite_ids[2]) else {
+            return false;
+        };
+        let Some((bottom_left_w, bottom_left_h)) = self.hfx_size(sprite_ids[6]) else {
+            return false;
+        };
+        let Some((bottom_right_w, bottom_right_h)) = self.hfx_size(sprite_ids[8]) else {
+            return false;
+        };
+        if width <= 0.0 || height <= 0.0 || scale_x <= 0.0 || scale_y <= 0.0 {
             return false;
         }
-        let corner_w = tile_w.min(width * 0.5);
-        let corner_h = tile_h.min(height * 0.5);
-        let x1 = x + corner_w;
-        let y1 = y + corner_h;
-        let x2 = x + width - corner_w;
-        let y2 = y + height - corner_h;
+        let tl_w = top_left_w as f32 * scale_x;
+        let tl_h = top_left_h as f32 * scale_y;
+        let tr_w = top_right_w as f32 * scale_x;
+        let tr_h = top_right_h as f32 * scale_y;
+        let bl_w = bottom_left_w as f32 * scale_x;
+        let bl_h = bottom_left_h as f32 * scale_y;
+        let br_w = bottom_right_w as f32 * scale_x;
+        let br_h = bottom_right_h as f32 * scale_y;
+        if tl_w <= 0.0
+            || tl_h <= 0.0
+            || tr_w <= 0.0
+            || tr_h <= 0.0
+            || bl_w <= 0.0
+            || bl_h <= 0.0
+            || br_w <= 0.0
+            || br_h <= 0.0
+        {
+            return false;
+        }
 
-        // Corners are always one native source tile.  Clipping also handles
-        // the defensive case of a widget smaller than two corners.
-        for (sprite_id, cell_x, cell_y) in [
-            (sprite_ids[0], x, y),
-            (sprite_ids[2], x2, y),
-            (sprite_ids[6], x, y2),
-            (sprite_ids[8], x2, y2),
+        let left_w = self
+            .hfx_size(sprite_ids[3])
+            .map_or(tl_w, |(tile_w, _)| tile_w as f32 * scale_x);
+        let right_w = self
+            .hfx_size(sprite_ids[5])
+            .map_or(tr_w, |(tile_w, _)| tile_w as f32 * scale_x);
+        let top_h = self
+            .hfx_size(sprite_ids[1])
+            .map_or(tl_h, |(_, tile_h)| tile_h as f32 * scale_y);
+        let bottom_h = self
+            .hfx_size(sprite_ids[7])
+            .map_or(bl_h, |(_, tile_h)| tile_h as f32 * scale_y);
+
+        // The original compositor paints its full-size centre texture first,
+        // then overlays each independently sized edge and corner.
+        let centre_x = x + left_w;
+        let centre_y = y + tr_h;
+        let centre_w = (width - left_w - right_w).max(0.0);
+        let centre_h = (height - tr_h - bottom_h).max(0.0);
+        if sprite_ids[4] != 0 {
+            self.draw_hfx_tiled_scaled(
+                sprite_ids[4],
+                centre_x,
+                centre_y,
+                centre_w,
+                centre_h,
+                scale_x,
+                scale_y,
+            );
+        }
+
+        let top_x = x + tl_w;
+        let top_w = (width - tl_w - tr_w).max(0.0);
+        if sprite_ids[1] != 0 {
+            self.draw_hfx_tiled_scaled(sprite_ids[1], top_x, y, top_w, top_h, scale_x, scale_y);
+        }
+        let bottom_x = x + bl_w;
+        let bottom_w = (width - bl_w - br_w).max(0.0);
+        if sprite_ids[7] != 0 {
+            self.draw_hfx_tiled_scaled(
+                sprite_ids[7],
+                bottom_x,
+                y + height - bottom_h,
+                bottom_w,
+                bottom_h,
+                scale_x,
+                scale_y,
+            );
+        }
+
+        let left_y = y + tl_h;
+        let left_h = (height - tl_h - bl_h).max(0.0);
+        if sprite_ids[3] != 0 {
+            self.draw_hfx_tiled_scaled(sprite_ids[3], x, left_y, left_w, left_h, scale_x, scale_y);
+        }
+        let right_y = y + tr_h;
+        let right_h = (height - tr_h - br_h).max(0.0);
+        if sprite_ids[5] != 0 {
+            self.draw_hfx_tiled_scaled(
+                sprite_ids[5],
+                x + width - right_w,
+                right_y,
+                right_w,
+                right_h,
+                scale_x,
+                scale_y,
+            );
+        }
+
+        for (sprite_id, cell_x, cell_y, cell_w, cell_h) in [
+            (sprite_ids[0], x, y, tl_w, tl_h),
+            (sprite_ids[2], x + width - tr_w, y, tr_w, tr_h),
+            (sprite_ids[6], x, y + height - bl_h, bl_w, bl_h),
+            (
+                sprite_ids[8],
+                x + width - br_w,
+                y + height - br_h,
+                br_w,
+                br_h,
+            ),
         ] {
-            if sprite_id != 0 {
-                self.draw_hfx_clipped_scaled(
-                    sprite_id, cell_x, cell_y, corner_w, corner_h, scale_x, scale_y,
-                );
-            }
-        }
-
-        let mut tile_x = x1;
-        while tile_x < x2 {
-            let draw_w = tile_w.min(x2 - tile_x);
-            for (sprite_id, tile_y) in [(sprite_ids[1], y), (sprite_ids[7], y2)] {
-                if sprite_id != 0 {
-                    self.draw_hfx_clipped_scaled(
-                        sprite_id, tile_x, tile_y, draw_w, corner_h, scale_x, scale_y,
-                    );
-                }
-            }
-            tile_x += tile_w;
-        }
-
-        let mut tile_y = y1;
-        while tile_y < y2 {
-            let draw_h = tile_h.min(y2 - tile_y);
-            for (sprite_id, tile_x) in [(sprite_ids[3], x), (sprite_ids[5], x2)] {
-                if sprite_id != 0 {
-                    self.draw_hfx_clipped_scaled(
-                        sprite_id, tile_x, tile_y, corner_w, draw_h, scale_x, scale_y,
-                    );
-                }
-            }
-
-            if sprite_ids[4] != 0 {
-                let mut tile_x = x1;
-                while tile_x < x2 {
-                    let draw_w = tile_w.min(x2 - tile_x);
-                    self.draw_hfx_clipped_scaled(
-                        sprite_ids[4],
-                        tile_x,
-                        tile_y,
-                        draw_w,
-                        draw_h,
-                        scale_x,
-                        scale_y,
-                    );
-                    tile_x += tile_w;
-                }
-            }
-            tile_y += tile_h;
+            self.draw_hfx_clipped_scaled(
+                sprite_id, cell_x, cell_y, cell_w, cell_h, scale_x, scale_y,
+            );
         }
         true
     }
@@ -3007,6 +3088,15 @@ mod tests {
             [1046, 1047, 1048, 1050, 1051, 1049, 1052, 1053, 1054]
         );
         assert_eq!(HFX_CONSTRUCTION_BLOCKED_OVERLAY, 1055);
+        assert_eq!(HFX_CONSTRUCTION_PAGE_TEXTURE, 712);
+        assert_eq!(
+            HFX_CONSTRUCTION_PAGE_FRAME,
+            [707, 709, 708, 710, 0, 711, 559, 562, 560]
+        );
+        assert_eq!(
+            HFX_SIDEBAR_INFO_FRAME,
+            [701, 703, 702, 704, 706, 705, 559, 562, 560]
+        );
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
@@ -3136,7 +3226,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 134);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 149);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3147,6 +3237,13 @@ mod tests {
             .chain(HFX_CONSTRUCTION_ICONS.iter())
             .chain(HFX_CONSTRUCTION_ICONS_HOVER.iter())
             .chain(std::iter::once(&HFX_CONSTRUCTION_BLOCKED_OVERLAY))
+            .chain(std::iter::once(&HFX_CONSTRUCTION_PAGE_TEXTURE))
+            .chain(
+                HFX_CONSTRUCTION_PAGE_FRAME
+                    .iter()
+                    .filter(|&&sprite_id| sprite_id != 0),
+            )
+            .chain(HFX_SIDEBAR_INFO_FRAME.iter())
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())
