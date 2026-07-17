@@ -131,6 +131,14 @@ fn preferred_window_size(
     )
 }
 
+/// The regular interactive window keeps a practical minimum size, while an
+/// explicit physical capture must honor the caller's requested framebuffer.
+fn minimum_inner_window_size(window_size: Option<(u32, u32)>) -> Option<LogicalSize<f64>> {
+    window_size
+        .is_none()
+        .then(|| LogicalSize::new(1024.0, 720.0))
+}
+
 fn confirm_quit(deadline: &mut Option<Instant>, now: Instant) -> bool {
     if deadline.is_some_and(|until| now <= until) {
         *deadline = None;
@@ -2850,6 +2858,9 @@ impl App {
             scale_x,
             scale_y,
         );
+        // The status portrait uses the native brown e01 composite at the
+        // logical 30×35 button rect. Its transparent centre preserves the
+        // black portrait field drawn above.
         hud.draw_hfx_stretched(
             hud::HFX_STATUS_AVATAR_COMPOSITE,
             avatar_x,
@@ -4044,16 +4055,14 @@ impl ApplicationHandler for App {
                     })
                     .unwrap_or_else(|| LogicalSize::new(1400.0, 900.0).into())
             });
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    WindowAttributes::default()
-                        .with_title(APP_TITLE)
-                        .with_inner_size(initial_size)
-                        .with_min_inner_size(LogicalSize::new(1024.0, 720.0)),
-                )
-                .unwrap(),
-        );
+        let attributes = WindowAttributes::default()
+            .with_title(APP_TITLE)
+            .with_inner_size(initial_size);
+        let attributes = match minimum_inner_window_size(self.engine.config.window_size) {
+            Some(minimum_size) => attributes.with_min_inner_size(minimum_size),
+            None => attributes,
+        };
+        let window = Arc::new(event_loop.create_window(attributes).unwrap());
         self.window = Some(window.clone());
 
         let gpu = pollster::block_on(GpuContext::new(window));
@@ -5474,6 +5483,15 @@ mod tests {
             preferred_window_size(800, 600, 1.0),
             LogicalSize::new(1024.0, 720.0),
         );
+    }
+
+    #[test]
+    fn explicit_capture_size_has_no_interactive_minimum() {
+        assert_eq!(
+            minimum_inner_window_size(None),
+            Some(LogicalSize::new(1024.0, 720.0))
+        );
+        assert_eq!(minimum_inner_window_size(Some((640, 480))), None);
     }
 
     #[test]
