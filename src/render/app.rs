@@ -2825,7 +2825,7 @@ impl App {
             0.0,
             layout.panel_y,
             layout.sidebar_w,
-            layout.screen_h - layout.panel_y,
+            layout.panel_h,
             scale_x,
             scale_y,
         );
@@ -2834,7 +2834,7 @@ impl App {
             0.0,
             layout.panel_y,
             layout.sidebar_w,
-            layout.screen_h - layout.panel_y,
+            layout.panel_h,
             scale_x,
             scale_y,
         );

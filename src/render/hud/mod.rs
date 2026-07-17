@@ -72,6 +72,11 @@ pub struct HudLayout {
     pub status_y: f32,
     pub status_h: f32,
     pub panel_y: f32,
+    /// Physical height of the construction page after the original 16.16
+    /// panel conversion.  This can extend one pixel below the drawable
+    /// surface at non-native resolutions; PopTB lets the renderer clip it
+    /// rather than shortening the source panel rectangle.
+    pub panel_h: f32,
     pub construction_cell_w: f32,
     pub construction_cell_h: f32,
     pub line_h: f32,
@@ -896,6 +901,7 @@ pub fn compute_hud_layout(screen_w: f32, screen_h: f32) -> HudLayout {
         status_y: mana.y as f32,
         status_h: (info.y + info.h - mana.y) as f32,
         panel_y,
+        panel_h: page.h as f32,
         construction_cell_w,
         construction_cell_h,
         line_h,
@@ -3320,6 +3326,7 @@ mod tests {
         assert_eq!(l.tab_h, 27.0);
         assert_eq!(l.tab_xs, [0.0, 31.0, 63.0]);
         assert_eq!(l.panel_y, 203.0);
+        assert_eq!(l.panel_h, 277.0);
         assert_eq!(l.construction_cell_w, 46.0);
         assert_eq!(l.construction_cell_h, 52.0);
     }
@@ -3341,6 +3348,9 @@ mod tests {
         assert_eq!(l.mm_h, 192.0);
         assert_eq!(l.tab_y, 163.0);
         assert_eq!(l.panel_y, 407.0);
+        // The original's independently truncated fixed-point bounds produce
+        // a one-pixel overhang here. The GPU clips it at the screen edge.
+        assert_eq!(l.panel_h, 554.0);
     }
 
     #[test]

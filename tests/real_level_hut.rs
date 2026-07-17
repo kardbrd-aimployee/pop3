@@ -1,10 +1,11 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use pop3::data::level::{LevelDefinition, LevelRes, ObjectPaths};
-use pop3::data::objects::{Object3D, ShapeFootprints};
+use pop3::data::objects::{mk_pop_object, Object3D, ShapeFootprints};
 use pop3::data::psfb::ContainerPSFB;
 use pop3::data::types::BinDeserializer;
-use pop3::data::units::ModelType;
+use pop3::data::units::{building_obj_index, ModelType};
 use pop3::engine::buildings::{BuildingCatalog, BuildingSubtype};
 use pop3::engine::objects::CellGrid;
 use pop3::engine::{GameAction, GameSession};
@@ -214,6 +215,60 @@ fn real_level_one_hut_vertical_slice() {
             .filter(|(_, h, p)| h.tribe == 0 && p.alive)
             .count()
     );
+}
+
+/// Level 18 is the original game's compact building-set reference: it places
+/// every non-hut construction model that this reconstruction currently
+/// supports. Keep this integration check tied to the extracted level data so
+/// a missing object-bank mapping cannot silently leave a native building
+/// invisible in the rendered collection view.
+#[test]
+#[ignore = "requires legally owned POP3_DATA_DIR assets"]
+fn real_level_eighteen_building_collection_has_native_meshes() {
+    let base = PathBuf::from(
+        std::env::var("POP3_DATA_DIR").expect("set POP3_DATA_DIR to the Populous 3 data root"),
+    );
+    let level = LevelRes::new(&base, 18, None);
+    let expected_subtypes = BTreeSet::from([2_u8, 3, 4, 5, 6, 7, 8, 13]);
+    let building_records: Vec<_> = level
+        .units
+        .iter()
+        .filter(|raw| {
+            raw.model_type() == Some(ModelType::Building) && raw.loc_x() != 0 && raw.loc_y() != 0
+        })
+        .collect();
+    let found_subtypes: BTreeSet<_> = building_records.iter().map(|raw| raw.subtype).collect();
+    assert_eq!(found_subtypes, expected_subtypes);
+
+    let (building_objects, _) = Object3D::load_dual_banks(&base, level.obj_bank);
+    for raw in building_records {
+        let index = building_obj_index(raw.subtype, raw.tribe_index()).unwrap_or_else(|| {
+            panic!(
+                "Level 18 building subtype {} for tribe {} must map to an original object",
+                raw.subtype,
+                raw.tribe_index()
+            )
+        });
+        let object = building_objects
+            .get(index)
+            .and_then(Option::as_ref)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Level 18 building subtype {} must resolve native object index {index}",
+                    raw.subtype
+                )
+            });
+        let mesh = mk_pop_object(object);
+        assert!(
+            !mesh.vertices.is_empty() && mesh.vertices.len() % 3 == 0,
+            "Level 18 building subtype {} must produce a native triangle list",
+            raw.subtype,
+        );
+        assert!(
+            mesh.indices.is_empty(),
+            "native object meshes are face-expanded and must retain their non-indexed draw path"
+        );
+    }
 }
 
 trait Applied {
