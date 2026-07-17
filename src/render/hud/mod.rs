@@ -104,6 +104,26 @@ fn native_nine_patch_vertical_edge_bounds(
     ))
 }
 
+/// Centre clip rectangle from `GUI_RenderNinePatch` (`popTB.exe` `0x406231`).
+/// The source starts after the left edge but behind the top edge, then stops
+/// above the bottom edge.  It uses the left-edge width at both horizontal
+/// bounds; the original HUD frame tables have symmetric side dimensions.
+fn native_nine_patch_centre_bounds(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    left_w: f32,
+    bottom_h: f32,
+) -> (f32, f32, f32, f32) {
+    (
+        x + left_w,
+        y,
+        (width - left_w * 2.0).max(0.0),
+        (height - bottom_h).max(0.0),
+    )
+}
+
 /// Locate the source tile that contains the leading edge of a clipped tiled
 /// rectangle.  PopTB starts several texture passes at virtual coordinate zero
 /// and relies on a clipping rectangle rather than restarting the tile pattern
@@ -2723,26 +2743,19 @@ impl HudRenderer {
         let left_w = self
             .hfx_size(sprite_ids[3])
             .map_or(tl_w, |(tile_w, _)| tile_w as f32 * scale_x);
-        let right_w = self
-            .hfx_size(sprite_ids[5])
-            .map_or(tr_w, |(tile_w, _)| tile_w as f32 * scale_x);
-        let top_h = self
-            .hfx_size(sprite_ids[1])
-            .map_or(tl_h, |(_, tile_h)| tile_h as f32 * scale_y);
         let bottom_h = self
             .hfx_size(sprite_ids[7])
             .map_or(bl_h, |(_, tile_h)| tile_h as f32 * scale_y);
 
-        // The original compositor paints its full-size centre texture first,
-        // then overlays each independently sized edge and corner.
-        let centre_x = x + left_w;
-        // `GUI_RenderNinePatch` (0x406231) adds the top-edge sprite's
-        // native height before tiling the centre.  The top-right corner can
-        // be taller (the #706 information-panel family is 4px vs 8px), so
-        // using `tr_h` here shifts the extracted centre artwork downward.
-        let centre_y = y + top_h;
-        let centre_w = (width - left_w - right_w).max(0.0);
-        let centre_h = (height - top_h - bottom_h).max(0.0);
+        // `GUI_RenderNinePatch` (0x406231) tiles its full-size centre from
+        // the panel's top edge, then paints the top frame over it.  The
+        // centre consequently remains visible through transparent top-edge
+        // pixels; starting it below `top_h` leaves a strip of the unrelated
+        // layer beneath those source pixels.  Horizontally the centre begins
+        // after the left edge, while vertically it extends only to the top
+        // of the bottom edge.
+        let (centre_x, centre_y, centre_w, centre_h) =
+            native_nine_patch_centre_bounds(x, y, width, height, left_w, bottom_h);
         if sprite_ids[4] != 0 {
             self.draw_hfx_tiled_scaled(
                 sprite_ids[4],
@@ -3525,6 +3538,18 @@ mod tests {
         positions.push(final_y);
 
         assert_eq!(positions, vec![8.0, 16.0, 24.0, 32.0, 36.0]);
+    }
+
+    #[test]
+    fn native_nine_patch_centre_runs_behind_the_top_edge() {
+        // `GUI_RenderNinePatch` clips a 46×52 construction cell's centre
+        // from x=8/y=0 through x=38/y=44, then paints its top edge and
+        // corners over that first 8px band. Starting at y=8 would expose the
+        // underlying page texture through transparent edge pixels.
+        assert_eq!(
+            native_nine_patch_centre_bounds(0.0, 0.0, 46.0, 52.0, 8.0, 8.0),
+            (8.0, 0.0, 30.0, 44.0)
+        );
     }
 
     #[test]
