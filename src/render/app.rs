@@ -206,14 +206,11 @@ fn confirm_quit(deadline: &mut Option<Instant>, now: Instant) -> bool {
     }
 }
 
-/// The native construction page raises only its open hut tab.  The other two
-/// silhouettes remain visibly present but use their dark idle frame.
-fn construction_slice_tab_frame(index: usize) -> &'static [u16; 9] {
-    if index == 0 {
-        &hud::HFX_TAB_FRAME_SELECTED
-    } else {
-        &hud::HFX_TAB_FRAME
-    }
+/// The native in-game construction capture keeps all three top cells on the
+/// dark idle nine-patch.  The active construction mode is conveyed by the
+/// open page below, rather than by the bright hover/pressed frame family.
+fn construction_slice_tab_frame(_index: usize) -> &'static [u16; 9] {
+    &hud::HFX_TAB_FRAME
 }
 
 /// The playable construction slice starts with the native Level 1 baseline:
@@ -5760,11 +5757,8 @@ mod tests {
     }
 
     #[test]
-    fn construction_tab_uses_the_native_selected_frame() {
-        assert_eq!(
-            construction_slice_tab_frame(0),
-            &hud::HFX_TAB_FRAME_SELECTED
-        );
+    fn construction_tab_uses_the_dark_native_reference_frame() {
+        assert_eq!(construction_slice_tab_frame(0), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(1), &hud::HFX_TAB_FRAME);
         assert_eq!(construction_slice_tab_frame(2), &hud::HFX_TAB_FRAME);
     }
