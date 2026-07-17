@@ -654,7 +654,8 @@ impl GameEngine {
             );
             dots
         } else {
-            self.unit_coordinator
+            let mut dots: Vec<_> = self
+                .unit_coordinator
                 .units()
                 .iter()
                 .filter(|u| u.alive)
@@ -668,7 +669,22 @@ impl GameEngine {
                         MinimapMarkerKind::Person
                     },
                 })
-                .collect()
+                .collect();
+            // Before a simulation session is started, people have been moved
+            // into the live coordinator but static level buildings remain in
+            // `level_objects`.  The original minimap draws both passes.
+            dots.extend(
+                self.level_objects
+                    .iter()
+                    .filter(|object| object.model_type == ModelType::Building)
+                    .map(|building| MinimapDot {
+                        cell_x: (building.cell_x as u8).min(127),
+                        cell_y: (building.cell_y as u8).min(127),
+                        tribe_index: building.tribe_index,
+                        kind: MinimapMarkerKind::Building,
+                    }),
+            );
+            dots
         };
         let minimap = MinimapData {
             heights: *self.landscape_mesh.heights(),
