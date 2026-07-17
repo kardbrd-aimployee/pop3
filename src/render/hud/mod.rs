@@ -859,7 +859,18 @@ pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 /// to the closest entry in the active landscape palette. They are then used
 /// by the status callbacks through the four-byte colour table at 0x884c8c.
 pub const HFX_STATUS_PALETTE_WHITE: [u8; 3] = [255, 255, 255];
+pub const HFX_STATUS_PALETTE_DARK: [u8; 3] = [12, 12, 12];
 pub const HFX_STATUS_PALETTE_GREEN: [u8; 3] = [0, 255, 0];
+
+/// `FUN_00402b70`'s e20 status-meter strip table at `0x577a70`.  The source
+/// renderer paints a one-pixel strip every two pixels over its dark inset;
+/// these are palette *indices*, deliberately not replacement RGB colours.
+pub const HFX_STATUS_METER_NORMAL_EMPTY: u8 = 0xaf;
+pub const HFX_STATUS_METER_NORMAL_FILLED: u8 = 0x82;
+pub const HFX_STATUS_METER_OVERRUN_EMPTY: u8 = 0xe1;
+pub const HFX_STATUS_METER_OVERRUN_FILLED: u8 = 0xe7;
+pub const HFX_STATUS_METER_OVERRUN_START_NUMERATOR: u32 = 200;
+pub const HFX_STATUS_METER_OVERRUN_START_DENOMINATOR: u32 = 256;
 
 /// In-game construction-button frame tiles, in nine-patch order.  Every
 /// house-tab element record at `0x576c20` points to `FUN_004018a0`; its

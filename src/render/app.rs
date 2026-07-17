@@ -3035,9 +3035,10 @@ impl App {
             }
         }
 
-        // e20 is not a precomposed meter sprite. The original callback draws
-        // the e02-style outer rim, then fills its inset in two-pixel palette
-        // columns. These palette entries are the original HUD colours.
+        // e20 is not a precomposed meter sprite. `FUN_00402b70` draws the
+        // e02-style outer rim, fills its inset with the palette-resolved dark
+        // base, then paints one native-colour strip every two pixels.  Its
+        // static table at 0x577a70 changes colour at 200/256 of the inset.
         let population_meter = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[20]);
         let meter_x = population_meter.x as f32;
         let meter_y = population_meter.y as f32;
@@ -3058,15 +3059,41 @@ impl App {
         let inner_y = meter_y + inset_y;
         let inner_w = (meter_w - inset_x * 2.0).max(0.0);
         let inner_h = (meter_h - inset_y * 2.0).max(0.0);
-        hud.draw_hfx_palette_rect(inner_x, inner_y, inner_w, inner_h, 0xe1);
-        let population_fraction = compute_population_fraction(
-            hud_state.player_population,
-            hud_state.player_max_population,
-        );
-        let column_w = 2.0 * scale_x;
-        let fill_w = ((inner_w * population_fraction) / column_w).floor() * column_w;
-        if fill_w > 0.0 {
-            hud.draw_hfx_palette_rect(inner_x + inner_w - fill_w, inner_y, fill_w, inner_h, 0xe7);
+        let status_palette_dark = hud.resolve_hfx_palette_color(hud::HFX_STATUS_PALETTE_DARK);
+        hud.draw_hfx_palette_rect(inner_x, inner_y, inner_w, inner_h, status_palette_dark);
+        let inner_width_px = (inner_w / scale_x).round().max(0.0) as u32;
+        // The original callback receives a wider internal counter range than
+        // this Rust HUD exposes.  Its two colour bands remain exact below;
+        // this high-level fill stays saturated at the game's housing cap.
+        let fill_width_px = (inner_width_px as f32
+            * compute_population_fraction(
+                hud_state.player_population,
+                hud_state.player_max_population,
+            ))
+        .floor() as u32;
+        let overrun_start_px = inner_width_px * hud::HFX_STATUS_METER_OVERRUN_START_NUMERATOR
+            / hud::HFX_STATUS_METER_OVERRUN_START_DENOMINATOR;
+        let stripe_width = scale_x;
+        for stripe_x_px in (0..inner_width_px).step_by(2) {
+            let is_filled = stripe_x_px < fill_width_px;
+            let palette_index = if stripe_x_px < overrun_start_px {
+                if is_filled {
+                    hud::HFX_STATUS_METER_NORMAL_FILLED
+                } else {
+                    hud::HFX_STATUS_METER_NORMAL_EMPTY
+                }
+            } else if is_filled {
+                hud::HFX_STATUS_METER_OVERRUN_FILLED
+            } else {
+                hud::HFX_STATUS_METER_OVERRUN_EMPTY
+            };
+            hud.draw_hfx_palette_rect(
+                inner_x + stripe_x_px as f32 * scale_x,
+                inner_y,
+                stripe_width.min(inner_w - stripe_x_px as f32 * scale_x),
+                inner_h,
+                palette_index,
+            );
         }
 
         // Construction page: the original house tab uses a two-column HFX
