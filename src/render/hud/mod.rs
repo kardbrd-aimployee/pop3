@@ -783,16 +783,16 @@ pub const FONT4_HUD_GLYPH_IDS: &[u16] = &[FONT4_STATUS_GLYPH_I];
 /// It is the original status-avatar pose used by the reference HUD.
 pub const HSPR_STATUS_AVATAR_BLUE: u16 = 6887;
 
-/// In-game construction-button frame tiles, in nine-patch order.  The house
-/// tab is rendered by `0x401d10`, whose normal frame table is separate from
-/// the spell renderer's table: `popTB.exe` `0x575490`.
-pub const HFX_BUILDING_FRAME: [u16; 9] = [821, 825, 822, 827, 829, 828, 823, 826, 824];
+/// In-game construction-button frame tiles, in nine-patch order.  Every
+/// house-tab element record at `0x576c20` points to `FUN_004018a0`; its
+/// normal frame table is `popTB.exe` `0x575448`.
+pub const HFX_BUILDING_FRAME: [u16; 9] = [794, 798, 795, 800, 802, 801, 796, 799, 797];
 
-/// Native construction-button hover frame (`popTB.exe` `0x5754a8`).
-pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [839, 843, 840, 845, 847, 846, 841, 844, 842];
+/// Native construction-button hover frame (`FUN_004018a0`, `0x575460`).
+pub const HFX_BUILDING_FRAME_HOVER: [u16; 9] = [812, 816, 813, 818, 820, 819, 814, 817, 815];
 
-/// Native construction-button pressed frame (`popTB.exe` `0x5754c0`).
-pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [830, 834, 831, 836, 838, 837, 832, 835, 833];
+/// Native construction-button pressed frame (`FUN_004018a0`, `0x575478`).
+pub const HFX_BUILDING_FRAME_PRESSED: [u16; 9] = [803, 807, 804, 809, 811, 810, 805, 808, 806];
 
 /// Visual state selected by the original construction-button renderer.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1044,33 +1044,33 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     760,
     763,
     761,
-    821,
-    825,
-    822,
-    827,
-    829,
-    828,
-    823,
-    826,
-    824,
-    839,
-    843,
-    840,
-    845,
-    847,
-    846,
-    841,
-    844,
-    842,
-    830,
-    834,
-    831,
-    836,
-    838,
-    837,
-    832,
-    835,
-    833,
+    794,
+    798,
+    795,
+    800,
+    802,
+    801,
+    796,
+    799,
+    797,
+    812,
+    816,
+    813,
+    818,
+    820,
+    819,
+    814,
+    817,
+    815,
+    803,
+    807,
+    804,
+    809,
+    811,
+    810,
+    805,
+    808,
+    806,
     676,
     678,
     680,
@@ -2190,8 +2190,10 @@ impl HudRenderer {
     }
 
     /// Draw one original HFX nine-patch at an independently scaled panel
-    /// rectangle.  This matches the binary's separate 640-wide/480-high
-    /// virtual-coordinate conversion.
+    /// rectangle.  PopTB repeats the 8-pixel source tiles along each edge and
+    /// through the centre, clipping the final tile.  It does not stretch one
+    /// source tile over an entire cell: doing that loses the original dither
+    /// and makes construction-frame borders visibly too smooth.
     pub fn draw_hfx_nine_patch_scaled(
         &mut self,
         sprite_ids: &[u16; 9],
@@ -2205,27 +2207,74 @@ impl HudRenderer {
         let Some((corner_w, corner_h)) = self.hfx_size(sprite_ids[0]) else {
             return false;
         };
-        let corner_w = (corner_w as f32 * scale_x).min(width * 0.5);
-        let corner_h = (corner_h as f32 * scale_y).min(height * 0.5);
+        let tile_w = corner_w as f32 * scale_x;
+        let tile_h = corner_h as f32 * scale_y;
+        if width <= 0.0 || height <= 0.0 || tile_w <= 0.0 || tile_h <= 0.0 {
+            return false;
+        }
+        let corner_w = tile_w.min(width * 0.5);
+        let corner_h = tile_h.min(height * 0.5);
         let x1 = x + corner_w;
         let y1 = y + corner_h;
         let x2 = x + width - corner_w;
         let y2 = y + height - corner_h;
-        let cells = [
-            (sprite_ids[0], x, y, corner_w, corner_h),
-            (sprite_ids[1], x1, y, x2 - x1, corner_h),
-            (sprite_ids[2], x2, y, corner_w, corner_h),
-            (sprite_ids[3], x, y1, corner_w, y2 - y1),
-            (sprite_ids[4], x1, y1, x2 - x1, y2 - y1),
-            (sprite_ids[5], x2, y1, corner_w, y2 - y1),
-            (sprite_ids[6], x, y2, corner_w, corner_h),
-            (sprite_ids[7], x1, y2, x2 - x1, corner_h),
-            (sprite_ids[8], x2, y2, corner_w, corner_h),
-        ];
-        for (sprite_id, cell_x, cell_y, cell_w, cell_h) in cells {
-            if sprite_id != 0 && cell_w > 0.0 && cell_h > 0.0 {
-                self.draw_hfx_stretched(sprite_id, cell_x, cell_y, cell_w, cell_h);
+
+        // Corners are always one native source tile.  Clipping also handles
+        // the defensive case of a widget smaller than two corners.
+        for (sprite_id, cell_x, cell_y) in [
+            (sprite_ids[0], x, y),
+            (sprite_ids[2], x2, y),
+            (sprite_ids[6], x, y2),
+            (sprite_ids[8], x2, y2),
+        ] {
+            if sprite_id != 0 {
+                self.draw_hfx_clipped_scaled(
+                    sprite_id, cell_x, cell_y, corner_w, corner_h, scale_x, scale_y,
+                );
             }
+        }
+
+        let mut tile_x = x1;
+        while tile_x < x2 {
+            let draw_w = tile_w.min(x2 - tile_x);
+            for (sprite_id, tile_y) in [(sprite_ids[1], y), (sprite_ids[7], y2)] {
+                if sprite_id != 0 {
+                    self.draw_hfx_clipped_scaled(
+                        sprite_id, tile_x, tile_y, draw_w, corner_h, scale_x, scale_y,
+                    );
+                }
+            }
+            tile_x += tile_w;
+        }
+
+        let mut tile_y = y1;
+        while tile_y < y2 {
+            let draw_h = tile_h.min(y2 - tile_y);
+            for (sprite_id, tile_x) in [(sprite_ids[3], x), (sprite_ids[5], x2)] {
+                if sprite_id != 0 {
+                    self.draw_hfx_clipped_scaled(
+                        sprite_id, tile_x, tile_y, corner_w, draw_h, scale_x, scale_y,
+                    );
+                }
+            }
+
+            if sprite_ids[4] != 0 {
+                let mut tile_x = x1;
+                while tile_x < x2 {
+                    let draw_w = tile_w.min(x2 - tile_x);
+                    self.draw_hfx_clipped_scaled(
+                        sprite_ids[4],
+                        tile_x,
+                        tile_y,
+                        draw_w,
+                        draw_h,
+                        scale_x,
+                        scale_y,
+                    );
+                    tile_x += tile_w;
+                }
+            }
+            tile_y += tile_h;
         }
         true
     }
@@ -2898,15 +2947,15 @@ mod tests {
         assert_eq!(FONT4_HUD_GLYPH_IDS, [FONT4_STATUS_GLYPH_I]);
         assert_eq!(
             HFX_BUILDING_FRAME,
-            [821, 825, 822, 827, 829, 828, 823, 826, 824]
+            [794, 798, 795, 800, 802, 801, 796, 799, 797]
         );
         assert_eq!(
             HFX_BUILDING_FRAME_HOVER,
-            [839, 843, 840, 845, 847, 846, 841, 844, 842]
+            [812, 816, 813, 818, 820, 819, 814, 817, 815]
         );
         assert_eq!(
             HFX_BUILDING_FRAME_PRESSED,
-            [830, 834, 831, 836, 838, 837, 832, 835, 833]
+            [803, 807, 804, 809, 811, 810, 805, 808, 806]
         );
         assert_eq!(
             HFX_PANEL_SURFACE_TILES,
