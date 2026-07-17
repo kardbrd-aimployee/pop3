@@ -2756,12 +2756,27 @@ impl App {
         );
         hud.mark_minimap_split();
 
-        // Elements e21 and e22 are overlapping textured information panels
-        // behind the compact status widgets.  `FUN_00405e40` draws them in
-        // this native order using the #706-centred table at 0x575250.
+        // The panel manager links children at its list head, so the sidebar
+        // renders them in reverse element-table order: e24's canvas first,
+        // then e23, e22, e21, and finally the status controls.  e23 is the
+        // native #700 texture behind the lower part of the tab/status seam.
+        let status_surface = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[23]);
+        hud.draw_hfx_tiled_scaled(
+            hud::HFX_SIDEBAR_STATUS_TEXTURE,
+            status_surface.x as f32,
+            status_surface.y as f32,
+            status_surface.w as f32,
+            status_surface.h as f32,
+            scale_x,
+            scale_y,
+        );
+
+        // e22 and e21 are the two overlapping #706-centred information
+        // panels.  This reverse order preserves e21 over e22 in their shared
+        // 149–174px band, as the original linked-list compositor does.
         for element in [
-            &hud::layout::SIDEBAR_ELEMENTS[21],
             &hud::layout::SIDEBAR_ELEMENTS[22],
+            &hud::layout::SIDEBAR_ELEMENTS[21],
         ] {
             let block = sidebar_element_rect(element);
             hud.draw_hfx_nine_patch_scaled(

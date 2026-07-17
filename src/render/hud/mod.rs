@@ -945,6 +945,12 @@ pub const HFX_CONSTRUCTION_PAGE_FRAME: [u16; 9] = [707, 709, 708, 710, 0, 711, 5
 /// cycle underneath the rest of the sidebar.
 pub const HFX_SIDEBAR_INFO_FRAME: [u16; 9] = [701, 703, 702, 704, 706, 705, 559, 562, 560];
 
+/// Sidebar element e23 (`FUN_00405ec0`) tiles this texture at virtual rect
+/// `(0, 90, 100, 32)`.  The panel manager renders child elements in reverse
+/// creation order, so this sits above the minimap canvas but below the tab
+/// frames and status controls.
+pub const HFX_SIDEBAR_STATUS_TEXTURE: u16 = 700;
+
 /// Native construction commands represented by the original house-tab
 /// glyphs.  These are command ids, not the `cmd` values used by the panel
 /// manager to route clicks between controls.
@@ -1183,6 +1189,7 @@ pub const HFX_HUD_SPRITE_IDS: &[u16] = &[
     559,
     560,
     562,
+    HFX_SIDEBAR_STATUS_TEXTURE,
     701,
     702,
     703,
@@ -3097,6 +3104,7 @@ mod tests {
             HFX_SIDEBAR_INFO_FRAME,
             [701, 703, 702, 704, 706, 705, 559, 562, 560]
         );
+        assert_eq!(HFX_SIDEBAR_STATUS_TEXTURE, 700);
         assert_eq!(construction_icon_sprite(0, false), Some(1028));
         assert_eq!(construction_icon_sprite(5, true), Some(1049));
         assert_eq!(construction_icon_sprite(9, false), None);
@@ -3226,7 +3234,7 @@ mod tests {
     #[test]
     fn construction_tab_hfx_assets_include_both_frame_states_and_all_icons() {
         assert_eq!(HFX_TAB_ICONS, [676, 678, 680]);
-        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 149);
+        assert_eq!(HFX_HUD_SPRITE_IDS.len(), 150);
 
         for sprite_id in HFX_TAB_FRAME
             .iter()
@@ -3244,6 +3252,7 @@ mod tests {
                     .filter(|&&sprite_id| sprite_id != 0),
             )
             .chain(HFX_SIDEBAR_INFO_FRAME.iter())
+            .chain(std::iter::once(&HFX_SIDEBAR_STATUS_TEXTURE))
             .chain(HFX_STATUS_AVATAR_FRAME.iter())
             .chain(HFX_STATUS_GLOBE_FRAME.iter())
             .chain(HFX_STATUS_SMALL_FRAME.iter())
