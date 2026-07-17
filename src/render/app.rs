@@ -73,9 +73,9 @@ use crate::engine::{translate_key, FrameState, GameCommand};
 use crate::engine::{GameAction, GameSession};
 
 use crate::render::hud::{
-    self, compute_mana_fraction, compute_population_fraction, HealthBarEntry, HealthBarType,
-    HudRenderer, HudState, HudTab, MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry,
-    SelectedEntityInfo, TribePopulation, HUD_TRIBE_COLORS,
+    self, compute_population_fraction, HealthBarEntry, HealthBarType, HudRenderer, HudState,
+    HudTab, MinimapData, MinimapDot, MinimapMarkerKind, PanelEntry, SelectedEntityInfo,
+    TribePopulation, HUD_TRIBE_COLORS,
 };
 
 /******************************************************************************/
@@ -2959,7 +2959,7 @@ impl App {
         );
 
         // The construction-only sidebar has only the two live quick-row
-        // controls seen in the native capture: mana and follower status.
+        // controls seen in the native capture: population and follower status.
         // Empty spell slots are not rendered as invented button frames.
         for slot in 0..2 {
             let cell = sidebar_element_rect(&hud::layout::SIDEBAR_ELEMENTS[13 + slot]);
@@ -2989,9 +2989,15 @@ impl App {
                 let meter_w = cell_w - inset_x * 2.0;
                 let meter_h = cell_h - inset_y * 2.0;
                 hud.draw_hfx_palette_rect(meter_x, meter_y, meter_w, meter_h, status_palette_white);
-                let mana_fraction =
-                    compute_mana_fraction(hud_state.player_mana, hud_state.player_max_mana);
-                let fill_h = meter_h * mana_fraction;
+                // e13's native callback (`FUN_00404ae0`) totals the five
+                // person classes and compares them with its three-tier hut
+                // capacity.  The cell's green fill is therefore population,
+                // not the spell-mana value formerly used by this remake.
+                let population_fraction = compute_population_fraction(
+                    hud_state.player_population,
+                    hud_state.player_max_population,
+                );
+                let fill_h = meter_h * population_fraction;
                 hud.draw_hfx_palette_rect(
                     meter_x,
                     meter_y + meter_h - fill_h,
@@ -3012,26 +3018,6 @@ impl App {
                         scale_y,
                     );
                 }
-            }
-            if let Some((glyph_w, glyph_h)) = hud.font4_size(hud::FONT4_STATUS_GLYPH_I) {
-                let glyph_w = glyph_w as f32 * scale_x;
-                let glyph_h = glyph_h as f32 * scale_y;
-                let label_x = cell_x + (cell_w - glyph_w * 2.0) * 0.5;
-                let label_y = cell_y + cell_h - glyph_h;
-                hud.draw_font4_scaled(
-                    hud::FONT4_STATUS_GLYPH_I,
-                    label_x,
-                    label_y,
-                    scale_x,
-                    scale_y,
-                );
-                hud.draw_font4_scaled(
-                    hud::FONT4_STATUS_GLYPH_I,
-                    label_x + glyph_w,
-                    label_y,
-                    scale_x,
-                    scale_y,
-                );
             }
         }
 
