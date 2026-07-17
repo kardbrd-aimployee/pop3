@@ -82,6 +82,28 @@ pub struct HudLayout {
     pub line_h: f32,
 }
 
+/// Return the first and final positions of one vertical edge in PopTB's
+/// `GUI_RenderNinePatch` compositor.  The executable repeats full edge tiles
+/// from the top, then paints one extra tile flush with the lower corner.  That
+/// final pass deliberately overlaps the preceding repetition when the inner
+/// height is not a whole number of tile heights.
+fn native_nine_patch_vertical_edge_bounds(
+    panel_y: f32,
+    panel_h: f32,
+    top_left_h: f32,
+    bottom_left_h: f32,
+    edge_h: f32,
+) -> Option<(f32, f32)> {
+    if edge_h <= 0.0 || panel_h - top_left_h - bottom_left_h <= 0.0 {
+        return None;
+    }
+
+    Some((
+        panel_y + top_left_h,
+        panel_y + panel_h - bottom_left_h - edge_h,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Data contract: game logic → HUD
 // ---------------------------------------------------------------------------
@@ -2616,42 +2638,100 @@ impl HudRenderer {
             );
         }
 
-        let top_x = x + tl_w;
-        let top_w = (width - tl_w - tr_w).max(0.0);
-        if sprite_ids[1] != 0 {
-            self.draw_hfx_tiled_scaled(sprite_ids[1], top_x, y, top_w, top_h, scale_x, scale_y);
-        }
-        let bottom_x = x + bl_w;
-        let bottom_w = (width - bl_w - br_w).max(0.0);
-        if sprite_ids[7] != 0 {
-            self.draw_hfx_tiled_scaled(
-                sprite_ids[7],
-                bottom_x,
-                y + height - bottom_h,
-                bottom_w,
-                bottom_h,
-                scale_x,
-                scale_y,
-            );
+        // `GUI_RenderNinePatch` paints complete edge tiles, including the
+        // portions under its later corner pass.  Clipping the final tile to
+        // the inner rectangle seems equivalent for opaque art, but loses the
+        // native result wherever a corner has transparent pixels.  The
+        // executable also assumes the opposing frame dimensions are equal:
+        // it uses the top-left width for both horizontal bounds and the left
+        // edge dimensions for the right edge.  All extracted in-game tables
+        // obey that invariant.
+        let horizontal_start = x + tl_w;
+        let horizontal_end = x + width - tl_w;
+        for (sprite_id, edge_y) in [(sprite_ids[1], y), (sprite_ids[7], y + height - bottom_h)] {
+            if sprite_id == 0 {
+                continue;
+            }
+            let Some((native_w, native_h)) = self.hfx_size(sprite_id) else {
+                continue;
+            };
+            let tile_w = native_w as f32 * scale_x;
+            let tile_h = native_h as f32 * scale_y;
+            let mut tile_x = horizontal_start;
+            while tile_x < horizontal_end {
+                self.draw_hfx_clipped_scaled(
+                    sprite_id, tile_x, edge_y, tile_w, tile_h, scale_x, scale_y,
+                );
+                tile_x += tile_w;
+            }
         }
 
-        let left_y = y + tl_h;
-        let left_h = (height - tl_h - bl_h).max(0.0);
-        if sprite_ids[3] != 0 {
-            self.draw_hfx_tiled_scaled(sprite_ids[3], x, left_y, left_w, left_h, scale_x, scale_y);
-        }
-        let right_y = y + tr_h;
-        let right_h = (height - tr_h - br_h).max(0.0);
-        if sprite_ids[5] != 0 {
-            self.draw_hfx_tiled_scaled(
-                sprite_ids[5],
-                x + width - right_w,
-                right_y,
-                right_w,
-                right_h,
-                scale_x,
-                scale_y,
-            );
+        // The original vertical pass ends with a full tile whose lower edge
+        // is flush with the bottom-left corner.  It intentionally restarts
+        // that tile's source texels instead of clipping the next top-aligned
+        // repetition.  This is visible on every 52px construction button.
+        let left_edge = self
+            .hfx_size(sprite_ids[3])
+            .map(|(native_w, native_h)| (native_w as f32 * scale_x, native_h as f32 * scale_y));
+        let vertical_bounds = left_edge.and_then(|(_, edge_h)| {
+            native_nine_patch_vertical_edge_bounds(y, height, tl_h, bl_h, edge_h)
+        });
+        if let (Some((left_tile_w, left_tile_h)), Some((first_y, final_y))) =
+            (left_edge, vertical_bounds)
+        {
+            if sprite_ids[3] != 0 {
+                let mut tile_y = first_y;
+                while tile_y < final_y {
+                    self.draw_hfx_clipped_scaled(
+                        sprite_ids[3],
+                        x,
+                        tile_y,
+                        left_tile_w,
+                        left_tile_h,
+                        scale_x,
+                        scale_y,
+                    );
+                    tile_y += left_tile_h;
+                }
+                self.draw_hfx_clipped_scaled(
+                    sprite_ids[3],
+                    x,
+                    final_y,
+                    left_tile_w,
+                    left_tile_h,
+                    scale_x,
+                    scale_y,
+                );
+            }
+
+            if sprite_ids[5] != 0 {
+                if let Some((native_w, native_h)) = self.hfx_size(sprite_ids[5]) {
+                    let right_tile_w = native_w as f32 * scale_x;
+                    let right_tile_h = native_h as f32 * scale_y;
+                    let mut tile_y = first_y;
+                    while tile_y < final_y {
+                        self.draw_hfx_clipped_scaled(
+                            sprite_ids[5],
+                            x + width - left_w,
+                            tile_y,
+                            right_tile_w,
+                            right_tile_h,
+                            scale_x,
+                            scale_y,
+                        );
+                        tile_y += left_tile_h;
+                    }
+                    self.draw_hfx_clipped_scaled(
+                        sprite_ids[5],
+                        x + width - left_w,
+                        final_y,
+                        right_tile_w,
+                        right_tile_h,
+                        scale_x,
+                        scale_y,
+                    );
+                }
+            }
         }
 
         for (sprite_id, cell_x, cell_y, cell_w, cell_h) in [
@@ -3310,6 +3390,25 @@ mod tests {
     }
 
     // -- compute_hud_layout --
+
+    #[test]
+    fn native_nine_patch_vertical_edge_restarts_flush_with_bottom() {
+        // A construction slot is 52px tall with 8px corners and an 8px
+        // vertical edge.  PopTB paints top-aligned repetitions at 8, 16, 24
+        // and 32, then deliberately restarts the last edge tile at 36 so it
+        // meets the bottom corner at 44.
+        let (first_y, final_y) =
+            native_nine_patch_vertical_edge_bounds(0.0, 52.0, 8.0, 8.0, 8.0).unwrap();
+        let mut positions = Vec::new();
+        let mut y = first_y;
+        while y < final_y {
+            positions.push(y);
+            y += 8.0;
+        }
+        positions.push(final_y);
+
+        assert_eq!(positions, vec![8.0, 16.0, 24.0, 32.0, 36.0]);
+    }
 
     #[test]
     fn compute_hud_layout_base_resolution() {
