@@ -12,6 +12,27 @@ fn parse_light(s: &str) -> Option<(i16, i16)> {
     Some((parts[0].parse().ok()?, parts[1].parse().ok()?))
 }
 
+/// Parse a physical framebuffer size used for deterministic visual captures.
+///
+/// This deliberately accepts the compact `WIDTHxHEIGHT` form used by the
+/// original HUD evidence so a comparison does not depend on monitor scaling.
+fn parse_window_size(s: &str) -> Result<(u32, u32), String> {
+    let (width, height) = s
+        .trim()
+        .split_once(['x', 'X'])
+        .ok_or_else(|| "expected WIDTHxHEIGHT".to_owned())?;
+    let width = width
+        .parse::<u32>()
+        .map_err(|_| "width must be a positive integer".to_owned())?;
+    let height = height
+        .parse::<u32>()
+        .map_err(|_| "height must be a positive integer".to_owned())?;
+    if width == 0 || height == 0 {
+        return Err("width and height must be greater than zero".to_owned());
+    }
+    Ok((width, height))
+}
+
 fn cli() -> Command {
     let args = [
         Arg::new("base")
@@ -54,6 +75,12 @@ fn cli() -> Command {
             .value_name("SCRIPT_PATH")
             .value_parser(clap::value_parser!(PathBuf))
             .help("Replay key events from a script file"),
+        Arg::new("window-size")
+            .long("window-size")
+            .action(ArgAction::Set)
+            .value_name("WIDTHxHEIGHT")
+            .value_parser(parse_window_size)
+            .help("Use an exact physical framebuffer size for a visual capture"),
     ];
     Command::new("pop3").about("POP3 wgpu renderer").args(&args)
 }
@@ -72,6 +99,7 @@ fn main() {
             .get_one::<String>("light")
             .and_then(|s| parse_light(s)),
         script: matches.get_one("script").cloned(),
+        window_size: matches.get_one("window-size").copied(),
     };
 
     let log_level: &str = if config.debug { "debug" } else { "info" };
@@ -81,4 +109,22 @@ fn main() {
     env_logger::init_from_env(env);
 
     App::run(config);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_window_size;
+
+    #[test]
+    fn parse_window_size_accepts_physical_dimensions() {
+        assert_eq!(parse_window_size("3648x2500"), Ok((3648, 2500)));
+        assert_eq!(parse_window_size("1024X720"), Ok((1024, 720)));
+    }
+
+    #[test]
+    fn parse_window_size_rejects_missing_or_zero_dimensions() {
+        assert!(parse_window_size("1024").is_err());
+        assert!(parse_window_size("0x720").is_err());
+        assert!(parse_window_size("1024x0").is_err());
+    }
 }

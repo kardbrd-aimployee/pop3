@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalSize, Size};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -227,6 +227,8 @@ pub struct AppConfig {
     pub debug: bool,
     pub light: Option<(i16, i16)>,
     pub script: Option<PathBuf>,
+    /// Optional physical framebuffer size for deterministic visual capture.
+    pub window_size: Option<(u32, u32)>,
 }
 
 /// All game-logic state — no GPU types. Produces FrameState for the renderer.
@@ -4024,13 +4026,21 @@ impl ApplicationHandler for App {
             return;
         }
 
-        let initial_size = event_loop
-            .primary_monitor()
-            .map(|monitor| {
-                let size = monitor.size();
-                preferred_window_size(size.width, size.height, monitor.scale_factor())
-            })
-            .unwrap_or_else(|| LogicalSize::new(1400.0, 900.0));
+        let initial_size: Size = self
+            .engine
+            .config
+            .window_size
+            .map(|(width, height)| PhysicalSize::new(width, height).into())
+            .unwrap_or_else(|| {
+                event_loop
+                    .primary_monitor()
+                    .map(|monitor| {
+                        let size = monitor.size();
+                        preferred_window_size(size.width, size.height, monitor.scale_factor())
+                            .into()
+                    })
+                    .unwrap_or_else(|| LogicalSize::new(1400.0, 900.0).into())
+            });
         let window = Arc::new(
             event_loop
                 .create_window(
