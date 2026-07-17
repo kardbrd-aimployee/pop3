@@ -252,6 +252,20 @@ fn construction_hud_command_masks(level: &LevelRes) -> (u32, u32) {
     (construction_slice_initial_capabilities(), disabled_commands)
 }
 
+/// `FUN_00404ae0` does not render the engine's whole tribe total in e13.
+/// Its five source counters are the trained person classes; wild people and
+/// the shaman have no member in that compact population display.
+fn native_status_population_subtype(subtype: u8) -> bool {
+    matches!(
+        subtype,
+        PERSON_SUBTYPE_BRAVE
+            | PERSON_SUBTYPE_WARRIOR
+            | PERSON_SUBTYPE_PREACHER
+            | PERSON_SUBTYPE_SPY
+            | PERSON_SUBTYPE_FIREWARRIOR
+    )
+}
+
 /******************************************************************************/
 
 #[rustfmt::skip]
@@ -955,16 +969,43 @@ impl GameEngine {
             bars
         };
 
-        let (player_mana, player_population, player_max_population) = snapshot
+        let (player_mana, player_max_population) = snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.tribes.first())
             .map_or_else(
                 || {
                     let tribe = &self.game_world.tribes.tribes[0];
-                    (tribe.mana, tribe.population, tribe.max_population)
+                    (tribe.mana, tribe.max_population)
                 },
-                |tribe| (tribe.mana, tribe.population, tribe.max_population),
+                |tribe| (tribe.mana, tribe.max_population),
             );
+        // e13 totals its five independent person-class counters rather than
+        // using the tribe total.  In particular, a live shaman must not make
+        // the compact population field or its green fill one person larger.
+        let player_population = snapshot.as_ref().map_or_else(
+            || {
+                self.unit_coordinator
+                    .units()
+                    .iter()
+                    .filter(|unit| {
+                        unit.alive
+                            && unit.tribe_index == 0
+                            && native_status_population_subtype(unit.subtype)
+                    })
+                    .count() as u32
+            },
+            |snapshot| {
+                snapshot
+                    .persons
+                    .iter()
+                    .filter(|person| {
+                        person.alive
+                            && person.tribe == 0
+                            && native_status_population_subtype(person.subtype)
+                    })
+                    .count() as u32
+            },
+        );
         // Sidebar e14 is not a generic follower indicator: its source
         // callback reads the local tribe's person-class slot 2, i.e. braves.
         // Count the same live render records used by the in-world pass so the
@@ -5734,6 +5775,22 @@ mod tests {
             construction_slice_initial_capabilities(),
             hud::construction_command_bit(1) | hud::construction_command_bit(17)
         );
+    }
+
+    #[test]
+    fn native_status_population_uses_only_the_five_source_person_classes() {
+        for subtype in [
+            PERSON_SUBTYPE_BRAVE,
+            PERSON_SUBTYPE_WARRIOR,
+            PERSON_SUBTYPE_PREACHER,
+            PERSON_SUBTYPE_SPY,
+            PERSON_SUBTYPE_FIREWARRIOR,
+        ] {
+            assert!(native_status_population_subtype(subtype));
+        }
+        assert!(!native_status_population_subtype(PERSON_SUBTYPE_WILD));
+        assert!(!native_status_population_subtype(PERSON_SUBTYPE_SHAMAN));
+        assert!(!native_status_population_subtype(PERSON_SUBTYPE_AOD));
     }
 
     #[test]
