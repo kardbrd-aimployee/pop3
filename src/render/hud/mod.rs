@@ -2597,9 +2597,13 @@ impl HudRenderer {
         // The original compositor paints its full-size centre texture first,
         // then overlays each independently sized edge and corner.
         let centre_x = x + left_w;
-        let centre_y = y + tr_h;
+        // `GUI_RenderNinePatch` (0x406231) adds the top-edge sprite's
+        // native height before tiling the centre.  The top-right corner can
+        // be taller (the #706 information-panel family is 4px vs 8px), so
+        // using `tr_h` here shifts the extracted centre artwork downward.
+        let centre_y = y + top_h;
         let centre_w = (width - left_w - right_w).max(0.0);
-        let centre_h = (height - tr_h - bottom_h).max(0.0);
+        let centre_h = (height - top_h - bottom_h).max(0.0);
         if sprite_ids[4] != 0 {
             self.draw_hfx_tiled_scaled(
                 sprite_ids[4],
