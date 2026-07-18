@@ -221,21 +221,40 @@ fn construction_slice_tab_frame(_index: usize) -> &'static [u16; 9] {
 const NATIVE_TAB_DRAW_ORDER: [usize; 3] = [2, 0, 1];
 
 /// The playable construction slice starts with the native Level 1 baseline:
-/// the Small Hut and the Vault.  The original explicitly grants Vault
-/// command 17 to every loaded player at `popTB.exe` `0x00452cbd`; the Hut is
-/// the observed initial command in the native Level 1 HUD reference.
+/// the Small Hut and the final guard-post slot.  The original explicitly
+/// grants command 17 to every loaded player at `popTB.exe` `0x00452cbd`; the
+/// Hut is the observed initial command in the native Level 1 HUD reference.
 ///
 /// `LEVLSPC2.DAT` is only a shared setup template.  Its command-four bit is
 /// subsequently reconciled with campaign player state by the original, so it
 /// cannot be used as the final HUD mask in this standalone level loader.
-const CONSTRUCTION_SLICE_INITIAL_COMMANDS: &[u8] = &[1, 17];
+const CONSTRUCTION_SLICE_LEVEL_ONE_COMMANDS: &[u8] = &[1, 17];
 
-fn construction_slice_initial_capabilities() -> u32 {
-    CONSTRUCTION_SLICE_INITIAL_COMMANDS
+fn construction_slice_initial_capabilities(level_number: u8) -> u32 {
+    let mut capabilities = CONSTRUCTION_SLICE_LEVEL_ONE_COMMANDS
         .iter()
         .fold(0, |capabilities, &command| {
             capabilities | hud::construction_command_bit(command)
-        })
+        });
+
+    // The native Level 2 construction capture adds the Warrior Training Hut,
+    // and campaign construction knowledge remains available thereafter.
+    if level_number >= 2 {
+        capabilities |= hud::construction_command_bit(7);
+    }
+
+    // Level 18 exposes all nine native construction elements before the
+    // original all-buildings control is invoked.  Later campaign/custom level
+    // numbers keep that end-game capability set in this standalone loader.
+    if level_number >= 18 {
+        for slot in 0..hud::layout::CONSTRUCTION_PAGE.len() {
+            if let Some(command) = hud::construction_command_for_slot(slot) {
+                capabilities |= hud::construction_command_bit(command);
+            }
+        }
+    }
+
+    capabilities
 }
 
 /// Collect the two construction-page masks represented by this playable
@@ -253,7 +272,10 @@ fn construction_hud_command_masks(level: &LevelRes) -> (u32, u32) {
         .fold(0_u32, |mask, command| {
             mask | hud::construction_command_bit(command)
         });
-    (construction_slice_initial_capabilities(), disabled_commands)
+    (
+        construction_slice_initial_capabilities(level.level_number),
+        disabled_commands,
+    )
 }
 
 /// `FUN_00404ae0` does not render the engine's whole tribe total in e13.
@@ -5777,10 +5799,26 @@ mod tests {
     }
 
     #[test]
-    fn construction_slice_starts_with_the_native_level_one_commands() {
+    fn construction_slice_follows_native_campaign_checkpoints() {
         assert_eq!(
-            construction_slice_initial_capabilities(),
+            construction_slice_initial_capabilities(1),
             hud::construction_command_bit(1) | hud::construction_command_bit(17)
+        );
+        assert_eq!(
+            construction_slice_initial_capabilities(2),
+            hud::construction_command_bit(1)
+                | hud::construction_command_bit(7)
+                | hud::construction_command_bit(17)
+        );
+
+        let all_construction_commands = (0..hud::layout::CONSTRUCTION_PAGE.len())
+            .filter_map(hud::construction_command_for_slot)
+            .fold(0, |mask, command| {
+                mask | hud::construction_command_bit(command)
+            });
+        assert_eq!(
+            construction_slice_initial_capabilities(18),
+            all_construction_commands
         );
     }
 
