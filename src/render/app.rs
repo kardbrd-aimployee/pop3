@@ -1484,7 +1484,7 @@ pub struct App {
     do_render: bool,
 
     // Debug logging
-    debug_log: BufWriter<File>,
+    debug_log: Option<BufWriter<File>>,
     start_time: Instant,
 
     // Script replay
@@ -1534,10 +1534,19 @@ impl App {
 
         let debug_log_path = std::env::var_os("POP3_DEBUG_LOG")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/pop3_debug.jsonl"));
-        let debug_log = BufWriter::new(File::create(&debug_log_path).unwrap_or_else(|error| {
-            panic!("failed to create debug log {:?}: {}", debug_log_path, error)
-        }));
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("pop3_debug_{}.jsonl", std::process::id()))
+            });
+        let debug_log = match File::create(&debug_log_path) {
+            Ok(file) => Some(BufWriter::new(file)),
+            Err(error) => {
+                eprintln!(
+                    "warning: failed to create optional debug log {:?}: {}",
+                    debug_log_path, error
+                );
+                None
+            }
+        };
 
         let script_commands: Vec<String> = config
             .script
@@ -1942,26 +1951,28 @@ impl App {
         let min_z = self.engine.camera_min_z();
         let eye_z = eye_z_orbit.max(min_z);
         let shift = self.engine.landscape_mesh.get_shift_vector();
-        let _ = writeln!(
-            self.debug_log,
-            r#"{{"t":{:.3},"event":"{}","angle_x":{},"angle_z":{},"zoom":{:.3},"radius":{:.4},"eye":[{:.4},{:.4},{:.4}],"eye_z_orbit":{:.4},"min_z":{:.4},"focus":[{:.4},{:.4},0.0],"shift":[{},{}]}}"#,
-            t,
-            event,
-            self.engine.camera.angle_x,
-            self.engine.camera.angle_z,
-            self.engine.zoom,
-            radius,
-            eye_x,
-            eye_y,
-            eye_z,
-            eye_z_orbit,
-            min_z,
-            center,
-            center,
-            shift.x,
-            shift.y,
-        );
-        let _ = self.debug_log.flush();
+        if let Some(debug_log) = &mut self.debug_log {
+            let _ = writeln!(
+                debug_log,
+                r#"{{"t":{:.3},"event":"{}","angle_x":{},"angle_z":{},"zoom":{:.3},"radius":{:.4},"eye":[{:.4},{:.4},{:.4}],"eye_z_orbit":{:.4},"min_z":{:.4},"focus":[{:.4},{:.4},0.0],"shift":[{},{}]}}"#,
+                t,
+                event,
+                self.engine.camera.angle_x,
+                self.engine.camera.angle_z,
+                self.engine.zoom,
+                radius,
+                eye_x,
+                eye_y,
+                eye_z,
+                eye_z_orbit,
+                min_z,
+                center,
+                center,
+                shift.x,
+                shift.y,
+            );
+            let _ = debug_log.flush();
+        }
     }
 
     fn is_script_mode(&self) -> bool {
