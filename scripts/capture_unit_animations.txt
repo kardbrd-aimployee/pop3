@@ -1,0 +1,24 @@
+# Deterministic runtime gallery for the six rendered person subtypes.
+# Each row is sampled after two brave-speed frames at a close camera zoom.
+unit_gallery idle
+zoom 2.2
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-idle.png
+unit_gallery walk
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-walk.png
+unit_gallery action
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-action.png
+unit_gallery chop
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-chop.png
+unit_gallery carry
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-carry.png
+unit_gallery build
+advance_ticks 6
+screenshot /tmp/pop3-unit-gallery-build.png
+unit_gallery die
+advance_ticks 30
+screenshot /tmp/pop3-unit-gallery-die.png

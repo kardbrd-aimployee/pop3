@@ -22,8 +22,9 @@ use crate::render::model::{MeshModel, VertexModel};
 use crate::render::tex_model::TexModel;
 
 use crate::data::animation::{
-    build_direct_multi_anim_atlas, build_multi_anim_atlas, AnimationSequence, AnimationsData,
-    SHAMAN_ANIMS, UNIT_MULTI_ANIMS,
+    build_direct_multi_anim_atlas, build_multi_anim_atlas, unit_combo_for_subtype,
+    AnimationSequence, AnimationsData, SHAMAN_ANIMS, SHAMAN_RUNTIME_COMPOSITED_ANIMS,
+    UNIT_RUNTIME_ANIMS,
 };
 use crate::data::psfb::ContainerPSFB;
 use crate::data::types::BinDeserializer;
@@ -44,6 +45,7 @@ use crate::render::terrain::{
     LandscapeUniformData, LandscapeVariant, LANDSCAPE_OFFSET, LANDSCAPE_SCALE,
 };
 
+use crate::engine::units::animation::{lookup_animation_type, ANIM_SPEED_MULTIPLIER};
 use crate::engine::units::coords::{
     cell_to_tile, cell_to_world, project_to_screen, triangle_to_cell, ScreenRect,
 };
@@ -67,6 +69,7 @@ use crate::render::gpu::texture::GpuTexture;
 
 use crate::engine::buildings::{BuildingCatalog, BuildingState, BuildingSubtype};
 use crate::engine::frame::GhostPreviewState;
+use crate::engine::objects::ObjectHandle;
 use crate::engine::state::state_machine::GameState;
 use crate::engine::state::tick::{GameWorld, StdTimeSource};
 use crate::engine::{translate_key, FrameState, GameCommand};
@@ -104,6 +107,35 @@ fn parse_construction_fixture_command(command: &str) -> Option<(usize, Option<u8
         return None;
     }
     Some((worker_count, visual_variant))
+}
+
+fn parse_unit_gallery_command(command: &str) -> Option<u8> {
+    let mut parts = command.split_whitespace();
+    if parts.next()? != "unit_gallery" {
+        return None;
+    }
+    let anim_type = match parts.next()? {
+        "idle" => 0,
+        "walk" => 1,
+        "action" => 3,
+        "die" => 6,
+        "celebrate" => 7,
+        "chop" => 13,
+        "swim" => 16,
+        "carry" => 18,
+        "dig" => 19,
+        "build" => 20,
+        "run" => 25,
+        _ => return None,
+    };
+    parts.next().is_none().then_some(anim_type)
+}
+
+fn resolve_unit_gallery_center(
+    existing_center: Option<(i32, i32)>,
+    anchor: (i32, i32),
+) -> (i32, i32) {
+    existing_center.unwrap_or(((anchor.0 + 6) & 127, (anchor.1 - 2) & 127))
 }
 
 /// Expand the original level's BIGF0 minimap pass through its companion
@@ -1509,6 +1541,8 @@ pub struct App {
     // Script replay
     script_commands: Vec<String>,
     script_index: usize,
+    unit_gallery_handles: Vec<ObjectHandle>,
+    unit_gallery_center: Option<(i32, i32)>,
 
     // Smooth camera pan to shaman
     shaman_pan: Option<ShamanPanAnimation>,
@@ -1691,6 +1725,8 @@ impl App {
             start_time: Instant::now(),
             script_commands,
             script_index: 0,
+            unit_gallery_handles: Vec::new(),
+            unit_gallery_center: None,
             shaman_pan: None,
             screenshot_path: None,
             screenshot_counter: 0,
@@ -1705,8 +1741,9 @@ impl App {
         let shaman_cell = self
             .unit_renders
             .iter()
-            .find(|ur| ur.subtype == PERSON_SUBTYPE_SHAMAN)
-            .and_then(|ur| ur.cells.iter().find(|c| c.tribe_index == 0));
+            .filter(|ur| ur.subtype == PERSON_SUBTYPE_SHAMAN)
+            .flat_map(|ur| ur.cells.iter())
+            .find(|cell| cell.tribe_index == 0);
         let shaman_pos = shaman_cell.map(|c| (c.cell_x, c.cell_y));
         if let Some((cx, cy)) = shaman_pos {
             let n = self.engine.landscape_mesh.width() as i32;
@@ -1784,6 +1821,8 @@ impl App {
 
     fn update_level(&mut self) {
         self.shaman_pan = None;
+        self.unit_gallery_handles.clear();
+        self.unit_gallery_center = None;
         self.engine.reset_camera();
         let base = self
             .engine
@@ -2132,6 +2171,109 @@ impl App {
             return true;
         }
 
+        // Deterministic gallery of the six rendered person subtypes using one
+        // native animation-table row. This is a visual-regression fixture, not
+        // a gameplay command.
+        if let Some(anim_type) = parse_unit_gallery_command(cmd.trim()) {
+            let frame_counts = self.engine.unit_coordinator.anim_frame_counts.clone();
+            let existing_handles = self.unit_gallery_handles.clone();
+            let existing_center = self.unit_gallery_center;
+            let (gallery_center, gallery_handles) = {
+                let Some(session) = &mut self.engine.session else {
+                    log::warn!("[script] unit_gallery: no active game session");
+                    return true;
+                };
+                let snapshot = session.snapshot();
+                let anchors = snapshot
+                    .persons
+                    .iter()
+                    .filter(|person| person.alive && person.tribe == 0)
+                    .collect::<Vec<_>>();
+                let anchor = if anchors.is_empty() {
+                    (64, 64)
+                } else {
+                    (
+                        (anchors.iter().map(|person| person.cell_x).sum::<f32>()
+                            / anchors.len() as f32)
+                            .round() as i32,
+                        (anchors.iter().map(|person| person.cell_y).sum::<f32>()
+                            / anchors.len() as f32)
+                            .round() as i32,
+                    )
+                };
+                let origin = resolve_unit_gallery_center(existing_center, anchor);
+                // One-cell column/row spacing keeps the complete gallery in the
+                // close perspective capture; wider spacing pushes the near row
+                // below the viewport because apparent scale grows toward the
+                // camera.
+                let offsets = [(-1, -1), (0, -1), (1, -1), (-1, 1), (0, 1), (1, 1)];
+                let mut gallery_handles = Vec::with_capacity(offsets.len());
+                for (index, (subtype, offset)) in (PERSON_SUBTYPE_BRAVE..=PERSON_SUBTYPE_SHAMAN)
+                    .zip(offsets)
+                    .enumerate()
+                {
+                    let cell = ((origin.0 + offset.0) & 127, (origin.1 + offset.1) & 127);
+                    let position = cell_to_world(cell.0 as f32, cell.1 as f32, 128.0);
+                    let existing = existing_handles.get(index).copied().filter(|handle| {
+                        session.world.get(*handle).is_some_and(|object| {
+                            object.header.model_type == ModelType::Person
+                                && object.header.subtype == subtype
+                        })
+                    });
+                    let handle = if let Some(handle) = existing {
+                        session.world.move_object(handle, position);
+                        handle
+                    } else {
+                        let Ok(handle) = session.world.spawn_person(subtype, 0, position) else {
+                            log::warn!("[script] unit_gallery: could not spawn subtype {subtype}");
+                            continue;
+                        };
+                        handle
+                    };
+                    gallery_handles.push(handle);
+                    let Some(animation_id) = lookup_animation_type(anim_type, subtype) else {
+                        log::warn!(
+                            "[script] unit_gallery: row {anim_type} has no subtype {subtype}"
+                        );
+                        continue;
+                    };
+                    if let Some(object) = session.world.get_mut_for_action(handle) {
+                        object.header.angle = 0x200;
+                        if let crate::engine::objects::GameObjectData::Person(person) =
+                            &mut object.data
+                        {
+                            person.movement.facing_angle = 0x200;
+                            person.movement.flags1 &= !0x1000;
+                            person.movement.speed = 0;
+                            person.anim.animation_id = animation_id;
+                            person.anim.flags = if anim_type == 6 { 0x02 } else { 0x03 };
+                            person.anim.tick_counter = 0;
+                            person.anim.frame_index = 0;
+                            person.anim.frame_count = frame_counts
+                                .get(animation_id as usize)
+                                .copied()
+                                .unwrap_or(1)
+                                .max(1);
+                            person.anim.ticks_per_frame = ANIM_SPEED_MULTIPLIER
+                                [(subtype as usize).min(ANIM_SPEED_MULTIPLIER.len() - 1)]
+                                + 1;
+                        }
+                    }
+                }
+                session.flags.set_paused(true);
+                (origin, gallery_handles)
+            };
+            self.unit_gallery_handles = gallery_handles;
+            self.unit_gallery_center = Some(gallery_center);
+            self.center_on_cell(gallery_center.0, gallery_center.1);
+            self.refresh_session_render_state();
+            log::info!(
+                "[script] unit_gallery: native row {anim_type} centered at {gallery_center:?}"
+            );
+            self.do_render = true;
+            return true;
+        }
+
         // Deterministic construction fixture for visual regression captures.
         // The group variant mirrors the multi-brave original recording while
         // the single-worker form remains useful for timing diagnostics.
@@ -2452,12 +2594,23 @@ impl App {
         }
         if let Some(session) = &self.engine.session {
             for person in session.snapshot().persons {
-                if let Some(ur) = self
+                let render_index = self
                     .unit_renders
-                    .iter_mut()
-                    .find(|u| u.subtype == person.subtype)
-                {
-                    ur.cells.push(UnitRenderData {
+                    .iter()
+                    .position(|render| {
+                        render.subtype == person.subtype
+                            && render
+                                .anim_offsets
+                                .iter()
+                                .any(|(id, _, _)| *id == person.animation_id)
+                    })
+                    .or_else(|| {
+                        self.unit_renders
+                            .iter()
+                            .position(|render| render.subtype == person.subtype)
+                    });
+                if let Some(render_index) = render_index {
+                    self.unit_renders[render_index].cells.push(UnitRenderData {
                         cell_x: person.cell_x,
                         cell_y: person.cell_y,
                         tribe_index: person.tribe,
@@ -2472,12 +2625,23 @@ impl App {
                 if !unit.alive {
                     continue;
                 }
-                if let Some(ur) = self
+                let render_index = self
                     .unit_renders
-                    .iter_mut()
-                    .find(|u| u.subtype == unit.subtype)
-                {
-                    ur.cells.push(UnitRenderData {
+                    .iter()
+                    .position(|render| {
+                        render.subtype == unit.subtype
+                            && render
+                                .anim_offsets
+                                .iter()
+                                .any(|(id, _, _)| *id == unit.anim.animation_id)
+                    })
+                    .or_else(|| {
+                        self.unit_renders
+                            .iter()
+                            .position(|render| render.subtype == unit.subtype)
+                    });
+                if let Some(render_index) = render_index {
+                    self.unit_renders[render_index].cells.push(UnitRenderData {
                         cell_x: unit.cell_x,
                         cell_y: unit.cell_y,
                         tribe_index: unit.tribe_index,
@@ -2563,10 +2727,17 @@ impl App {
 
         self.unit_renders.clear();
 
-        // Non-shaman subtypes: build combined idle+walk atlas
-        for &(subtype, anim_indices) in &UNIT_MULTI_ANIMS {
+        // Non-shaman subtypes: pack every animation used by implemented unit
+        // states, including each specialist's type-specific body layers.
+        for &(subtype, anim_indices) in &UNIT_RUNTIME_ANIMS {
             if let Some((atlas_w, atlas_h, rgba, fw, fh, total_cols, offsets, _max_y)) =
-                build_multi_anim_atlas(&sequences, &container, &palette, anim_indices)
+                build_multi_anim_atlas(
+                    &sequences,
+                    &container,
+                    &palette,
+                    anim_indices,
+                    unit_combo_for_subtype(subtype),
+                )
             {
                 let tex = GpuTexture::new_2d(
                     &gpu.device,
@@ -2610,7 +2781,7 @@ impl App {
             }
         }
 
-        // Shaman: pre-rendered per-tribe sprites (not VELE composited)
+        // Shaman idle/walk: pre-rendered per-tribe sprites.
         {
             let subtype = PERSON_SUBTYPE_SHAMAN;
             if let Some((atlas_w, atlas_h, rgba, fw, fh, total_cols, offsets, _max_y)) =
@@ -2623,7 +2794,7 @@ impl App {
                     atlas_h,
                     wgpu::TextureFormat::Rgba8UnormSrgb,
                     &rgba,
-                    &format!("unit_atlas_st{}", subtype),
+                    "unit_atlas_shaman_direct",
                 );
                 let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some(&format!("unit_bg1_st{}", subtype)),
@@ -2650,6 +2821,61 @@ impl App {
                     bind_group,
                     model: None,
 
+                    frame_width: fw,
+                    frame_height: fh,
+                    frames_per_dir: total_cols,
+                    anim_offsets,
+                });
+            }
+        }
+
+        // Shaman action states use composited VELE chains. Keep these in a
+        // second render bucket because their source format and cell geometry
+        // differ from the direct idle/walk sprites.
+        {
+            let subtype = PERSON_SUBTYPE_SHAMAN;
+            if let Some((atlas_w, atlas_h, rgba, fw, fh, total_cols, offsets, _max_y)) =
+                build_multi_anim_atlas(
+                    &sequences,
+                    &container,
+                    &palette,
+                    SHAMAN_RUNTIME_COMPOSITED_ANIMS,
+                    None,
+                )
+            {
+                let tex = GpuTexture::new_2d(
+                    &gpu.device,
+                    &gpu.queue,
+                    atlas_w,
+                    atlas_h,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    &rgba,
+                    "unit_atlas_shaman_actions",
+                );
+                let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("unit_bg1_shaman_actions"),
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&tex.view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&sampler),
+                        },
+                    ],
+                });
+                let anim_offsets = offsets
+                    .iter()
+                    .map(|(idx, off, count)| (*idx as u16, *off, *count))
+                    .collect();
+                self.unit_renders.push(UnitTypeRender {
+                    subtype,
+                    cells: Vec::new(),
+                    texture: tex,
+                    bind_group,
+                    model: None,
                     frame_width: fw,
                     frame_height: fh,
                     frames_per_dir: total_cols,
@@ -6112,6 +6338,26 @@ mod tests {
         assert_eq!(
             parse_construction_fixture_command("construct_hut_variant"),
             None
+        );
+    }
+
+    #[test]
+    fn unit_gallery_names_resolve_native_animation_rows() {
+        assert_eq!(parse_unit_gallery_command("unit_gallery idle"), Some(0));
+        assert_eq!(parse_unit_gallery_command("unit_gallery action"), Some(3));
+        assert_eq!(parse_unit_gallery_command("unit_gallery chop"), Some(13));
+        assert_eq!(parse_unit_gallery_command("unit_gallery build"), Some(20));
+        assert_eq!(parse_unit_gallery_command("unit_gallery run"), Some(25));
+        assert_eq!(parse_unit_gallery_command("unit_gallery unknown"), None);
+        assert_eq!(parse_unit_gallery_command("unit_gallery idle extra"), None);
+    }
+
+    #[test]
+    fn unit_gallery_reuses_its_first_camera_center() {
+        assert_eq!(resolve_unit_gallery_center(None, (124, 1)), (2, 127));
+        assert_eq!(
+            resolve_unit_gallery_center(Some((2, 127)), (40, 60)),
+            (2, 127)
         );
     }
 

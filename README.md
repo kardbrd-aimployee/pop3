@@ -71,6 +71,10 @@ the renderer provides deterministic capture commands:
   and pauses exactly at the requested threshold.
 - `center_cell X Y` centers the camera on a landscape cell without key-repeat
   drift.
+- `unit_gallery ACTION` arranges Brave, Warrior, Preacher, Spy, Firewarrior,
+  and Shaman fixtures using the exact native animation row for `idle`, `walk`,
+  `action`, `die`, `celebrate`, `chop`, `swim`, `carry`, `dig`, `build`, or
+  `run`.
 
 For a repeatable Level 1 construction sequence, run:
 
@@ -79,6 +83,15 @@ cargo run --release -- \
   --base /path/to/pop3 \
   --level 1 \
   --script scripts/capture_hut_construction.txt
+```
+
+To capture the implemented unit animation rows in the live renderer:
+
+```bash
+cargo run --release -- \
+  --base /path/to/pop3 \
+  --level 1 \
+  --script scripts/capture_unit_animations.txt
 ```
 
 | Key | Action |

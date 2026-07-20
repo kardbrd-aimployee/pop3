@@ -83,82 +83,87 @@ impl Default for AnimationState {
     }
 }
 
-/// Map PersonState to animation type index for table lookup.
-/// Faithful to Person_SelectAnimation (0x004fed30).
-/// Returns the animation type (row in PERSON_ANIMATION_TABLE).
+/// Map the Rust engine's semantic person states to native animation rows.
+///
+/// Several Rust states intentionally cover behavior that the original game
+/// expressed through a state plus a later `Person_SetAnimationByState` call.
+/// This adapter therefore selects the final visible action (chop, carry,
+/// build, swim, and so on), rather than only reproducing the native switch's
+/// initial idle/walk default.
 pub fn state_to_anim_type(state: PersonState) -> u8 {
     match state {
-        // These states map to Idle (type 0)
+        // Stationary states.
         PersonState::Idle
-        | PersonState::Moving
         | PersonState::InsideTraining
-        | PersonState::Gathering
-        | PersonState::Fighting
         | PersonState::InShield
-        | PersonState::EnteringVehicle
         | PersonState::WaitingAtReincPillar => 0,
 
-        // Walk (type 1) — default for movement states
-        PersonState::Wander
+        // Navigation states. `select_animation` changes these to idle while
+        // the movement flag is clear.
+        PersonState::Moving
+        | PersonState::Wander
         | PersonState::GoToPoint
         | PersonState::FollowPath
         | PersonState::GoToMarker
         | PersonState::WaitForPath
         | PersonState::WaitAtMarker
         | PersonState::EnterBuilding
-        | PersonState::Building
-        | PersonState::GatheringWood
-        | PersonState::CarryingWood
+        | PersonState::WaitOutside
+        | PersonState::Training
+        | PersonState::Housing
+        | PersonState::Gathering
         | PersonState::Spawning
-        | PersonState::BeingSacrificed
-        | PersonState::SitDown
         | PersonState::BeingConverted
         | PersonState::WaitingAfterConvert
         | PersonState::WaitingForBoat
         | PersonState::Placeholder
         | PersonState::GetOffBoat
-        | PersonState::WaitingInWater
-        | PersonState::Celebrating
+        | PersonState::EnteringVehicle
         | PersonState::Teleporting
-        | PersonState::InternalState => 1,
-
-        // Action (type 3)
-        PersonState::InsideBuilding | PersonState::InTraining => 3,
-
-        // Death uses Vehicle type (0x0C = 12) in original
-        PersonState::Dead => 6,
-
-        // Run (type 25 = 0x19)
-        PersonState::Fleeing | PersonState::Preaching | PersonState::ExitingVehicle => 25,
-
-        // Drowning = Swim (type 16)
-        PersonState::Drowning => 16,
-
-        // Dying = Die (type 6)
-        PersonState::Dying => 6,
-
-        // WaitOutside, Training, Housing, InShieldIdle — use Walk
-        PersonState::WaitOutside
-        | PersonState::Training
-        | PersonState::Housing
+        | PersonState::InternalState
         | PersonState::InShieldIdle => 1,
+
+        // Close action / melee work.
+        PersonState::InsideBuilding | PersonState::InTraining | PersonState::Fighting => 3,
+
+        // Death sequence.
+        PersonState::Dying | PersonState::Dead | PersonState::BeingSacrificed => 6,
+
+        // Celebration.
+        PersonState::Celebrating => 7,
+
+        // Tree work / chopping.
+        PersonState::GatheringWood => 13,
+
+        // Swimming and drowning.
+        PersonState::Drowning | PersonState::WaitingInWater => 16,
+
+        // Carrying the wood prop.
+        PersonState::CarryingWood => 18,
+
+        // Final construction strokes. Foundation digging is selected by the
+        // authoritative construction state machine as animation row 19.
+        PersonState::Building => 20,
+
+        // The first of the four native seated variants.
+        PersonState::SitDown => 21,
+
+        // Fast movement.
+        PersonState::Fleeing | PersonState::Preaching | PersonState::ExitingVehicle => 25,
     }
+}
+
+/// Resolve one native animation-table row for a person subtype.
+pub fn lookup_animation_type(anim_type: u8, subtype: u8) -> Option<u16> {
+    let row = PERSON_ANIMATION_TABLE.get(anim_type as usize)?;
+    let value = row[(subtype as usize).min(8)];
+    (value >= 0).then_some(value as u16)
 }
 
 /// Look up VSTART animation index for a given state and subtype.
 /// Returns None if the combination has no animation (-1 in table).
 pub fn lookup_animation(state: PersonState, subtype: u8) -> Option<u16> {
-    let anim_type = state_to_anim_type(state) as usize;
-    if anim_type >= PERSON_ANIMATION_TABLE.len() {
-        return None;
-    }
-    let col = (subtype as usize).min(8);
-    let val = PERSON_ANIMATION_TABLE[anim_type][col];
-    if val < 0 {
-        None
-    } else {
-        Some(val as u16)
-    }
+    lookup_animation_type(state_to_anim_type(state), subtype)
 }
 
 /// Select and set animation based on current state.
@@ -197,7 +202,14 @@ pub fn select_animation(
         anim.animation_id = new_id;
         anim.frame_index = 0;
         anim.tick_counter = 0;
-        anim.flags = 0x03; // loop + playing
+        anim.flags = if matches!(
+            state,
+            PersonState::Dying | PersonState::Dead | PersonState::BeingSacrificed
+        ) {
+            0x02 // play once and hold the last frame
+        } else {
+            0x03 // loop + playing
+        };
         anim.frame_count = frame_counts.get(new_id as usize).copied().unwrap_or(1);
         let speed_idx = (subtype as usize).min(ANIM_SPEED_MULTIPLIER.len() - 1);
         anim.ticks_per_frame = ANIM_SPEED_MULTIPLIER[speed_idx] + 1;
@@ -334,6 +346,52 @@ mod tests {
     }
 
     #[test]
+    fn supported_actions_resolve_native_brave_rows() {
+        assert_eq!(
+            lookup_animation(PersonState::Fighting, PERSON_SUBTYPE_BRAVE),
+            Some(32)
+        );
+        assert_eq!(
+            lookup_animation(PersonState::GatheringWood, PERSON_SUBTYPE_BRAVE),
+            Some(73)
+        );
+        assert_eq!(
+            lookup_animation(PersonState::CarryingWood, PERSON_SUBTYPE_BRAVE),
+            Some(88)
+        );
+        assert_eq!(
+            lookup_animation(PersonState::Building, PERSON_SUBTYPE_BRAVE),
+            Some(120)
+        );
+        assert_eq!(
+            lookup_animation(PersonState::Celebrating, PERSON_SUBTYPE_BRAVE),
+            Some(38)
+        );
+    }
+
+    #[test]
+    fn semantic_animation_rows_cover_every_rendered_specialist() {
+        for subtype in PERSON_SUBTYPE_BRAVE..=PERSON_SUBTYPE_SHAMAN {
+            for state in [
+                PersonState::Idle,
+                PersonState::GoToPoint,
+                PersonState::Fighting,
+                PersonState::Dying,
+                PersonState::Celebrating,
+                PersonState::Drowning,
+                PersonState::CarryingWood,
+                PersonState::Building,
+                PersonState::Fleeing,
+            ] {
+                assert!(
+                    lookup_animation(state, subtype).is_some(),
+                    "subtype {subtype} has no animation for {state:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn lookup_aod_returns_none_for_idle() {
         // AOD (subtype 8) has -1 for idle
         assert_eq!(lookup_animation(PersonState::Idle, 8), None);
@@ -412,6 +470,22 @@ mod tests {
         );
         assert_eq!(anim.frame_index, 3);
         assert_eq!(anim.tick_counter, 2);
+    }
+
+    #[test]
+    fn death_animation_plays_once() {
+        let mut frame_counts = test_frame_counts();
+        frame_counts[27] = 4;
+        let mut anim = AnimationState::default();
+        select_animation(
+            &mut anim,
+            PersonState::Dead,
+            PERSON_SUBTYPE_BRAVE,
+            &frame_counts,
+            false,
+        );
+        assert_eq!(anim.animation_id, 27);
+        assert_eq!(anim.flags, 0x02);
     }
 
     #[test]

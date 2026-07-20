@@ -295,16 +295,50 @@ pub const UNIT_IDLE_ANIMS: [(u8, usize); 6] = [
     (PERSON_SUBTYPE_SHAMAN, 20),
 ];
 
-/// Combined idle + walk animation indices per subtype (non-shaman).
-/// Shamans use pre-rendered per-tribe sprites, not VELE compositing.
-/// Format: (subtype, &[animation_indices])
-pub const UNIT_MULTI_ANIMS: [(u8, &[usize]); 5] = [
-    (PERSON_SUBTYPE_BRAVE, &[15, 21, 73, 88, 115, 120]),
-    (PERSON_SUBTYPE_WARRIOR, &[16, 22]),
-    (PERSON_SUBTYPE_PREACHER, &[17, 23]),
-    (PERSON_SUBTYPE_SPY, &[18, 24]),
-    (PERSON_SUBTYPE_FIREWARRIOR, &[19, 25]),
+/// Native animation IDs needed by the currently implemented person states.
+///
+/// The order is idle, walk, die, action, celebrate, chop, swim, carry, dig,
+/// build, and run. Keeping every supported action in the runtime atlas avoids
+/// silently sampling the first idle columns when a state changes animation.
+/// Shamans are split between direct sprites and composited action sprites and
+/// are declared separately below.
+pub const UNIT_RUNTIME_ANIMS: [(u8, &[usize]); 5] = [
+    (
+        PERSON_SUBTYPE_BRAVE,
+        &[15, 21, 27, 32, 38, 73, 83, 88, 115, 120, 156],
+    ),
+    (
+        PERSON_SUBTYPE_WARRIOR,
+        &[16, 22, 28, 33, 39, 74, 84, 89, 116, 121, 157],
+    ),
+    (
+        PERSON_SUBTYPE_PREACHER,
+        &[17, 23, 29, 34, 40, 75, 85, 90, 117, 122, 158],
+    ),
+    (
+        PERSON_SUBTYPE_SPY,
+        &[18, 24, 30, 35, 41, 76, 86, 91, 118, 123, 159],
+    ),
+    (
+        PERSON_SUBTYPE_FIREWARRIOR,
+        &[19, 25, 31, 36, 42, 77, 87, 92, 119, 124, 160],
+    ),
 ];
+
+/// Shaman animations stored as composited VELE chains. Idle/walk remain in
+/// `SHAMAN_ANIMS` because those two are complete, direct per-tribe sprites.
+pub const SHAMAN_RUNTIME_COMPOSITED_ANIMS: &[usize] = &[37, 125, 126, 127, 128];
+
+/// Type-specific VELE layer selector for each person subtype.
+pub fn unit_combo_for_subtype(subtype: u8) -> Option<(u16, u16)> {
+    match subtype {
+        PERSON_SUBTYPE_WARRIOR => Some((2, 2)),
+        PERSON_SUBTYPE_PREACHER => Some((3, 1)),
+        PERSON_SUBTYPE_SPY => Some((2, 3)),
+        PERSON_SUBTYPE_FIREWARRIOR => Some((2, 1)),
+        _ => None,
+    }
+}
 
 /******************************************************************************/
 
@@ -800,6 +834,7 @@ pub fn build_multi_anim_atlas(
     container: &ContainerPSFB,
     palette: &[[u8; 4]],
     anim_ids: &[usize],
+    unit_combo: Option<(u16, u16)>,
 ) -> Option<(
     u32,
     u32,
@@ -840,9 +875,13 @@ pub fn build_multi_anim_atlas(
                     if elem.is_hidden() {
                         continue;
                     }
-                    if elem.is_type_specific() {
+                    if elem.is_type_specific()
+                        && !unit_combo.is_some_and(|(layer, high)| {
+                            elem.uvar5 == layer && elem.tribe as u16 == high
+                        })
+                    {
                         continue;
-                    } // skip for bbox
+                    }
                     if let Some(info) = container.get_info(elem.sprite_index) {
                         let ex = elem.coord_x as i32;
                         let ey = elem.coord_y as i32;
@@ -869,7 +908,7 @@ pub fn build_multi_anim_atlas(
             container,
             palette,
             vstart_base,
-            Some(None),
+            Some(unit_combo),
             Some(shared_bbox),
         ) {
             fw = w;

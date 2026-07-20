@@ -1410,10 +1410,27 @@ impl World {
     fn tick_person_animation(&mut self, handle: ObjectHandle) {
         if let Some(object) = self.pool.get_mut(handle) {
             if let GameObjectData::Person(person) = &mut object.data {
+                if person.anim.flags & 0x02 == 0 {
+                    return;
+                }
                 person.anim.tick_counter = person.anim.tick_counter.saturating_add(1);
                 if person.anim.tick_counter >= person.anim.ticks_per_frame as u16 {
                     person.anim.tick_counter = 0;
                     person.anim.frame_index = person.anim.frame_index.wrapping_add(1);
+                    // Runtime-loaded idle/walk animations historically leave
+                    // frame_count at one and are wrapped by the renderer's
+                    // atlas metadata. Action fixtures and construction states
+                    // do carry an exact count, which lets one-shot death
+                    // animations hold their final frame here.
+                    if person.anim.frame_count > 1
+                        && person.anim.frame_index >= person.anim.frame_count
+                    {
+                        if person.anim.flags & 0x01 != 0 {
+                            person.anim.frame_index = 0;
+                        } else {
+                            person.anim.frame_index = person.anim.frame_count - 1;
+                        }
+                    }
                 }
             }
         }

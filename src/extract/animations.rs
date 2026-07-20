@@ -20,10 +20,10 @@ const ANIMATION_SCHEMA_VERSION: u32 = 1;
 const PREVIEW_SIZE: u32 = 160;
 const PREVIEW_ANIMATIONS: [&str; 5] = ["idle", "walk", "carry", "dig", "build"];
 
-const NON_SHAMAN_ANIMATION_GROUPS: [(&str, [u16; 5]); 22] = [
+const NON_SHAMAN_ANIMATION_GROUPS: [(&str, [u16; 5]); 23] = [
     ("idle", [15, 16, 17, 18, 19]),
     ("walk", [21, 22, 23, 24, 25]),
-    ("die", [27, 28, 29, 31, 30]),
+    ("die", [27, 28, 29, 30, 31]),
     ("action", [32, 33, 34, 35, 36]),
     ("celebrate", [38, 39, 40, 41, 42]),
     ("spell-idle", [43, 44, 45, 46, 47]),
@@ -43,6 +43,7 @@ const NON_SHAMAN_ANIMATION_GROUPS: [(&str, [u16; 5]); 22] = [
     ("sit2", [136, 137, 138, 139, 140]),
     ("sit3", [141, 142, 143, 144, 145]),
     ("sit4", [146, 147, 148, 149, 150]),
+    ("run", [156, 157, 158, 159, 160]),
 ];
 
 const SHAMAN_ANIMATION_GROUPS: [(&str, u16); 12] = [
@@ -502,6 +503,6 @@ mod tests {
 
     #[test]
     fn catalog_has_expected_animation_count() {
-        assert_eq!(unit_animation_specs().len(), 124);
+        assert_eq!(unit_animation_specs().len(), 129);
     }
 }
