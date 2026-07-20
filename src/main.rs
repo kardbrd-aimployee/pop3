@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, Command};
 
@@ -31,6 +31,20 @@ fn parse_window_size(s: &str) -> Result<(u32, u32), String> {
         return Err("width and height must be greater than zero".to_owned());
     }
     Ok((width, height))
+}
+
+/// Locate the data directory embedded in a conventional macOS app bundle.
+///
+/// For `Example.app/Contents/MacOS/binary`, the bundled original-game base is
+/// `Example.app/Contents/Resources/original_game`.
+fn bundled_base_from_executable(executable: &Path) -> Option<PathBuf> {
+    let contents = executable.parent()?.parent()?;
+    Some(contents.join("Resources").join("original_game"))
+}
+
+fn bundled_original_game_base() -> Option<PathBuf> {
+    bundled_base_from_executable(&std::env::current_exe().ok()?)
+        .filter(|candidate| candidate.join("data").is_dir())
 }
 
 fn cli() -> Command {
@@ -89,7 +103,10 @@ fn main() {
     let matches = cli().get_matches();
 
     let config = AppConfig {
-        base: matches.get_one("base").cloned(),
+        base: matches
+            .get_one("base")
+            .cloned()
+            .or_else(bundled_original_game_base),
         level: matches.get_one("level").copied(),
         landtype: matches.get_one("landtype").cloned(),
         cpu: matches.get_flag("cpu"),
@@ -113,7 +130,21 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_window_size;
+    use std::path::{Path, PathBuf};
+
+    use super::{bundled_base_from_executable, parse_window_size};
+
+    #[test]
+    fn bundled_base_resolves_from_macos_executable_path() {
+        assert_eq!(
+            bundled_base_from_executable(Path::new(
+                "/Applications/Populous 3 Rust.app/Contents/MacOS/Populous3Rust"
+            )),
+            Some(PathBuf::from(
+                "/Applications/Populous 3 Rust.app/Contents/Resources/original_game"
+            ))
+        );
+    }
 
     #[test]
     fn parse_window_size_accepts_physical_dimensions() {
