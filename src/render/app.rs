@@ -122,11 +122,9 @@ fn expand_native_minimap_indices(indices: &[u8], palette: &[u8]) -> Arc<[u8]> {
 }
 
 /// Convert the extractor's renderer-oriented landscape image into the source
-/// buffer convention used by PopTB's minimap routines.  The level parser
-/// presents it as `(render_y, render_x)`; `Minimap_RenderTerrain` and
-/// `Minimap_RenderObjects` instead use raw world X and vertically inverted
-/// world Y.  Keeping the terrain in this convention lets the native camera
-/// scroll and the object pass share one coordinate system.
+/// buffer convention used by PopTB's minimap routines. `texture_minimap`
+/// already writes renderer X horizontally and renderer Y vertically, so the
+/// native presentation only flips those axes; it does not swap them.
 fn orient_native_minimap_terrain(source: &[u8]) -> Arc<[u8]> {
     let side = NATIVE_MINIMAP_DIMENSION;
     let expected_len = side * side * 4;
@@ -137,8 +135,8 @@ fn orient_native_minimap_terrain(source: &[u8]) -> Arc<[u8]> {
     let mut oriented = vec![0u8; expected_len];
     for source_y in 0..side {
         for source_x in 0..side {
-            // `texture_minimap` writes x=render_y and y=render_x.  Recover
-            // the raw-X / negative-raw-Y source frame expected at 0x42BA10.
+            // Match the raw-X / negative-raw-Y source frame expected at
+            // 0x42BA10 while preserving texture_minimap's X/Y ordering.
             let target_x = side - 1 - source_x;
             let target_y = (side - source_y) & (side - 1);
             let source_offset = (source_y * side + source_x) * 4;
@@ -150,16 +148,16 @@ fn orient_native_minimap_terrain(source: &[u8]) -> Arc<[u8]> {
     oriented.into()
 }
 
-/// Map renderer cells back to the original minimap's raw world-coordinate
-/// source frame.  `Minimap_RenderObjects` at 0x42BBE0 takes the high bytes of
-/// object X/Y, clears their low bit, and flips Y while drawing.  Renderer cells
-/// have already swapped those axes, so using them directly rotates markers
-/// ninety degrees away from the native terrain pass.
+/// Apply the same orientation used for the extracted terrain to an object.
+/// Quantize first because the minimap terrain has one source pixel per cell.
 fn native_minimap_marker_coords(render_cell_x: f32, render_cell_y: f32) -> (u8, u8) {
-    let side = NATIVE_MINIMAP_DIMENSION as f32;
-    let raw_world_x = (side - 1.0 - render_cell_y).floor().rem_euclid(side) as u8;
-    let inverted_raw_world_y = (-render_cell_x.floor()).rem_euclid(side) as u8;
-    (raw_world_x, inverted_raw_world_y)
+    let side = NATIVE_MINIMAP_DIMENSION as i32;
+    let source_x = render_cell_x.floor() as i32;
+    let source_y = render_cell_y.floor() as i32;
+    (
+        (side - 1 - source_x).rem_euclid(side) as u8,
+        (-source_y).rem_euclid(side) as u8,
+    )
 }
 
 /// Recreate the native minimap's camera scroll from the renderer landscape
@@ -168,8 +166,8 @@ fn native_minimap_marker_coords(render_cell_x: f32, render_cell_y: f32) -> (u8, 
 fn native_minimap_scroll(render_shift_x: i32, render_shift_y: i32) -> (u8, u8) {
     let side = NATIVE_MINIMAP_DIMENSION as i32;
     (
-        (-render_shift_y).rem_euclid(side) as u8,
-        (4 - render_shift_x).rem_euclid(side) as u8,
+        (-render_shift_x).rem_euclid(side) as u8,
+        (4 - render_shift_y).rem_euclid(side) as u8,
     )
 }
 
@@ -6079,22 +6077,23 @@ mod tests {
             &oriented[target_offset..target_offset + 4],
             &[0x12, 0x34, 0x56, 0xff]
         );
+        assert_eq!(native_minimap_marker_coords(119.5, 107.5), (8, 21));
     }
 
     #[test]
-    fn native_minimap_markers_undo_renderer_axis_mapping() {
-        // A Level 1 brave at raw coarse world coordinate (7, 107) reaches
-        // the renderer as (107.5, 119.5). The minimap uses raw X and -raw Y.
-        assert_eq!(native_minimap_marker_coords(107.5, 119.5), (7, 21));
+    fn native_minimap_markers_match_oriented_terrain_coordinates() {
+        // A Level 1 brave at renderer cell (107.5, 119.5) occupies source
+        // terrain pixel (107, 119), oriented to minimap pixel (20, 9).
+        assert_eq!(native_minimap_marker_coords(107.5, 119.5), (20, 9));
     }
 
     #[test]
     fn native_minimap_scroll_matches_original_camera_offset() {
-        // Camera focus vertex 63: a raw camera location (8, 107) produces
-        // renderer shift (44, 56). The native shaman ends at (64, 61), the
+        // Camera focus vertex 63: the Level 1 shaman at renderer cell
+        // (107.5, 118.5) produces shift (44, 55). It ends at (64, 61), the
         // position emitted by 0x42BBE0 including its six-byte vertical bias.
         let marker = native_minimap_marker_coords(107.5, 118.5);
-        let (scroll_x, scroll_y) = native_minimap_scroll(44, 56);
+        let (scroll_x, scroll_y) = native_minimap_scroll(44, 55);
         assert_eq!(
             (
                 marker.0.wrapping_sub(scroll_x) & 127,
