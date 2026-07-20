@@ -1215,7 +1215,7 @@ Level_LoadAndCreateObjects (0x40C330)
 | 0x004B5990 | Building_ValidatePlacement | ~0x28E | Check if placement is legal |
 | 0x004E8E50 | Terrain_InterpolateHeight | ~0xFF | Bilinear height interpolation |
 | 0x0042E430 | Building_SetState | ~0x1A4 | 6-state building state machine |
-| 0x004364E0 | Building_InitWoodAmount | ~0xBA | Set initial wood from type table |
+| 0x004364E0 | Building_InitModelSelector | ~0xBA | Select the OBJS model from type data and PRNG |
 | 0x0040DFC0 | Level_SpawnBuildingsFromGenerals | ~0x192 | Post-load building spawner |
 | 0x00436340 | Building_ResetFireEffects | ~0x15F | Reset fire effects on footprint |
 | 0x004B0AD0 | Object_SetShapeFromType | ~0x6B | Set shape from type properties table |
@@ -1271,22 +1271,26 @@ The building footprint data is stored in `objects/SHAPES.DAT` (4604 bytes).
 - Group 3 (entries 13-16): 4×4 + 5×5 — mixed training
 - Group 12 (entries 49-52): 7×7 — Vault of Knowledge
 
-### BPLC.21 — Building_InitWoodAmount (0x004364E0)
+### BPLC.21 — Building_InitModelSelector (0x004364E0)
 
-Sets initial wood amount in obj+0x63 based on building type properties.
+Sets the initial OBJS model selector in obj+0x63 based on building type properties.
 
 **Logic:**
 - Reads type flags at `type_table[subtype*0x4C + 0x5A0008 + 0x49]` (byte)
-- If flag 0x20 set (hut/spawning building): uses PRNG to select from 3 wood tiers
+- If flag 0x20 is set (hut/spawning building): uses PRNG to select one of three hut mesh families
   ```asm
-  ; PRNG mod 3 selects tier:
-  ;   tier 0: base_wood + 0x6B (107)
-  ;   tier 1: base_wood + 0x77 (119)
-  ;   tier 2: base_wood + 0x83 (131)
-  ; Then adds tribe_index * 3
+  ; PRNG mod 3 selects family:
+  ;   family 0: subtype_offset + 0x6B (107)
+  ;   family 1: subtype_offset + 0x77 (119)
+  ;   family 2: subtype_offset + 0x83 (131)
+  ; Then adds tribe_index * 3. For hut subtypes 1-3,
+  ; subtype_offset is subtype - 1.
   ```
-- If flag 0x20 not set: uses fixed wood value from `type_table[subtype*0x4C + 0x5A0008]` (word)
-- If flag 0x40 set: adds tribe_index to fixed wood value
+- The native model-table pointer is based 38 records into the raw OBJS0
+  archive, so native selectors 107/119/131 correspond to archive indices
+  145/157/169 in extraction tools.
+- If flag 0x20 is not set: uses a fixed model selector from `type_table[subtype*0x4C + 0x5A0008]` (word)
+- If flag 0x40 is set: adds tribe_index to the fixed model selector
 
 ### BPLC.22 — Building_SetState (0x0042E430)
 
@@ -1373,7 +1377,7 @@ Additional functions discovered in iteration 2:
 
 | Address | Name | Size | Description |
 |---------|------|------|-------------|
-| 0x004364E0 | Building_InitWoodAmount | ~0xBA | Set initial wood from type table with PRNG |
+| 0x004364E0 | Building_InitModelSelector | ~0xBA | Select the OBJS model from type data and PRNG |
 | 0x0042E430 | Building_SetState | ~0x1A4 | 6-state building state machine |
 | 0x0040DFC0 | Level_SpawnBuildingsFromGenerals | ~0x192 | Post-load building spawner (Prison from General/6) |
 | 0x004E8E50 | Terrain_InterpolateHeight | ~0xFF | Bilinear height interpolation with toroidal wrap |
@@ -1944,7 +1948,7 @@ cell_ptr = 0x88897C + index * 4
 | 0x0042FD70 | Building_OnConstructionComplete | 3 | Construction done → set shape, entrance, timers |
 | 0x00433BB0 | Building_OnDestroy | 3 | Spawn rubble, cause persons to flee |
 | 0x00436340 | Building_ResetFireEffects | 2 | Reset fire effects on footprint cells |
-| 0x004364E0 | Building_InitWoodAmount | 2 | Set initial wood from type table with PRNG |
+| 0x004364E0 | Building_InitModelSelector | 2 | Select the OBJS model from type data and PRNG |
 | 0x00499EB0 | Object_IsValidPosition | 3 | Validate object position on terrain |
 | 0x0049B9B0 | Shape_LoadBankData | 2 | Load shape bank + patch pointers |
 | 0x0049BBA0 | Shape_LoadDatFile | 2 | Load SHAPES.DAT footprint data |

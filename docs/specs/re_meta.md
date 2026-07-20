@@ -191,7 +191,7 @@
 | 00435240 | Building_FindAndEjectPerson | 2 |
 | 00435430 | Building_Destroy | 2 |
 | 00436340 | Building_ResetFireEffects | 3 |
-| 004364e0 | Building_InitWoodAmount | 1 |
+| 004364e0 | Building_InitModelSelector | 1 |
 | 00436690 | Building_SpawnDebris | 3 |
 | 00437860 | Building_TriggerReconversion | 3 |
 | 00438610 | Building_ProcessFightingPersons | 1 |

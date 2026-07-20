@@ -1,6 +1,8 @@
 use cgmath::Vector3;
 
-use crate::data::objects::{mk_pop_object, mk_pop_object_for_phase, Object3D, Shape};
+use crate::data::objects::{
+    mk_pop_object, mk_pop_object_construction_scaffold, mk_pop_object_for_phase, Object3D, Shape,
+};
 use crate::data::units::{
     building_obj_index, building_obj_index_with_variant, scenery_obj_index, ModelType,
 };
@@ -114,12 +116,6 @@ pub fn build_building_meshes(
         {
             continue;
         }
-        let phased = matches!(
-            obj.building_state,
-            Some(crate::engine::buildings::BuildingState::Init)
-                | Some(crate::engine::buildings::BuildingState::Destroying)
-                | Some(crate::engine::buildings::BuildingState::Sinking)
-        ) && obj.construction_phase < 4;
         // Look up model index and select the right bank based on model type
         let (idx, bank): (Option<usize>, &[Option<Object3D>]) = match obj.model_type {
             ModelType::Building => (
@@ -155,10 +151,28 @@ pub fn build_building_meshes(
             false => continue,
         };
 
-        let local_model = if phased {
-            mk_pop_object_for_phase(obj3d, Some(obj.construction_phase))
-        } else {
-            mk_pop_object(obj3d)
+        let local_model = match obj.building_state {
+            // Native construction presents the temporary render-type-10 cage
+            // while wood is arriving, then briefly skins it with the settled
+            // phase-zero faces immediately before completion. Showing the raw
+            // intermediate phase masks as stable meshes produces the black
+            // roof shells that never appear in the reference recording.
+            Some(crate::engine::buildings::BuildingState::Init)
+                if obj.subtype <= 3 && obj.construction_phase < 3 =>
+            {
+                mk_pop_object_construction_scaffold(obj3d)
+            }
+            Some(crate::engine::buildings::BuildingState::Init) if obj.subtype <= 3 => {
+                mk_pop_object_for_phase(obj3d, Some(0))
+            }
+            Some(crate::engine::buildings::BuildingState::Init)
+            | Some(crate::engine::buildings::BuildingState::Destroying)
+            | Some(crate::engine::buildings::BuildingState::Sinking)
+                if obj.construction_phase < 4 =>
+            {
+                mk_pop_object_for_phase(obj3d, Some(obj.construction_phase))
+            }
+            _ => mk_pop_object(obj3d),
         };
         let scale = step * (obj3d.coord_scale() / 300.0);
 

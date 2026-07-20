@@ -4,7 +4,7 @@ use crate::data::level::{LevelDefinition, LevelObjectIndex};
 use crate::data::units::ModelType;
 use crate::engine::buildings::spawning::population_growth_weight;
 use crate::engine::buildings::tick::{
-    construction_phase, construction_progress_target, construction_target,
+    construction_delivery_phase, construction_progress_target, construction_target,
     tick_building_with_population, CONSTRUCTION_UNITS_PER_WOOD,
 };
 use crate::engine::buildings::types::{building_behavior_flags, building_max_health};
@@ -12,11 +12,13 @@ use crate::engine::buildings::{
     BuildingCatalog, BuildingState, BuildingSubtype, PlacementError, SpawnAction,
 };
 use crate::engine::economy::population::{calculate_housing_capacity, can_spawn};
-use crate::engine::movement::WorldCoord;
+use crate::engine::movement::{atan2, WorldCoord};
 use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
 use crate::engine::state::rng::GameRng;
 use crate::engine::state::tribe::TribeArray;
-use crate::engine::units::coords::{cell_to_world, world_to_cell, world_to_render_pos};
+use crate::engine::units::coords::{
+    cell_to_world, toroidal_delta, world_to_cell, world_to_render_pos,
+};
 use crate::engine::units::person_state::{person_type_defaults, PersonState};
 
 const WORLD_SIZE: usize = 128;
@@ -29,6 +31,7 @@ const ORIGINAL_TICKS_PER_SECOND: u16 = 14;
 const WORLD_TICKS_PER_SECOND: u16 = 30;
 const CHOP_TICKS: u16 = original_ticks_to_world_ticks(20);
 const DELIVERY_TICKS: u16 = original_ticks_to_world_ticks(8);
+const FINAL_BUILD_TICKS: u16 = original_ticks_to_world_ticks(15);
 const SITE_WORK_MIN_ORIGINAL_TICKS: u16 = 32;
 const SITE_WORK_RANDOM_MASK: u32 = 0x3f;
 const WORK_ANIMATION_TICKS_PER_FRAME: u8 = original_ticks_to_world_ticks(3) as u8;
@@ -36,6 +39,9 @@ const WORK_ANIMATION_TICKS_PER_FRAME: u8 = original_ticks_to_world_ticks(3) as u
 const BUILD_PHASE_TRAVEL_OR_FLATTEN: u8 = 0;
 const BUILD_PHASE_DELIVER: u8 = 1;
 const BUILD_PHASE_SITE_WORK: u8 = 2;
+const BUILD_PHASE_WAIT_WOOD: u8 = 3;
+const BUILD_PHASE_FINALIZE: u8 = 4;
+const BUILD_PHASE_WAIT_FINALIZE: u8 = 5;
 
 const fn original_ticks_to_world_ticks(ticks: u16) -> u16 {
     (ticks * WORLD_TICKS_PER_SECOND).div_ceil(ORIGINAL_TICKS_PER_SECOND)
@@ -116,38 +122,44 @@ impl TerrainState {
         self.revision = self.revision.wrapping_add(1).max(1);
     }
 
-    fn flatten_one_step(
-        &mut self,
+    fn uneven_footprint_offset(
+        &self,
         cell: (i32, i32),
         footprint: &[(i16, i16)],
         target: u16,
         selector: u32,
-    ) -> bool {
+    ) -> Option<(i16, i16)> {
         let uneven_count = footprint
             .iter()
-            .filter(|&&(dx, dy)| {
-                let x = ((cell.0 + dx as i32) & 127) as usize;
-                let y = ((cell.1 + dy as i32) & 127) as usize;
-                self.heights[y][x] != target
-            })
+            .filter(|&&offset| !self.footprint_offset_is_flat(cell, offset, target))
             .count();
-        if uneven_count == 0 {
-            return false;
-        }
-
-        let selected = selector as usize % uneven_count;
-        let &(dx, dy) = footprint
+        let selected = selector as usize % uneven_count.max(1);
+        footprint
             .iter()
-            .filter(|&&(dx, dy)| {
-                let x = ((cell.0 + dx as i32) & 127) as usize;
-                let y = ((cell.1 + dy as i32) & 127) as usize;
-                self.heights[y][x] != target
-            })
+            .copied()
+            .filter(|&offset| !self.footprint_offset_is_flat(cell, offset, target))
             .nth(selected)
-            .expect("uneven footprint count changed without a terrain mutation");
+    }
+
+    fn footprint_offset_is_flat(&self, cell: (i32, i32), offset: (i16, i16), target: u16) -> bool {
+        let x = ((cell.0 + offset.0 as i32) & 127) as usize;
+        let y = ((cell.1 + offset.1 as i32) & 127) as usize;
+        self.heights[y][x] == target
+    }
+
+    fn flatten_offset_one_step(
+        &mut self,
+        cell: (i32, i32),
+        offset: (i16, i16),
+        target: u16,
+    ) -> bool {
+        let (dx, dy) = offset;
         let x = ((cell.0 + dx as i32) & 127) as usize;
         let y = ((cell.1 + dy as i32) & 127) as usize;
         let height = &mut self.heights[y][x];
+        if *height == target {
+            return false;
+        }
         *height = if *height < target {
             height.saturating_add(FOUNDATION_STROKE_HEIGHT).min(target)
         } else {
@@ -466,14 +478,22 @@ impl World {
             }
         }
 
-        let target = self.pool.get(building).unwrap().header.position;
-        for &handle in units {
+        let (_, site_cell, footprint, _) = self
+            .construction_site_data(building)
+            .ok_or(WorldError::NotConstructionSite(building))?;
+        for (builder_index, &handle) in units.iter().enumerate() {
             self.cancel_construction_job(handle);
+            let work_offset = footprint
+                .get(builder_index % footprint.len().max(1))
+                .copied()
+                .unwrap_or((0, 0));
+            let target = construction_work_position(site_cell, work_offset);
             if let Some(object) = self.pool.get_mut(handle) {
                 if let GameObjectData::Person(person) = &mut object.data {
                     person.building_handle = Some(building);
                     person.gather_target = None;
                     person.construction_wood_reserved = false;
+                    person.construction_work_offset = Some(work_offset);
                     person.construction_work_progress = 0;
                     person.wood_carried = 0;
                     person.prev_state = person.state;
@@ -531,6 +551,7 @@ impl World {
                 person.building_handle = None;
                 person.gather_target = None;
                 person.construction_wood_reserved = false;
+                person.construction_work_offset = None;
                 person.construction_work_progress = 0;
                 person.wood_carried = 0;
                 person.prev_state = person.state;
@@ -707,13 +728,14 @@ impl World {
     }
 
     fn tick_construction_person(&mut self, handle: ObjectHandle, rng: &mut GameRng) {
-        let Some((building_handle, person_state, state_counter, subtype)) =
+        let Some((building_handle, person_state, state_counter, subtype, mut work_offset)) =
             self.pool.get(handle).and_then(|object| match &object.data {
                 GameObjectData::Person(person) => Some((
                     person.building_handle?,
                     person.state,
                     person.state_counter,
                     object.header.subtype,
+                    person.construction_work_offset,
                 )),
                 _ => None,
             })
@@ -730,53 +752,82 @@ impl World {
 
         match person_state {
             PersonState::Building => {
-                if !self.move_person_toward(handle, site_position) {
-                    self.set_person_animation(handle, walk_animation(subtype));
-                    return;
-                }
-
-                if state_counter == BUILD_PHASE_DELIVER {
-                    self.set_person_animation(handle, 120);
-                    if self.decrement_person_timer(handle) == 0 {
-                        self.finish_construction_delivery(handle, building_handle, rng);
-                    }
-                    return;
-                }
-
-                if state_counter == BUILD_PHASE_SITE_WORK {
-                    self.set_person_animation(handle, 120);
-                    if self.decrement_person_timer(handle) == 0 {
-                        self.finish_construction_site_work(handle, building_handle);
-                    }
-                    return;
-                }
-
-                if !self
-                    .terrain
-                    .footprint_is_flat(site_cell, &footprint, foundation_height)
-                {
-                    self.set_person_animation(handle, 115);
-                    if self.person_timer(handle) == 0 {
-                        self.set_person_timer(handle, next_site_work_ticks(rng));
-                        return;
-                    }
-                    if self.decrement_person_timer(handle) == 0 {
-                        self.terrain.flatten_one_step(
+                let footprint_is_flat =
+                    self.terrain
+                        .footprint_is_flat(site_cell, &footprint, foundation_height);
+                if state_counter == BUILD_PHASE_TRAVEL_OR_FLATTEN && !footprint_is_flat {
+                    let needs_new_cell = work_offset.is_none_or(|offset| {
+                        self.terrain
+                            .footprint_offset_is_flat(site_cell, offset, foundation_height)
+                    });
+                    if needs_new_cell {
+                        work_offset = self.terrain.uneven_footprint_offset(
                             site_cell,
                             &footprint,
                             foundation_height,
-                            rng.next(),
+                            rng.next().wrapping_add(handle.slot() as u32),
                         );
-                        if !self
-                            .terrain
-                            .footprint_is_flat(site_cell, &footprint, foundation_height)
-                        {
-                            self.set_person_timer(handle, next_site_work_ticks(rng));
-                        }
+                        self.set_construction_work_offset(handle, work_offset);
+                        self.set_person_timer(handle, 0);
                     }
+                }
+
+                let work_position = construction_work_position(
+                    site_cell,
+                    work_offset
+                        .or_else(|| footprint.first().copied())
+                        .unwrap_or((0, 0)),
+                );
+                if !self.move_person_toward(handle, work_position) {
+                    self.set_person_animation(handle, walk_animation(subtype));
                     return;
                 }
-                self.start_wood_trip(handle, building_handle);
+                self.face_person_toward(handle, site_position);
+
+                match state_counter {
+                    BUILD_PHASE_DELIVER => {
+                        self.set_person_animation(handle, 120);
+                        if self.decrement_person_timer(handle) == 0 {
+                            self.finish_construction_delivery(handle, building_handle, rng);
+                        }
+                    }
+                    BUILD_PHASE_SITE_WORK => {
+                        self.set_person_animation(handle, 120);
+                        if self.decrement_person_timer(handle) == 0 {
+                            self.finish_construction_site_work(handle, building_handle);
+                        }
+                    }
+                    BUILD_PHASE_WAIT_WOOD => {
+                        self.set_person_animation(handle, 120);
+                        self.start_wood_trip(handle, building_handle);
+                    }
+                    BUILD_PHASE_FINALIZE => {
+                        self.set_person_animation(handle, 120);
+                        if self.decrement_person_timer(handle) == 0 {
+                            self.complete_construction(building_handle);
+                        }
+                    }
+                    BUILD_PHASE_WAIT_FINALIZE => {
+                        self.set_person_animation(handle, 120);
+                    }
+                    _ if !footprint_is_flat => {
+                        self.set_person_animation(handle, 115);
+                        if self.person_timer(handle) == 0 {
+                            self.set_person_timer(handle, next_site_work_ticks(rng));
+                            return;
+                        }
+                        if self.decrement_person_timer(handle) == 0 {
+                            if let Some(offset) = work_offset {
+                                self.terrain.flatten_offset_one_step(
+                                    site_cell,
+                                    offset,
+                                    foundation_height,
+                                );
+                            }
+                        }
+                    }
+                    _ => self.start_wood_trip(handle, building_handle),
+                }
             }
             PersonState::Gathering => {
                 let tree = self.pool.get(handle).and_then(|object| match &object.data {
@@ -818,12 +869,19 @@ impl World {
             PersonState::GatheringWood => {
                 self.set_person_animation(handle, 73);
                 if self.decrement_person_timer(handle) == 0 {
-                    self.finish_chopping(handle, building_handle, site_position);
+                    self.finish_chopping(handle, building_handle);
                 }
             }
             PersonState::CarryingWood => {
                 self.set_person_animation(handle, 88);
-                if self.move_person_toward(handle, site_position) {
+                let work_position = construction_work_position(
+                    site_cell,
+                    work_offset
+                        .or_else(|| footprint.first().copied())
+                        .unwrap_or((0, 0)),
+                );
+                if self.move_person_toward(handle, work_position) {
+                    self.face_person_toward(handle, site_position);
                     self.deposit_construction_wood(handle, building_handle);
                 }
             }
@@ -868,10 +926,11 @@ impl World {
             if let Some(object) = self.pool.get_mut(person_handle) {
                 if let GameObjectData::Person(person) = &mut object.data {
                     person.prev_state = person.state;
-                    person.state = PersonState::Gathering;
+                    person.state = PersonState::Building;
+                    person.state_counter = BUILD_PHASE_WAIT_WOOD;
                     person.movement.flags1 &= !0x1000;
                     person.movement.speed = 0;
-                    set_animation(person, idle_animation(object.header.subtype));
+                    set_animation(person, 120);
                 }
             }
             return;
@@ -884,10 +943,11 @@ impl World {
             if let Some(object) = self.pool.get_mut(person_handle) {
                 if let GameObjectData::Person(person) = &mut object.data {
                     person.prev_state = person.state;
-                    person.state = PersonState::Gathering;
+                    person.state = PersonState::Building;
+                    person.state_counter = BUILD_PHASE_WAIT_WOOD;
                     person.movement.flags1 &= !0x1000;
                     person.movement.speed = 0;
-                    set_animation(person, idle_animation(object.header.subtype));
+                    set_animation(person, 120);
                 }
             }
             return;
@@ -939,12 +999,7 @@ impl World {
             .map(|(handle, _)| handle)
     }
 
-    fn finish_chopping(
-        &mut self,
-        person_handle: ObjectHandle,
-        building_handle: ObjectHandle,
-        site_position: WorldCoord,
-    ) {
+    fn finish_chopping(&mut self, person_handle: ObjectHandle, building_handle: ObjectHandle) {
         let tree_handle = self
             .pool
             .get(person_handle)
@@ -972,6 +1027,10 @@ impl World {
             self.start_wood_trip(person_handle, building_handle);
             return;
         }
+        let Some(site_position) = self.construction_person_work_position(person_handle) else {
+            self.release_wood_trip(person_handle, building_handle, false);
+            return;
+        };
         if let Some(object) = self.pool.get_mut(person_handle) {
             if let GameObjectData::Person(person) = &mut object.data {
                 person.gather_target = None;
@@ -1059,10 +1118,10 @@ impl World {
                     .construction_progress
                     .saturating_add(contribution)
                     .min(target);
-                // The completed mesh replaces phase three only after the final
-                // site-work interval, so the last scaffold remains observable.
-                building.construction_phase =
-                    construction_phase(building.construction_progress, target).min(3);
+                building.construction_phase = construction_delivery_phase(
+                    building.wood_consumed,
+                    construction_target(building.building_subtype),
+                );
                 accepted = true;
             }
         }
@@ -1089,7 +1148,8 @@ impl World {
         person_handle: ObjectHandle,
         building_handle: ObjectHandle,
     ) {
-        let mut completed = false;
+        let mut begin_final_interval = false;
+        let mut wait_for_final_interval = false;
         let valid_site = if let Some(object) = self.pool.get_mut(building_handle) {
             if let GameObjectData::Building(building) = &mut object.data {
                 if building.state != BuildingState::Init {
@@ -1097,9 +1157,12 @@ impl World {
                 } else {
                     let target = construction_progress_target(building.building_subtype);
                     if building.construction_progress >= target {
-                        building.construction_phase = 4;
-                        building.state = BuildingState::ConstructionDone;
-                        completed = true;
+                        if building.construction_phase < 3 {
+                            building.construction_phase = 3;
+                            begin_final_interval = true;
+                        } else {
+                            wait_for_final_interval = true;
+                        }
                     }
                     true
                 }
@@ -1114,8 +1177,25 @@ impl World {
             return;
         }
 
-        if completed {
-            self.cancel_construction_job(person_handle);
+        if begin_final_interval || wait_for_final_interval {
+            if let Some(object) = self.pool.get_mut(person_handle) {
+                if let GameObjectData::Person(person) = &mut object.data {
+                    person.state_counter = if begin_final_interval {
+                        BUILD_PHASE_FINALIZE
+                    } else {
+                        BUILD_PHASE_WAIT_FINALIZE
+                    };
+                    person.state_timer = if begin_final_interval {
+                        FINAL_BUILD_TICKS
+                    } else {
+                        0
+                    };
+                    person.construction_work_progress = 0;
+                    person.movement.flags1 &= !0x1000;
+                    person.movement.speed = 0;
+                    set_animation(person, 120);
+                }
+            }
             self.object_revision = self.object_revision.wrapping_add(1).max(1);
             return;
         }
@@ -1127,6 +1207,71 @@ impl World {
             }
         }
         self.start_wood_trip(person_handle, building_handle);
+    }
+
+    fn complete_construction(&mut self, building_handle: ObjectHandle) {
+        let Some((site_cell, footprint, rotation)) =
+            self.pool.get(building_handle).and_then(|object| {
+                let GameObjectData::Building(building) = &object.data else {
+                    return None;
+                };
+                (building.state == BuildingState::Init).then(|| {
+                    (
+                        render_cell(object.header.position),
+                        self.catalog
+                            .footprint(
+                                building.building_subtype,
+                                ((object.header.angle / 512) & 3) as u8,
+                            )
+                            .unwrap_or_default()
+                            .to_vec(),
+                        ((object.header.angle / 512) & 3) as u8,
+                    )
+                })
+            })
+        else {
+            return;
+        };
+
+        if let Some(object) = self.pool.get_mut(building_handle) {
+            let GameObjectData::Building(building) = &mut object.data else {
+                return;
+            };
+            building.construction_phase = 4;
+            building.state = BuildingState::ConstructionDone;
+        }
+
+        let mut builders: Vec<_> = self
+            .pool
+            .persons()
+            .filter_map(|(handle, _, person)| {
+                (person.building_handle == Some(building_handle)).then_some(handle)
+            })
+            .collect();
+        builders.sort_by_key(|handle| handle.slot());
+        let exit_positions =
+            construction_exit_positions(site_cell, &footprint, rotation, builders.len());
+        for (handle, target) in builders.into_iter().zip(exit_positions) {
+            if let Some(object) = self.pool.get_mut(handle) {
+                if let GameObjectData::Person(person) = &mut object.data {
+                    person.building_handle = None;
+                    person.gather_target = None;
+                    person.construction_wood_reserved = false;
+                    person.construction_work_offset = None;
+                    person.construction_work_progress = 0;
+                    person.wood_carried = 0;
+                    person.prev_state = person.state;
+                    person.state = PersonState::GoToPoint;
+                    person.state_counter = 0;
+                    person.state_timer = 0;
+                    person.movement.target_pos = target;
+                    person.movement.speed = person_type_defaults(object.header.subtype).speed;
+                    person.movement.flags1 |= 0x1000;
+                    set_animation(person, walk_animation(object.header.subtype));
+                }
+            }
+        }
+        self.object_revision = self.object_revision.wrapping_add(1).max(1);
     }
 
     fn release_wood_trip(
@@ -1165,10 +1310,56 @@ impl World {
         }
     }
 
+    fn construction_person_work_position(&self, person_handle: ObjectHandle) -> Option<WorldCoord> {
+        let (building_handle, work_offset) =
+            self.pool
+                .get(person_handle)
+                .and_then(|object| match &object.data {
+                    GameObjectData::Person(person) => {
+                        Some((person.building_handle?, person.construction_work_offset))
+                    }
+                    _ => None,
+                })?;
+        let (_, site_cell, footprint, _) = self.construction_site_data(building_handle)?;
+        Some(construction_work_position(
+            site_cell,
+            work_offset
+                .or_else(|| footprint.first().copied())
+                .unwrap_or((0, 0)),
+        ))
+    }
+
+    fn set_construction_work_offset(&mut self, handle: ObjectHandle, offset: Option<(i16, i16)>) {
+        if let Some(object) = self.pool.get_mut(handle) {
+            if let GameObjectData::Person(person) = &mut object.data {
+                person.construction_work_offset = offset;
+            }
+        }
+    }
+
+    fn face_person_toward(&mut self, handle: ObjectHandle, target: WorldCoord) {
+        let Some(position) = self.pool.get(handle).map(|object| object.header.position) else {
+            return;
+        };
+        let dx = toroidal_delta(position.x, target.x);
+        let dz = toroidal_delta(position.z, target.z);
+        if dx == 0 && dz == 0 {
+            return;
+        }
+        let angle = atan2(dx, -dz);
+        if let Some(object) = self.pool.get_mut(handle) {
+            object.header.angle = angle;
+            if let GameObjectData::Person(person) = &mut object.data {
+                person.movement.facing_angle = angle;
+            }
+        }
+    }
+
     fn move_person_toward(&mut self, handle: ObjectHandle, target: WorldCoord) -> bool {
         let Some(position) = self.pool.get(handle).map(|object| object.header.position) else {
             return false;
         };
+        self.face_person_toward(handle, target);
         let next = WorldCoord::new(
             approach(position.x, target.x, PERSON_MOVE_STEP),
             approach(position.z, target.z, PERSON_MOVE_STEP),
@@ -1440,6 +1631,52 @@ fn render_cell(position: WorldCoord) -> (i32, i32) {
     (x.floor() as i32, y.floor() as i32)
 }
 
+fn construction_work_position(site_cell: (i32, i32), offset: (i16, i16)) -> WorldCoord {
+    cell_to_world(
+        (site_cell.0 as f32 + offset.0 as f32).rem_euclid(WORLD_SIZE as f32),
+        (site_cell.1 as f32 + offset.1 as f32).rem_euclid(WORLD_SIZE as f32),
+        WORLD_SIZE as f32,
+    )
+}
+
+fn construction_exit_positions(
+    site_cell: (i32, i32),
+    footprint: &[(i16, i16)],
+    rotation: u8,
+    count: usize,
+) -> Vec<WorldCoord> {
+    let min_x = footprint.iter().map(|offset| offset.0).min().unwrap_or(0) as f32;
+    let max_x = footprint.iter().map(|offset| offset.0).max().unwrap_or(0) as f32;
+    let min_y = footprint.iter().map(|offset| offset.1).min().unwrap_or(0) as f32;
+    let max_y = footprint.iter().map(|offset| offset.1).max().unwrap_or(0) as f32;
+    let center_x = site_cell.0 as f32 + (min_x + max_x) * 0.5;
+    let center_y = site_cell.1 as f32 + (min_y + max_y) * 0.5;
+
+    (0..count)
+        .map(|index| {
+            let group = index / 6;
+            let lane = index % 6;
+            let group_len = (count - group * 6).min(6);
+            let lateral = (lane as f32 - (group_len.saturating_sub(1) as f32 * 0.5)) * 0.5;
+            // cell_to_world quantizes at half-cell resolution; 1.25 keeps the
+            // regroup target visibly beyond the occupied edge after that
+            // conversion rather than leaving the brave on the footprint.
+            let outward = 1.25 + group as f32 * 0.75;
+            let (cell_x, cell_y) = match rotation & 3 {
+                0 => (center_x + lateral, site_cell.1 as f32 + min_y - outward),
+                1 => (site_cell.0 as f32 + min_x - outward, center_y + lateral),
+                2 => (center_x + lateral, site_cell.1 as f32 + max_y + outward),
+                _ => (site_cell.0 as f32 + max_x + outward, center_y + lateral),
+            };
+            cell_to_world(
+                cell_x.rem_euclid(WORLD_SIZE as f32),
+                cell_y.rem_euclid(WORLD_SIZE as f32),
+                WORLD_SIZE as f32,
+            )
+        })
+        .collect()
+}
+
 fn approach(value: i16, target: i16, step: i16) -> i16 {
     let delta = target.wrapping_sub(value);
     if delta.unsigned_abs() <= step as u16 {
@@ -1628,6 +1865,69 @@ mod tests {
     }
 
     #[test]
+    fn movement_updates_both_render_and_simulation_facing() {
+        let mut world = World::from_level(
+            definition(vec![object(
+                0,
+                ModelType::Person,
+                BRAVE_SUBTYPE,
+                0,
+                (10, 10),
+            )]),
+            catalog(),
+        )
+        .unwrap();
+        let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
+        let start = world.get(brave).unwrap().header.position;
+        let target = WorldCoord::new(start.x.wrapping_add(512), start.z.wrapping_add(256));
+        let expected = atan2(
+            toroidal_delta(start.x, target.x),
+            -toroidal_delta(start.z, target.z),
+        );
+
+        assert!(!world.move_person_toward(brave, target));
+        let object = world.get(brave).unwrap();
+        let GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(object.header.angle, expected);
+        assert_eq!(person.movement.facing_angle, expected);
+    }
+
+    #[test]
+    fn builders_receive_distinct_footprint_work_cells() {
+        let mut world = World::from_level(
+            definition(vec![
+                object(0, ModelType::Person, BRAVE_SUBTYPE, 0, (10, 10)),
+                object(1, ModelType::Person, BRAVE_SUBTYPE, 0, (10, 11)),
+                object(2, ModelType::Person, BRAVE_SUBTYPE, 0, (11, 10)),
+            ]),
+            catalog(),
+        )
+        .unwrap();
+        let braves = [
+            world.source_handle(LevelObjectIndex(0)).unwrap(),
+            world.source_handle(LevelObjectIndex(1)).unwrap(),
+            world.source_handle(LevelObjectIndex(2)).unwrap(),
+        ];
+        let hut = world
+            .place_building(BuildingSubtype::SmallHut, 0, (12, 12), 0)
+            .unwrap();
+        world.assign_construction(&braves, hut).unwrap();
+
+        let offsets: std::collections::HashSet<_> = braves
+            .iter()
+            .map(|handle| {
+                let GameObjectData::Person(person) = &world.get(*handle).unwrap().data else {
+                    unreachable!()
+                };
+                person.construction_work_offset.unwrap()
+            })
+            .collect();
+        assert_eq!(offsets.len(), braves.len());
+    }
+
+    #[test]
     fn hut_constructs_then_spawns_one_canonical_brave() {
         let mut rng = GameRng::new(0);
         let mut world = World::from_level(
@@ -1768,7 +2068,7 @@ mod tests {
             unreachable!()
         };
         assert_eq!(building.construction_progress, CONSTRUCTION_UNITS_PER_WOOD);
-        assert_eq!(building.construction_phase, 1);
+        assert_eq!(building.construction_phase, 0);
         assert_eq!(building.wood_consumed, 1);
         assert_eq!(building.wood_stored, 0);
         assert_eq!(building.wood_reserved, 0);
@@ -1796,6 +2096,69 @@ mod tests {
     }
 
     #[test]
+    fn final_scaffold_interval_precedes_completion_and_builder_regroups() {
+        let mut rng = GameRng::new(0);
+        let mut world = World::from_level(
+            definition(vec![
+                object(0, ModelType::Person, BRAVE_SUBTYPE, 0, (10, 10)),
+                object(1, ModelType::Scenery, 1, 255, (11, 11)),
+            ]),
+            catalog(),
+        )
+        .unwrap();
+        let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
+        let hut = world
+            .place_building(BuildingSubtype::SmallHut, 0, (12, 12), 0)
+            .unwrap();
+        world.assign_construction(&[brave], hut).unwrap();
+
+        for _ in 0..5_000 {
+            world.tick_persons(&mut rng);
+            let in_final_interval = matches!(
+                &world.get(brave).unwrap().data,
+                GameObjectData::Person(person)
+                    if person.state == PersonState::Building
+                        && person.state_counter == BUILD_PHASE_FINALIZE
+            );
+            if in_final_interval {
+                break;
+            }
+        }
+        let GameObjectData::Building(building) = &world.get(hut).unwrap().data else {
+            unreachable!()
+        };
+        assert_eq!(building.state, BuildingState::Init);
+        assert_eq!(building.construction_phase, 3);
+        let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
+            unreachable!()
+        };
+        assert_eq!(person.state_timer, FINAL_BUILD_TICKS);
+
+        for _ in 0..FINAL_BUILD_TICKS - 1 {
+            world.tick_persons(&mut rng);
+            let GameObjectData::Building(building) = &world.get(hut).unwrap().data else {
+                unreachable!()
+            };
+            assert_eq!(building.state, BuildingState::Init);
+            assert_eq!(building.construction_phase, 3);
+        }
+        world.tick_persons(&mut rng);
+        let GameObjectData::Building(building) = &world.get(hut).unwrap().data else {
+            unreachable!()
+        };
+        assert_eq!(building.state, BuildingState::ConstructionDone);
+        assert_eq!(building.construction_phase, 4);
+        let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
+            unreachable!()
+        };
+        assert_eq!(person.building_handle, None);
+        assert_eq!(person.state, PersonState::GoToPoint);
+        assert!(person.movement.is_moving());
+        let (_, exit_y) = world_to_render_pos(&person.movement.target_pos, WORLD_SIZE as f32);
+        assert!(exit_y < 12.0, "rotation zero exits beyond the -Z entrance");
+    }
+
+    #[test]
     fn foundation_changes_only_after_a_discrete_work_stroke() {
         let mut rng = GameRng::new(0);
         let mut world = World::from_level(
@@ -1817,7 +2180,19 @@ mod tests {
             .unwrap();
         world.assign_construction(&[brave], hut).unwrap();
 
-        world.tick_persons(&mut rng);
+        for _ in 0..200 {
+            world.tick_persons(&mut rng);
+            let working = matches!(
+                &world.get(brave).unwrap().data,
+                GameObjectData::Person(person)
+                    if person.state == PersonState::Building
+                        && person.anim.animation_id == 115
+                        && person.state_timer > 0
+            );
+            if working {
+                break;
+            }
+        }
         let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
             unreachable!()
         };

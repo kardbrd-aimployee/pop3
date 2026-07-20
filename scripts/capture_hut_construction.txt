@@ -1,13 +1,17 @@
 # Deterministic Level 1 hut-construction visual-regression sequence.
 wait 1.0
-construct_hut
+construct_hut_group
 screenshot /tmp/pop3-hut-plan.png
-advance_hut_phase 1
-screenshot /tmp/pop3-hut-phase-1.png
-advance_hut_phase 2
-screenshot /tmp/pop3-hut-phase-2.png
+advance_ticks 135
+screenshot /tmp/pop3-hut-ground-work-10s.png
+advance_ticks 300
+screenshot /tmp/pop3-hut-multiple-workers-20s.png
+advance_ticks 300
+screenshot /tmp/pop3-hut-late-foundation-30s.png
+advance_hut_phase 0
+screenshot /tmp/pop3-hut-first-scaffold.png
 advance_hut_phase 3
-screenshot /tmp/pop3-hut-phase-3.png
+screenshot /tmp/pop3-hut-partial.png
 advance_hut_phase 4
 screenshot /tmp/pop3-hut-complete.png
 wait 0.25

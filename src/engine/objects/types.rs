@@ -71,6 +71,10 @@ pub struct PersonData {
     pub gather_target: Option<ObjectHandle>,
     /// True while this person owns one reserved wood trip for its building.
     pub construction_wood_reserved: bool,
+    /// Footprint cell where this brave prepares terrain and delivers wood.
+    /// Keeping a stable per-person offset prevents every builder stacking at
+    /// the building origin while preserving the building's canonical angle.
+    pub construction_work_offset: Option<(i16, i16)>,
     /// Reserved for construction work accounting; discrete deliveries leave it at zero.
     pub construction_work_progress: u16,
 }
@@ -101,6 +105,7 @@ impl Default for PersonData {
             guard_position: None,
             gather_target: None,
             construction_wood_reserved: false,
+            construction_work_offset: None,
             construction_work_progress: 0,
         }
     }

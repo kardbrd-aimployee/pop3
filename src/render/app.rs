@@ -87,6 +87,25 @@ const QUIT_CONFIRM_TITLE: &str = "Press Escape again to quit — Populous: The B
 const QUIT_CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
 const NATIVE_MINIMAP_DIMENSION: usize = 128;
 
+fn parse_construction_fixture_command(command: &str) -> Option<(usize, Option<u8>)> {
+    let mut parts = command.split_whitespace();
+    let (worker_count, variant_required) = match parts.next()? {
+        "construct_hut" => (1, false),
+        "construct_hut_group" => (3, false),
+        "construct_hut_variant" => (1, true),
+        "construct_hut_group_variant" => (3, true),
+        _ => return None,
+    };
+    let visual_variant = parts.next().and_then(|value| value.parse::<u8>().ok());
+    if parts.next().is_some()
+        || visual_variant.is_some_and(|variant| variant > 2)
+        || variant_required != visual_variant.is_some()
+    {
+        return None;
+    }
+    Some((worker_count, visual_variant))
+}
+
 /// Expand the original level's BIGF0 minimap pass through its companion
 /// palette. This follows the same extractor path exposed by `pop_res minimap`
 /// rather than deriving terrain colours from heights in the HUD.
@@ -2114,10 +2133,11 @@ impl App {
         }
 
         // Deterministic construction fixture for visual regression captures.
-        // Places the nearest valid small-hut plan to the blue braves and assigns
-        // one brave, without depending on screen coordinates. Using one worker
-        // keeps all four native construction phases observable in screenshots.
-        if cmd.trim() == "construct_hut" {
+        // The group variant mirrors the multi-brave original recording while
+        // the single-worker form remains useful for timing diagnostics.
+        if let Some((construction_worker_count, visual_variant)) =
+            parse_construction_fixture_command(cmd.trim())
+        {
             let Some(session) = &mut self.engine.session else {
                 log::warn!("[script] construct_hut: no active game session");
                 return true;
@@ -2187,7 +2207,19 @@ impl App {
                 log::warn!("[script] construct_hut: placed plan was not found");
                 return true;
             };
-            let handles = vec![braves[0].handle];
+            if let Some(visual_variant) = visual_variant {
+                if let Some(object) = session.world.get_mut_for_action(building) {
+                    if let crate::engine::objects::GameObjectData::Building(data) = &mut object.data
+                    {
+                        data.visual_variant = visual_variant;
+                    }
+                }
+            }
+            let handles = braves
+                .iter()
+                .take(construction_worker_count)
+                .map(|person| person.handle)
+                .collect::<Vec<_>>();
             session.enqueue(GameAction::Select(handles.clone()));
             session.enqueue(GameAction::AssignConstruction {
                 units: handles,
@@ -2199,6 +2231,33 @@ impl App {
                 assignment.actions
             );
             session.flags.set_paused(true);
+            self.refresh_session_render_state();
+            self.do_render = true;
+            return true;
+        }
+
+        // Advance an exact number of simulation ticks. This keeps worker
+        // choreography captures aligned to native recording timestamps even
+        // when rendering is faster or slower than real time.
+        if let Some(value) = cmd.strip_prefix("advance_ticks ") {
+            let Ok(ticks) = value.trim().parse::<u32>() else {
+                log::warn!("[script] advance_ticks: invalid tick count {value:?}");
+                return true;
+            };
+            if ticks > 20_000 {
+                log::warn!("[script] advance_ticks: count must not exceed 20000");
+                return true;
+            }
+            let Some(session) = &mut self.engine.session else {
+                log::warn!("[script] advance_ticks: no active game session");
+                return true;
+            };
+            session.flags.set_paused(false);
+            for _ in 0..ticks {
+                session.step();
+            }
+            session.flags.set_paused(true);
+            log::info!("[script] advance_ticks: elapsed_ticks={ticks}");
             self.refresh_session_render_state();
             self.do_render = true;
             return true;
@@ -2223,7 +2282,7 @@ impl App {
             let mut elapsed_ticks = 0u32;
             let mut observed_phase = None;
             while elapsed_ticks < 20_000 {
-                let phase = session
+                let stage = session
                     .snapshot()
                     .objects
                     .into_iter()
@@ -2233,9 +2292,16 @@ impl App {
                             && object.tribe == 0
                     })
                     .max_by_key(|object| object.handle.slot())
-                    .map(|object| object.construction_phase);
-                observed_phase = phase;
-                if phase.is_some_and(|phase| phase >= target_phase) {
+                    .map(|object| (object.construction_phase, object.construction_progress));
+                observed_phase = stage.map(|(phase, _)| phase);
+                let reached = stage.is_some_and(|(phase, progress)| {
+                    if target_phase == 0 {
+                        progress > 0 && phase < 4
+                    } else {
+                        phase >= target_phase
+                    }
+                });
+                if reached {
                     break;
                 }
                 session.step();
@@ -5642,15 +5708,38 @@ impl ApplicationHandler for App {
                             }
                             match self.input.drag_state {
                                 DragState::PendingDrag { .. } => {
-                                    // Short click (no drag) — resolve screen pos to unit command
-                                    let cmd = match self
+                                    // In the original, a selected group is sent to a
+                                    // construction plan with the primary button.
+                                    let construction_site = self
                                         .engine
-                                        .find_unit_at_screen_pos(&self.input.mouse_pos)
-                                    {
-                                        Some(id) => GameCommand::SelectUnit(id),
-                                        None => GameCommand::ClearSelection,
-                                    };
-                                    self.engine.apply_command(&cmd);
+                                        .screen_to_cell(&self.input.mouse_pos)
+                                        .and_then(|(cx, cy)| {
+                                            self.engine.session.as_ref().and_then(|session| {
+                                                (!session.world.selected().is_empty())
+                                                    .then(|| {
+                                                        session.world.construction_site_at((
+                                                            cx.floor() as i32,
+                                                            cy.floor() as i32,
+                                                        ))
+                                                    })
+                                                    .flatten()
+                                            })
+                                        });
+                                    if let Some(building) = construction_site {
+                                        self.engine.apply_command(
+                                            &GameCommand::AssignConstruction { building },
+                                        );
+                                    } else {
+                                        // Short click (no drag) — resolve screen pos to unit command
+                                        let cmd = match self
+                                            .engine
+                                            .find_unit_at_screen_pos(&self.input.mouse_pos)
+                                        {
+                                            Some(id) => GameCommand::SelectUnit(id),
+                                            None => GameCommand::ClearSelection,
+                                        };
+                                        self.engine.apply_command(&cmd);
+                                    }
                                 }
                                 DragState::Dragging { start, current } => {
                                     // Drag release — resolve screen rect to unit IDs
@@ -6000,6 +6089,30 @@ mod tests {
             Some(BuildingState::Active),
             0,
         ));
+    }
+
+    #[test]
+    fn construction_capture_fixture_accepts_explicit_native_model_families() {
+        assert_eq!(
+            parse_construction_fixture_command("construct_hut_variant 0"),
+            Some((1, Some(0)))
+        );
+        assert_eq!(
+            parse_construction_fixture_command("construct_hut_group_variant 2"),
+            Some((3, Some(2)))
+        );
+        assert_eq!(
+            parse_construction_fixture_command("construct_hut_group"),
+            Some((3, None))
+        );
+        assert_eq!(
+            parse_construction_fixture_command("construct_hut_variant 3"),
+            None
+        );
+        assert_eq!(
+            parse_construction_fixture_command("construct_hut_variant"),
+            None
+        );
     }
 
     #[test]

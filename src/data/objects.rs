@@ -1,9 +1,10 @@
 use core::mem::size_of;
 use core::slice::Iter;
+use std::collections::BTreeSet;
 use std::io::Read;
 use std::path::Path;
 
-use cgmath::{Vector2, Vector3};
+use cgmath::{InnerSpace, Vector2, Vector3};
 
 use crate::data::level::ObjectPaths;
 use crate::data::types::{from_reader, BinDeserializer};
@@ -427,6 +428,123 @@ pub fn construction_face_visible(flags2: u8, phase: u8) -> bool {
     flags2 & (1 << phase.min(4)) != 0
 }
 
+fn push_scaffold_quad(model: &mut TexModel, corners: [Vector3<f32>; 4], tex_id: i16) {
+    let uvs = [
+        Vector2::new(0.0, 0.0),
+        Vector2::new(1.0, 0.0),
+        Vector2::new(1.0, 1.0),
+        Vector2::new(0.0, 1.0),
+    ];
+    let base = model.vertices.len() as u16;
+    for (coord, uv) in corners.into_iter().zip(uvs) {
+        model.push_vertex(TexVertex { coord, uv, tex_id });
+    }
+    // The native transition faces are visible from either side while they
+    // assemble. Emit both windings so the narrow beams behave the same way.
+    model.indices.extend_from_slice(&[
+        base,
+        base + 1,
+        base + 2,
+        base,
+        base + 2,
+        base + 3,
+        base + 2,
+        base + 1,
+        base,
+        base + 3,
+        base + 2,
+        base,
+    ]);
+}
+
+fn push_scaffold_beam(model: &mut TexModel, start: Vector3<f32>, end: Vector3<f32>) {
+    let direction = end - start;
+    if direction.magnitude2() < f32::EPSILON {
+        return;
+    }
+    let direction = direction.normalize();
+    let reference = if direction.y.abs() < 0.9 {
+        Vector3::unit_y()
+    } else {
+        Vector3::unit_x()
+    };
+    // The native temporary face objects rasterize as roughly three-pixel
+    // timbers at the standard gameplay zoom. A slightly wider prism keeps
+    // that silhouette legible after perspective projection and filtering.
+    let half_width = 0.035;
+    let side = direction.cross(reference).normalize() * half_width;
+    let up = direction.cross(side).normalize() * half_width;
+    let a = [
+        start + side + up,
+        start - side + up,
+        start - side - up,
+        start + side - up,
+    ];
+    let b = [
+        end + side + up,
+        end - side + up,
+        end - side - up,
+        end + side - up,
+    ];
+    const SCAFFOLD_TEXTURE: i16 = 21;
+    push_scaffold_quad(model, [a[0], b[0], b[1], a[1]], SCAFFOLD_TEXTURE);
+    push_scaffold_quad(model, [a[1], b[1], b[2], a[2]], SCAFFOLD_TEXTURE);
+    push_scaffold_quad(model, [a[2], b[2], b[3], a[3]], SCAFFOLD_TEXTURE);
+    push_scaffold_quad(model, [a[3], b[3], b[0], a[0]], SCAFFOLD_TEXTURE);
+    push_scaffold_quad(model, [a[3], a[2], a[1], a[0]], SCAFFOLD_TEXTURE);
+    push_scaffold_quad(model, [b[0], b[1], b[2], b[3]], SCAFFOLD_TEXTURE);
+}
+
+fn scaffold_point_key(point: Vector3<f32>) -> (i32, i32, i32) {
+    (
+        (point.x * 10_000.0).round() as i32,
+        (point.y * 10_000.0).round() as i32,
+        (point.z * 10_000.0).round() as i32,
+    )
+}
+
+/// Builds the bare cage shown by the original construction transition.
+///
+/// The cage is derived from the selected native hut family's phase-zero body
+/// edges and uses its native scaffold texture. The original creates temporary
+/// render-type-10 face objects; keeping the resulting beams in one mesh gives
+/// the same visible silhouette without introducing replacement art.
+pub fn mk_pop_object_construction_scaffold(object: &Object3D) -> TexModel {
+    let mut model = MeshModel::new();
+    let mut edges = BTreeSet::new();
+    for face in object.iter_face() {
+        if !construction_face_visible(face.flags2, 0) {
+            continue;
+        }
+        let vertices = &face.vertex[..face.vertex_num];
+        let is_hut_body = vertices.iter().all(|vertex| {
+            vertex.x >= -1.15 && vertex.x <= 1.15 && vertex.z >= 0.30 && vertex.z <= 1.80
+        });
+        if !is_hut_body {
+            continue;
+        }
+        for index in 0..vertices.len() {
+            let start = vertices[index];
+            let end = vertices[(index + 1) % vertices.len()];
+            let start_key = scaffold_point_key(Vector3::new(start.x, start.y, start.z));
+            let end_key = scaffold_point_key(Vector3::new(end.x, end.y, end.z));
+            let key = if start_key <= end_key {
+                (start_key, end_key)
+            } else {
+                (end_key, start_key)
+            };
+            if edges.insert(key) {
+                push_scaffold_beam(
+                    &mut model,
+                    Vector3::new(start.x, start.y, start.z),
+                    Vector3::new(end.x, end.y, end.z),
+                );
+            }
+        }
+    }
+    model
+}
+
 /// Builds the original construction/demolition view of an OBJS mesh. A normal
 /// building ignores the face masks; render type 10 shows only faces whose
 /// phase bit is enabled.
@@ -454,7 +572,10 @@ pub fn mk_pop_object_for_phase(object: &Object3D, phase: Option<u8>) -> TexModel
 
 #[cfg(test)]
 mod tests {
-    use super::construction_face_visible;
+    use super::{construction_face_visible, push_scaffold_beam};
+    use crate::render::model::MeshModel;
+    use crate::render::tex_model::TexModel;
+    use cgmath::Vector3;
 
     #[test]
     fn construction_face_masks_select_the_current_phase_bit() {
@@ -463,5 +584,18 @@ mod tests {
         assert!(construction_face_visible(0b0001_0100, 2));
         assert!(construction_face_visible(0b0001_0100, 4));
         assert!(!construction_face_visible(0b0000_0100, 4));
+    }
+
+    #[test]
+    fn scaffold_beam_is_a_double_sided_six_face_prism() {
+        let mut model: TexModel = MeshModel::new();
+        push_scaffold_beam(
+            &mut model,
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 1.0, 0.0),
+        );
+        assert_eq!(model.vertices.len(), 24);
+        assert_eq!(model.indices.len(), 72);
+        assert!(model.vertices.iter().all(|vertex| vertex.tex_id == 21));
     }
 }

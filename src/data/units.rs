@@ -195,7 +195,7 @@ pub fn building_obj_index_with_variant(
 ) -> Option<usize> {
     let tribe = tribe_index.min(3) as usize;
     match subtype {
-        1..=3 => Some(145 + visual_variant.min(2) as usize * 12 + tribe * 3 + subtype as usize - 1), // Three hut families, each containing Small/Medium/Large per tribe.
+        1..=3 => Some(145 + visual_variant.min(2) as usize * 12 + tribe * 3 + subtype as usize - 1), // Native selectors 107/119/131 map to OBJS0 archive entries 145/157/169.
         4 => Some(117 + tribe),  // Guard Tower (DrumTower)
         5 => Some(133 + tribe),  // Temple (Preacher Training)
         6 => Some(129 + tribe),  // Spy Training

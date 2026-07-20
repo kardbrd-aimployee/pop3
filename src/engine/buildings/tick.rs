@@ -142,6 +142,20 @@ pub fn construction_phase(progress: u16, total: u16) -> u8 {
     }
 }
 
+/// Visible assembly stage after a discrete wood delivery. The original small
+/// hut has three wood deliveries but four incomplete meshes: the first piece
+/// reveals sparse phase zero, the last piece reaches phase two, and a final
+/// building interval reveals phase three before the completed mesh.
+pub fn construction_delivery_phase(delivered: u16, required: u16) -> u8 {
+    if delivered == 0 {
+        return 0;
+    }
+    if required <= 1 {
+        return 2;
+    }
+    (((delivered.saturating_sub(1) as u32 * 2) / (required - 1) as u32).min(2)) as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +314,14 @@ mod tests {
         assert_eq!(construction_phase(225, total), 3);
         assert_eq!(construction_phase(299, total), 3);
         assert_eq!(construction_phase(300, total), 4);
+    }
+
+    #[test]
+    fn three_wood_deliveries_leave_room_for_the_final_scaffold_stage() {
+        assert_eq!(construction_delivery_phase(0, 3), 0);
+        assert_eq!(construction_delivery_phase(1, 3), 0);
+        assert_eq!(construction_delivery_phase(2, 3), 1);
+        assert_eq!(construction_delivery_phase(3, 3), 2);
     }
 
     #[test]
