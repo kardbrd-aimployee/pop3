@@ -61,6 +61,26 @@ cargo run --release -- --base /path/to/pop3 --level 1
 | `--debug` | Enable debug logging |
 | `--script PATH` | Replay key events from script file |
 
+Scripts contain one command per line; blank lines and lines beginning with `#`
+are ignored. Alongside `wait`, `click`, `rightclick`, `zoom`, and `screenshot`,
+the renderer provides deterministic capture commands:
+
+- `construct_hut` places the nearest valid blue small-hut plan, assigns one
+  brave, and pauses the simulation.
+- `advance_hut_phase N` advances that hut deterministically to phase `0..4`
+  and pauses exactly at the requested threshold.
+- `center_cell X Y` centers the camera on a landscape cell without key-repeat
+  drift.
+
+For a repeatable Level 1 construction sequence, run:
+
+```bash
+cargo run --release -- \
+  --base /path/to/pop3 \
+  --level 1 \
+  --script scripts/capture_hut_construction.txt
+```
+
 | Key | Action |
 |-----|--------|
 | WASD | Pan terrain |

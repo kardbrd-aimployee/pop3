@@ -65,7 +65,7 @@ use crate::render::gpu::context::GpuContext;
 use crate::render::gpu::pipeline::{create_pipeline, create_pipeline_blended};
 use crate::render::gpu::texture::GpuTexture;
 
-use crate::engine::buildings::{BuildingCatalog, BuildingSubtype};
+use crate::engine::buildings::{BuildingCatalog, BuildingState, BuildingSubtype};
 use crate::engine::frame::GhostPreviewState;
 use crate::engine::state::state_machine::GameState;
 use crate::engine::state::tick::{GameWorld, StdTimeSource};
@@ -1399,6 +1399,10 @@ fn build_placement_entrance_model(
     ModelEnvelop::<ColorModel>::new(device, vec![(RenderType::Triangles, model)])
 }
 
+fn should_render_construction_footprint(state: Option<BuildingState>, progress: u16) -> bool {
+    state == Some(BuildingState::Init) && progress == 0
+}
+
 pub struct App {
     engine: GameEngine,
     input: InputState,
@@ -1707,6 +1711,19 @@ impl App {
         } else {
             log::warn!("[center] no tribe 0 shaman in unit_renders");
         }
+    }
+
+    fn center_on_cell(&mut self, cell_x: i32, cell_y: i32) {
+        let n = self.engine.landscape_mesh.width() as i32;
+        let focus = self.engine.camera_focus_vertex() as i32;
+        let shift_x = (cell_x - focus).rem_euclid(n) as usize;
+        let shift_y = (cell_y - focus).rem_euclid(n) as usize;
+
+        self.shaman_pan = None;
+        self.engine.landscape_mesh.set_shift(shift_x, shift_y);
+        self.rebuild_spawn_model();
+        self.log_camera_state("center_cell");
+        self.do_render = true;
     }
 
     fn tick_shaman_pan(&mut self) {
@@ -2072,6 +2089,163 @@ impl App {
             return true;
         }
 
+        // Parse center_cell command: center the camera on a landscape cell.
+        // This avoids screen-coordinate and key-repeat drift in visual captures.
+        if let Some(coords) = cmd.strip_prefix("center_cell ") {
+            let parts: Vec<&str> = coords.split_whitespace().collect();
+            if parts.len() == 2 {
+                if let (Ok(cell_x), Ok(cell_y)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>())
+                {
+                    self.center_on_cell(cell_x, cell_y);
+                    return true;
+                }
+            }
+            log::warn!("[script] center_cell: expected two integer coordinates");
+            return true;
+        }
+
+        // Deterministic construction fixture for visual regression captures.
+        // Places the nearest valid small-hut plan to the blue braves and assigns
+        // one brave, without depending on screen coordinates. Using one worker
+        // keeps all four native construction phases observable in screenshots.
+        if cmd.trim() == "construct_hut" {
+            let Some(session) = &mut self.engine.session else {
+                log::warn!("[script] construct_hut: no active game session");
+                return true;
+            };
+            let snapshot = session.snapshot();
+            let braves = snapshot
+                .persons
+                .iter()
+                .filter(|person| person.alive && person.tribe == 0 && person.subtype == 2)
+                .collect::<Vec<_>>();
+            if braves.is_empty() {
+                log::warn!("[script] construct_hut: no living blue braves");
+                return true;
+            }
+            let center_x = (braves.iter().map(|person| person.cell_x).sum::<f32>()
+                / braves.len() as f32)
+                .round() as i32;
+            let center_y = (braves.iter().map(|person| person.cell_y).sum::<f32>()
+                / braves.len() as f32)
+                .round() as i32;
+            let site = (2i32..=24).find_map(|radius| {
+                (-radius..=radius).find_map(|dy| {
+                    (-radius..=radius).find_map(|dx| {
+                        if dx.abs() != radius && dy.abs() != radius {
+                            return None;
+                        }
+                        let cell = ((center_x + dx) & 127, (center_y + dy) & 127);
+                        session
+                            .validate_building_placement(BuildingSubtype::SmallHut, cell, 0)
+                            .is_ok()
+                            .then_some(cell)
+                    })
+                })
+            });
+            let Some(site) = site else {
+                log::warn!("[script] construct_hut: no valid nearby site");
+                return true;
+            };
+            session.enqueue(GameAction::PlaceBuilding {
+                subtype: BuildingSubtype::SmallHut,
+                owner: 0,
+                cell: site,
+                rotation: 0,
+            });
+            let placement = session.step();
+            if placement
+                .actions
+                .iter()
+                .any(|event| matches!(event, crate::engine::session::ActionEvent::Rejected { .. }))
+            {
+                log::warn!("[script] construct_hut: placement rejected at {site:?}");
+                return true;
+            }
+            let building = session
+                .snapshot()
+                .objects
+                .into_iter()
+                .filter(|object| {
+                    object.model_type == ModelType::Building
+                        && object.subtype == BuildingSubtype::SmallHut as u8
+                        && object.tribe == 0
+                        && object.building_state == Some(BuildingState::Init)
+                })
+                .max_by_key(|object| object.handle.slot())
+                .map(|object| object.handle);
+            let Some(building) = building else {
+                log::warn!("[script] construct_hut: placed plan was not found");
+                return true;
+            };
+            let handles = vec![braves[0].handle];
+            session.enqueue(GameAction::Select(handles.clone()));
+            session.enqueue(GameAction::AssignConstruction {
+                units: handles,
+                building,
+            });
+            let assignment = session.step();
+            log::info!(
+                "[script] construct_hut: site={site:?} building={building:?} actions={:?}",
+                assignment.actions
+            );
+            session.flags.set_paused(true);
+            self.refresh_session_render_state();
+            self.do_render = true;
+            return true;
+        }
+
+        // Advance simulation deterministically until the newly placed hut
+        // reaches the requested native construction phase (0 through 4).
+        if let Some(value) = cmd.strip_prefix("advance_hut_phase ") {
+            let Ok(target_phase) = value.trim().parse::<u8>() else {
+                log::warn!("[script] advance_hut_phase: invalid phase {value:?}");
+                return true;
+            };
+            if target_phase > 4 {
+                log::warn!("[script] advance_hut_phase: phase must be 0 through 4");
+                return true;
+            }
+            let Some(session) = &mut self.engine.session else {
+                log::warn!("[script] advance_hut_phase: no active game session");
+                return true;
+            };
+            session.flags.set_paused(false);
+            let mut elapsed_ticks = 0u32;
+            let mut observed_phase = None;
+            while elapsed_ticks < 20_000 {
+                let phase = session
+                    .snapshot()
+                    .objects
+                    .into_iter()
+                    .filter(|object| {
+                        object.model_type == ModelType::Building
+                            && object.subtype == BuildingSubtype::SmallHut as u8
+                            && object.tribe == 0
+                    })
+                    .max_by_key(|object| object.handle.slot())
+                    .map(|object| object.construction_phase);
+                observed_phase = phase;
+                if phase.is_some_and(|phase| phase >= target_phase) {
+                    break;
+                }
+                session.step();
+                elapsed_ticks += 1;
+            }
+            // Freeze on the observed threshold so the next screenshot cannot
+            // advance the simulation while the frame is being written.
+            session.flags.set_paused(true);
+            log::info!(
+                "[script] advance_hut_phase: target={} observed={:?} elapsed_ticks={}",
+                target_phase,
+                observed_phase,
+                elapsed_ticks
+            );
+            self.refresh_session_render_state();
+            self.do_render = true;
+            return true;
+        }
+
         // Parse screenshot command: "screenshot [path]"
         if let Some(path) = cmd.strip_prefix("screenshot ") {
             self.screenshot_path = Some(path.trim().to_string());
@@ -2177,6 +2351,22 @@ impl App {
             self.do_render = true;
         }
         true
+    }
+
+    fn refresh_session_render_state(&mut self) {
+        if let Some(session) = &self.engine.session {
+            self.engine
+                .landscape_mesh
+                .set_heights(&session.world.terrain.heights);
+            self.engine.last_terrain_revision = session.world.terrain.revision();
+        }
+        if let (Some(gpu), Some(buffer)) = (&self.gpu, &self.heights_buffer) {
+            let heights = self.engine.landscape_mesh.heights_to_gpu_vec();
+            buffer.update(&gpu.queue, 0, bytemuck::cast_slice(&heights));
+        }
+        self.sync_unit_render_cells();
+        self.rebuild_spawn_model();
+        self.rebuild_object_markers();
     }
 
     /// Sync unit_renders cells from live coordinator units.
@@ -2674,7 +2864,10 @@ impl App {
                     .objects
                     .into_iter()
                     .filter(|object| {
-                        object.building_state == Some(crate::engine::buildings::BuildingState::Init)
+                        should_render_construction_footprint(
+                            object.building_state,
+                            object.construction_progress,
+                        )
                     })
                     .collect::<Vec<_>>()
             })
@@ -2695,12 +2888,10 @@ impl App {
         let mut footprint_model: ColorModel = MeshModel::new();
 
         for site in sites {
-            let color = match site.tribe.min(3) {
-                0 => Vector3::new(0.25, 0.75, 1.0),
-                1 => Vector3::new(1.0, 0.25, 0.2),
-                2 => Vector3::new(1.0, 0.85, 0.2),
-                _ => Vector3::new(0.25, 0.9, 0.35),
-            };
+            // Placed plans in the original are a neutral, translucent ground
+            // highlight. Tribe color is reserved for ownership details on the
+            // building itself, not painted across the whole foundation.
+            let color = Vector3::new(0.96, 0.96, 0.86);
             for (dx, dy) in &site.footprint {
                 let cell_x = site.cell_x + *dx as f32;
                 let cell_y = site.cell_y + *dy as f32;
@@ -5784,6 +5975,22 @@ mod tests {
         assert_eq!(placement_entrance_direction(1), (-1.0, 0.0));
         assert_eq!(placement_entrance_direction(2), (0.0, 1.0));
         assert_eq!(placement_entrance_direction(3), (1.0, 0.0));
+    }
+
+    #[test]
+    fn placed_plan_footprint_disappears_when_construction_faces_begin() {
+        assert!(should_render_construction_footprint(
+            Some(BuildingState::Init),
+            0,
+        ));
+        assert!(!should_render_construction_footprint(
+            Some(BuildingState::Init),
+            1,
+        ));
+        assert!(!should_render_construction_footprint(
+            Some(BuildingState::Active),
+            0,
+        ));
     }
 
     #[test]
