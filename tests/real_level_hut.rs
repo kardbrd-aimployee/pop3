@@ -143,6 +143,10 @@ fn real_level_one_hut_vertical_slice() {
     let paths = ObjectPaths::from_default_dir(&base, &bank.to_string());
     let footprints = ShapeFootprints::from_file(&paths.shapes);
     let catalog = BuildingCatalog::from_assets(&building_objects, &footprints);
+    let hut_footprint = catalog
+        .footprint(BuildingSubtype::SmallHut, 0)
+        .expect("native small-hut footprint must exist")
+        .to_vec();
     let mut session = GameSession::from_level(LevelDefinition::from(level), catalog)
         .expect("Level 1 must instantiate");
     assert_eq!(session.world.pool().active_count() as usize, expected);
@@ -166,8 +170,16 @@ fn real_level_one_hut_vertical_slice() {
             session
                 .validate_building_placement(BuildingSubtype::SmallHut, cell, 0)
                 .is_ok()
+                && {
+                    let target = session.world.terrain.heights[cell.1 as usize][cell.0 as usize];
+                    hut_footprint.iter().any(|&(dx, dy)| {
+                        let x = ((cell.0 + dx as i32) & 127) as usize;
+                        let y = ((cell.1 + dy as i32) & 127) as usize;
+                        session.world.terrain.heights[y][x] != target
+                    })
+                }
         })
-        .expect("Level 1 must contain a valid hut site");
+        .expect("Level 1 must contain a valid uneven hut site");
     session.enqueue(GameAction::PlaceBuilding {
         subtype: BuildingSubtype::SmallHut,
         owner: 0,
@@ -183,11 +195,43 @@ fn real_level_one_hut_vertical_slice() {
     let hut_position = session.world.get(placed_hut).unwrap().header.position;
     let expected_spawn =
         pop3::engine::movement::WorldCoord::new(hut_position.x.wrapping_add(512), hut_position.z);
+    let terrain_revision = session.world.terrain.revision();
+    let foundation_before: Vec<_> = hut_footprint
+        .iter()
+        .map(|&(dx, dy)| {
+            let x = ((cell.0 + dx as i32) & 127) as usize;
+            let y = ((cell.1 + dy as i32) & 127) as usize;
+            session.world.terrain.heights[y][x]
+        })
+        .collect();
     session.enqueue(GameAction::AssignConstruction {
         units: vec![builder],
         building: placed_hut,
     });
     assert!(session.step().actions[0].clone().is_applied());
+    for _ in 0..3_000 {
+        session.step();
+        if session.world.terrain.revision() > terrain_revision {
+            break;
+        }
+    }
+    assert!(
+        session.world.terrain.revision() > terrain_revision,
+        "a native construction stroke must revise the Level 1 landscape"
+    );
+    let changed_foundation_vertices = hut_footprint
+        .iter()
+        .zip(foundation_before)
+        .filter(|(&(dx, dy), before)| {
+            let x = ((cell.0 + dx as i32) & 127) as usize;
+            let y = ((cell.1 + dy as i32) & 127) as usize;
+            session.world.terrain.heights[y][x] != *before
+        })
+        .count();
+    assert_eq!(
+        changed_foundation_vertices, 1,
+        "one jump must reshape exactly one native foundation vertex"
+    );
     for _ in 0..30_000 {
         session.step();
         if session.world.pool().persons().count() >= expected_people + 1 {

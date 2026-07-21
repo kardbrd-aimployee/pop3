@@ -35,6 +35,7 @@ const FINAL_BUILD_TICKS: u16 = original_ticks_to_world_ticks(15);
 const SITE_WORK_MIN_ORIGINAL_TICKS: u16 = 32;
 const SITE_WORK_RANDOM_MASK: u32 = 0x3f;
 const WORK_ANIMATION_TICKS_PER_FRAME: u8 = original_ticks_to_world_ticks(3) as u8;
+const FOUNDATION_STROKE_TICKS: u16 = WORK_ANIMATION_TICKS_PER_FRAME as u16 * 5;
 
 const BUILD_PHASE_TRAVEL_OR_FLATTEN: u8 = 0;
 const BUILD_PHASE_DELIVER: u8 = 1;
@@ -811,10 +812,13 @@ impl World {
                         self.set_person_animation(handle, 120);
                     }
                     _ if !footprint_is_flat => {
-                        self.set_person_animation(handle, 115);
+                        // Native animation 120 is the five-frame rising/jumping
+                        // construction stroke. Animation 115 is only its
+                        // downward digging counterpart; looping 115 made a
+                        // builder repeatedly collapse without ever rising.
+                        self.set_person_animation(handle, 120);
                         if self.person_timer(handle) == 0 {
-                            self.set_person_timer(handle, next_site_work_ticks(rng));
-                            return;
+                            self.set_person_timer(handle, FOUNDATION_STROKE_TICKS);
                         }
                         if self.decrement_person_timer(handle) == 0 {
                             if let Some(offset) = work_offset {
@@ -1994,7 +1998,7 @@ mod tests {
         assert_eq!(building.construction_phase, 4);
         assert_eq!(building.construction_progress, 0);
         assert!(observed_animations.contains(&73));
-        assert!(observed_animations.contains(&115));
+        assert!(!observed_animations.contains(&115));
         assert!(observed_animations.contains(&88));
         assert!(observed_animations.contains(&120));
         for animation in [73, 120] {
@@ -2203,7 +2207,8 @@ mod tests {
                 &world.get(brave).unwrap().data,
                 GameObjectData::Person(person)
                     if person.state == PersonState::Building
-                        && person.anim.animation_id == 115
+                        && person.state_counter == BUILD_PHASE_TRAVEL_OR_FLATTEN
+                        && person.anim.animation_id == 120
                         && person.state_timer > 0
             );
             if working {
@@ -2214,10 +2219,10 @@ mod tests {
             unreachable!()
         };
         let first_stroke_ticks = person.state_timer;
-        assert!(first_stroke_ticks >= original_ticks_to_world_ticks(32));
-        assert!(first_stroke_ticks <= original_ticks_to_world_ticks(95));
+        assert_eq!(first_stroke_ticks, FOUNDATION_STROKE_TICKS - 1);
         assert_eq!(world.terrain.heights[12][13], 132);
         assert_eq!(world.terrain.heights[13][12], 68);
+        let terrain_revision = world.terrain.revision();
 
         for _ in 0..first_stroke_ticks - 1 {
             world.tick_persons(&mut rng);
@@ -2226,6 +2231,7 @@ mod tests {
         assert_eq!(world.terrain.heights[13][12], 68);
 
         world.tick_persons(&mut rng);
+        assert_eq!(world.terrain.revision(), terrain_revision + 1);
         let changed = [world.terrain.heights[12][13], world.terrain.heights[13][12]]
             .into_iter()
             .filter(|height| !matches!(height, 132 | 68))
@@ -2233,6 +2239,11 @@ mod tests {
         assert_eq!(changed, 1, "one work stroke must change exactly one cell");
         assert!(matches!(world.terrain.heights[12][13], 132 | 116));
         assert!(matches!(world.terrain.heights[13][12], 68 | 84));
+        let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
+            unreachable!()
+        };
+        assert_eq!(person.anim.animation_id, 120);
+        assert_eq!(person.anim.frame_index, 0);
     }
 
     #[test]
