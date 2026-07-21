@@ -12,10 +12,12 @@ use crate::engine::buildings::{
     BuildingCatalog, BuildingState, BuildingSubtype, PlacementError, SpawnAction,
 };
 use crate::engine::economy::population::{calculate_housing_capacity, can_spawn};
-use crate::engine::movement::{atan2, WorldCoord};
+use crate::engine::movement::constants::ARRIVAL_THRESHOLD;
+use crate::engine::movement::{atan2, move_point_by_angle, WorldCoord};
 use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
 use crate::engine::state::rng::GameRng;
 use crate::engine::state::tribe::TribeArray;
+use crate::engine::units::animation::select_animation as select_person_animation;
 use crate::engine::units::coords::{
     cell_to_world, toroidal_delta, world_to_cell, world_to_render_pos,
 };
@@ -25,7 +27,6 @@ const WORLD_SIZE: usize = 128;
 const BRAVE_SUBTYPE: u8 = 2;
 const TREE_MAX_SUBTYPE: u8 = 8;
 const TREE_WOOD_PIECES: u8 = 4;
-const PERSON_MOVE_STEP: i16 = 32;
 const FOUNDATION_STROKE_HEIGHT: u16 = 16;
 const ORIGINAL_TICKS_PER_SECOND: u16 = 14;
 const WORLD_TICKS_PER_SECOND: u16 = 30;
@@ -381,12 +382,16 @@ impl World {
                 person.movement.position = object.header.position;
                 person.movement.facing_angle = angle;
                 person.movement.unit_type = object.header.subtype;
-                person.movement.speed = defaults.speed;
+                // Native Person_SelectAnimation chooses idle versus walk from
+                // the actual speed word at +0x5f. A newly-created idle person
+                // must therefore start at zero speed; move/work orders restore
+                // the subtype's speed when they become active.
+                person.movement.speed = 0;
                 person.state = PersonState::Idle;
                 person.prev_state = PersonState::Idle;
                 person.home_pos = object.header.position;
                 person.alive = true;
-                person.anim.animation_id = idle_animation(object.header.subtype);
+                set_animation(person, idle_animation(object.header.subtype));
                 let (x, y) = world_to_render_pos(&object.header.position, 128.0);
                 person.cell_x = x;
                 person.cell_y = y;
@@ -566,6 +571,39 @@ impl World {
         }
     }
 
+    /// Start the native GOTO-style locomotion shared by player orders and
+    /// post-construction exits. Behavior-specific travel (wood gathering and
+    /// building-site work) uses the same movement step while retaining its
+    /// semantic person state.
+    pub(crate) fn order_person_move(
+        &mut self,
+        person_handle: ObjectHandle,
+        target: WorldCoord,
+    ) -> bool {
+        let Some(object) = self.pool.get_mut(person_handle) else {
+            return false;
+        };
+        let subtype = object.header.subtype;
+        let GameObjectData::Person(person) = &mut object.data else {
+            return false;
+        };
+        if !person.alive {
+            return false;
+        }
+
+        person.prev_state = person.state;
+        // Native player movement enters state 0x07 (STATE_GOTO). The older
+        // Rust enum name is retained for compatibility with saved state.
+        person.state = PersonState::GoToMarker;
+        person.movement.target_pos = target;
+        person.movement.next_waypoint = target;
+        person.movement.movement_dest = target;
+        person.movement.speed = person_type_defaults(subtype).speed;
+        person.movement.set_goto_flags();
+        set_animation(person, walk_animation(subtype));
+        true
+    }
+
     pub fn validate_building_placement(
         &self,
         subtype: BuildingSubtype,
@@ -719,10 +757,14 @@ impl World {
                         person.prev_state = person.state;
                         person.state = PersonState::Idle;
                         person.movement.speed = 0;
-                        set_animation(person, idle_animation(subtype));
-                    } else {
-                        set_animation(person, walk_animation(subtype));
                     }
+                    select_person_animation(
+                        &mut person.anim,
+                        person.state,
+                        subtype,
+                        &[],
+                        person.movement.speed,
+                    );
                 }
             }
         }
@@ -1264,16 +1306,11 @@ impl World {
                     person.construction_work_offset = None;
                     person.construction_work_progress = 0;
                     person.wood_carried = 0;
-                    person.prev_state = person.state;
-                    person.state = PersonState::GoToPoint;
                     person.state_counter = 0;
                     person.state_timer = 0;
-                    person.movement.target_pos = target;
-                    person.movement.speed = person_type_defaults(object.header.subtype).speed;
-                    person.movement.flags1 |= 0x1000;
-                    set_animation(person, walk_animation(object.header.subtype));
                 }
             }
+            self.order_person_move(handle, target);
         }
         self.object_revision = self.object_revision.wrapping_add(1).max(1);
     }
@@ -1360,16 +1397,37 @@ impl World {
     }
 
     fn move_person_toward(&mut self, handle: ObjectHandle, target: WorldCoord) -> bool {
-        let Some(position) = self.pool.get(handle).map(|object| object.header.position) else {
+        let Some((position, speed)) = self.pool.get(handle).and_then(|object| {
+            let GameObjectData::Person(person) = &object.data else {
+                return None;
+            };
+            Some((object.header.position, person.movement.speed))
+        }) else {
             return false;
         };
-        self.face_person_toward(handle, target);
-        let next = WorldCoord::new(
-            approach(position.x, target.x, PERSON_MOVE_STEP),
-            approach(position.z, target.z, PERSON_MOVE_STEP),
-        );
+
+        let dx = toroidal_delta(position.x, target.x);
+        let dz = toroidal_delta(position.z, target.z);
+        if dx.abs() < ARRIVAL_THRESHOLD && dz.abs() < ARRIVAL_THRESHOLD {
+            self.move_object(handle, target);
+            return true;
+        }
+
+        let angle = atan2(dx, -dz);
+        if let Some(object) = self.pool.get_mut(handle) {
+            object.header.angle = angle;
+            if let GameObjectData::Person(person) = &mut object.data {
+                person.movement.facing_angle = angle;
+            }
+        }
+
+        // Math_MovePointByAngle @ 0x004d4b20 advances a person by the speed
+        // table value along its facing. Moving each axis independently made
+        // diagonal motion faster and gave it a different cadence from native.
+        let mut next = position;
+        move_point_by_angle(&mut next, angle, speed as i16);
         self.move_object(handle, next);
-        next == target
+        false
     }
 
     fn decrement_person_timer(&mut self, handle: ObjectHandle) -> u16 {
@@ -1698,17 +1756,6 @@ fn construction_exit_positions(
         .collect()
 }
 
-fn approach(value: i16, target: i16, step: i16) -> i16 {
-    let delta = target.wrapping_sub(value);
-    if delta.unsigned_abs() <= step as u16 {
-        target
-    } else if delta > 0 {
-        value.wrapping_add(step)
-    } else {
-        value.wrapping_sub(step)
-    }
-}
-
 fn toroidal_world_distance(a: i16, b: i16) -> u32 {
     let direct = a.wrapping_sub(b).unsigned_abs() as u32;
     direct.min(65536 - direct)
@@ -1913,6 +1960,87 @@ mod tests {
         };
         assert_eq!(object.header.angle, expected);
         assert_eq!(person.movement.facing_angle, expected);
+    }
+
+    #[test]
+    fn movement_uses_native_speed_vector_and_arrival_threshold() {
+        let mut world = World::from_level(
+            definition(vec![object(
+                0,
+                ModelType::Person,
+                BRAVE_SUBTYPE,
+                0,
+                (10, 10),
+            )]),
+            catalog(),
+        )
+        .unwrap();
+        let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
+        let start = world.get(brave).unwrap().header.position;
+        let target = WorldCoord::new(start.x.wrapping_add(512), start.z.wrapping_add(512));
+        let speed = person_type_defaults(BRAVE_SUBTYPE).speed;
+        if let Some(object) = world.get_mut_for_action(brave) {
+            let GameObjectData::Person(person) = &mut object.data else {
+                unreachable!()
+            };
+            person.movement.speed = speed;
+        }
+
+        let angle = atan2(512, -512);
+        let mut expected = start;
+        move_point_by_angle(&mut expected, angle, speed as i16);
+        assert!(!world.move_person_toward(brave, target));
+        assert_eq!(world.get(brave).unwrap().header.position, expected);
+
+        let near_target = WorldCoord::new(
+            expected.x.wrapping_add((ARRIVAL_THRESHOLD - 1) as i16),
+            expected.z.wrapping_sub((ARRIVAL_THRESHOLD - 1) as i16),
+        );
+        assert!(world.move_person_toward(brave, near_target));
+        assert_eq!(world.get(brave).unwrap().header.position, near_target);
+    }
+
+    #[test]
+    fn changing_goto_facing_does_not_restart_walk_cycle() {
+        let mut world = World::from_level(
+            definition(vec![object(
+                0,
+                ModelType::Person,
+                BRAVE_SUBTYPE,
+                0,
+                (10, 10),
+            )]),
+            catalog(),
+        )
+        .unwrap();
+        let brave = world.source_handle(LevelObjectIndex(0)).unwrap();
+        let start = world.get(brave).unwrap().header.position;
+        let mut rng = GameRng::new(7);
+
+        assert!(
+            world.order_person_move(brave, WorldCoord::new(start.x.wrapping_add(1024), start.z),)
+        );
+        world.tick_persons(&mut rng);
+        let object = world.get(brave).unwrap();
+        let GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(object.header.angle, 0x200);
+        assert_eq!(person.anim.animation_id, 21);
+        assert_eq!((person.anim.frame_index, person.anim.tick_counter), (0, 1));
+
+        assert!(world.order_person_move(
+            brave,
+            WorldCoord::new(object.header.position.x, start.z.wrapping_add(1024)),
+        ));
+        world.tick_persons(&mut rng);
+        let object = world.get(brave).unwrap();
+        let GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(object.header.angle, 0);
+        assert_eq!(person.anim.animation_id, 21);
+        assert_eq!((person.anim.frame_index, person.anim.tick_counter), (0, 2));
     }
 
     #[test]
@@ -2173,7 +2301,7 @@ mod tests {
             unreachable!()
         };
         assert_eq!(person.building_handle, None);
-        assert_eq!(person.state, PersonState::GoToPoint);
+        assert_eq!(person.state, PersonState::GoToMarker);
         assert!(person.movement.is_moving());
         let (_, exit_y) = world_to_render_pos(&person.movement.target_pos, WORLD_SIZE as f32);
         assert!(exit_y < 12.0, "rotation zero exits beyond the -Z entrance");

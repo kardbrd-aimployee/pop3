@@ -196,14 +196,14 @@ impl UnitCoordinator {
                 PersonState::Idle,
                 raw.subtype,
                 &self.anim_frame_counts,
-                false,
+                0,
             );
         }
         log::info!("[unit-ctrl] loaded {} person units", self.units.len());
     }
 
     /// Issue move orders to all selected units targeting `target_world`.
-    /// Transitions units into GoToPoint state and calls state_goto.
+    /// Transitions units into native state 0x07 (STATE_GOTO) and calls state_goto.
     pub fn order_move(&mut self, target_world: WorldCoord) {
         self.used_targets.clear();
         for &unit_id in &self.selection.selected {
@@ -222,7 +222,7 @@ impl UnitCoordinator {
                 if result == RouteResult::NoRoute {
                     unit.movement.flags1 &= !0x1000;
                 } else {
-                    unit.state = PersonState::GoToPoint;
+                    unit.state = PersonState::GoToMarker;
                     unit.target_unit = None; // Cancel combat
                                              // Restore subtype speed (enter_idle sets it to 0)
                     unit.movement.speed = person_type_defaults(unit.subtype).speed;
@@ -276,7 +276,7 @@ impl UnitCoordinator {
                 unit.state,
                 unit.subtype,
                 &self.anim_frame_counts,
-                unit.movement.is_moving(),
+                unit.movement.speed,
             );
 
             // Advance animation frame

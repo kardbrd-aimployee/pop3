@@ -2171,6 +2171,32 @@ impl App {
             return true;
         }
 
+        // Deterministic move command for locomotion captures. It uses the
+        // canonical world selection and normal GameAction::Move path, avoiding
+        // screen-picking drift in visual regression scripts.
+        if let Some(coords) = cmd.strip_prefix("move_selected_to_cell ") {
+            let parts: Vec<&str> = coords.split_whitespace().collect();
+            if parts.len() == 2 {
+                if let (Ok(cell_x), Ok(cell_y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>())
+                {
+                    let target =
+                        cell_to_world(cell_x, cell_y, self.engine.landscape_mesh.width() as f32);
+                    self.engine.apply_command(&GameCommand::OrderMove {
+                        x: target.x as f32,
+                        z: target.z as f32,
+                    });
+                    log::info!(
+                        "[script] move_selected_to_cell: cell=({cell_x}, {cell_y}) world=({}, {})",
+                        target.x,
+                        target.z
+                    );
+                    return true;
+                }
+            }
+            log::warn!("[script] move_selected_to_cell: expected two coordinates");
+            return true;
+        }
+
         // Deterministic gallery of the six rendered person subtypes using one
         // native animation-table row. This is a visual-regression fixture, not
         // a gameplay command.

@@ -12,42 +12,59 @@
 
 ### Person_SelectAnimation (0x004fed30)
 
-Selects animation based on unit state and subtype:
+Selects a logical animation-table row from the person state, then resolves it
+for the unit subtype. The selector defaults to the walk row for navigation
+states. At `0x004fed91` it compares the speed word at person `+0x5f` with zero;
+a walk-class state with zero speed uses the idle row even if movement target
+flags remain set.
 
-**Animation States:**
-| Index | State |
-|-------|-------|
-| 0     | Idle  |
-| 1     | Walk  |
-| 2     | Run   |
-| 3     | Attack|
-| 4     | Die   |
-| 5     | Swim  |
-| 6     | Work  |
-| 7     | Special|
-| 8     | Carry |
+The table contains 26 rows and 9 subtype columns (column 0 is the common/wild
+fallback). The verified rows are retained in
+`src/engine/units/animation.rs::PERSON_ANIMATION_TABLE`; they include idle,
+walk, ride, action, die, celebrate, five work variants, vehicle, swim, carry,
+dig, build, four seated variants, and run.
+
+The state switch itself only chooses an initial default. Its notable direct
+results are idle rows for states `0x01`, `0x03`, `0x0c`, `0x13`, `0x19`,
+`0x1d`, `0x27`, and `0x2c`; action row 3 for `0x0b` and `0x0e`; direct logical
+IDs 2 and 3 for `0x0f` and `0x10`; vehicle row 12 for `0x18`; and run row 25
+for `0x1a`, `0x1f`, and `0x28`. All other in-range states initially use walk
+row 1. Later behavior handlers explicitly replace that default for work,
+death, combat, swimming, and other actions. This distinction is important:
+the name of a person state alone is not an authoritative work-animation ID.
 
 **Lookup Formula:**
 ```c
-animIndex = g_PersonAnimationTable[state * 8 + (subtype - 1)]
+anim_index = g_PersonAnimationTable[animation_row * 9 + subtype]
 ```
 
-### Animation Frame Data (0x0059f638)
+### Person_SetAnimation (0x004feed0)
 
-Per-animation entry (8 bytes):
-- Offset 0x00: First frame index
-- Offset 0x02: Frame count
-- Offset 0x04: Frame duration (ticks)
-- Offset 0x06: Flags (loop, mirror, etc.)
+The logical animation ID is not stored directly in the native person object.
+It indexes a four-byte shape record at `0x0059f638`:
 
-### Animation Flags
+```c
+struct PersonAnimationShape {
+    uint16_t vstart_index;
+    uint16_t render_type;
+};
+```
 
-| Bit | Description |
-|-----|-------------|
-| 0   | Loop animation |
-| 1   | Ping-pong (reverse at end) |
-| 2   | Mirror for angles > 180° |
-| 3   | Random start frame |
+`Person_SetAnimation` passes those values and `person + 0x33` to
+`Animation_SetupFromBank @ 0x004b0ad0`. The resolved native track is:
+
+| Person offset | Size | Meaning |
+|---------------|------|---------|
+| `+0x33` | 2 | Resolved VSTART index |
+| `+0x35` | 2 | Native track control flags |
+| `+0x37` | 2 | Track timing accumulator |
+| `+0x39` | 1 | Current frame |
+| `+0x3a` | 1 | Render/animation bank type |
+
+`Animation_UpdateObjectTrack @ 0x004b0b80` advances this resolved track. Bit
+`0x02` at `+0x35` causes its normal update path to return early, so it must not
+be documented as a generic "playing" bit. Other control bits are contextual
+and should only be named once their call sites are verified.
 
 ### Directional Sprites
 
@@ -968,10 +985,14 @@ Initializes animation state from animation bank:
 **Animation Bank Entry (11 bytes at DAT_0059f8d8):**
 ```c
 struct AnimationBankEntry {
-    byte type;          // +0x00: Animation type (1=standard, 3=bone, 10=sequence)
-    byte frame_count;   // +0x07: Total frames * 4
-    byte loop_flag;     // +0x08: Loop behavior
-    ushort start_frame; // +0x09: Starting frame index
+    byte dispatch_type; // +0x00: renderer dispatch family
+    byte timing_step;   // +0x03: signed track timing increment
+    byte update_mode;   // +0x04: Animation_UpdateObjectTrack mode (1-4)
+    byte bank_arg_5;    // +0x05: render-type-specific data
+    byte bank_arg_6;    // +0x06: render-type-specific data
+    byte bank_arg_7;    // +0x07: render-type-specific data
+    byte reset_frame;   // +0x08: nonzero forces track frame/offset reset
+    ushort flags;       // +0x09: initial native track flags
 };
 ```
 
@@ -1164,4 +1185,3 @@ void Render_DrawRotatedQuad(int param) {
 ```
 
 ---
-

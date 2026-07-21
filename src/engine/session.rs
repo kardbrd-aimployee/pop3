@@ -169,14 +169,7 @@ impl GameSession {
                 }
                 for handle in units {
                     self.world.cancel_construction_job(*handle);
-                    if let Some(object) = self.world.get_mut_for_action(*handle) {
-                        if let crate::engine::objects::GameObjectData::Person(person) =
-                            &mut object.data
-                        {
-                            person.movement.target_pos = *target;
-                            person.movement.flags1 |= 0x1000;
-                        }
-                    }
+                    self.world.order_person_move(*handle, *target);
                 }
                 Ok(())
             }
@@ -204,8 +197,11 @@ impl GameSession {
 mod tests {
     use super::*;
     use crate::data::level::{LevelDefinition, Sunlight};
+    use crate::data::level::{LevelObjectDefinition, LevelObjectIndex};
+    use crate::data::units::ModelType;
     use crate::data::units::TribeConfigRaw;
     use crate::engine::buildings::PlacementError;
+    use crate::engine::units::person_state::{person_type_defaults, PersonState};
 
     struct FakeTime(u64);
     impl TimeSource for FakeTime {
@@ -223,7 +219,14 @@ mod tests {
                 heights: Box::new([[100; 128]; 128]),
                 sunlight: Sunlight::new(0, 0, 0),
                 tribes: vec![TribeConfigRaw { data: [0; 16] }; 4],
-                objects: Vec::new(),
+                objects: vec![LevelObjectDefinition {
+                    source: LevelObjectIndex(0),
+                    model_type: ModelType::Person,
+                    subtype: 2,
+                    tribe: 0,
+                    position: [0x1000, 0x1000],
+                    angle: 0,
+                }],
             },
             catalog,
         )
@@ -264,5 +267,61 @@ mod tests {
         assert_eq!(session.update(&FakeTime(10)).ticks, 0);
         assert_eq!(session.update(&FakeTime(20)).ticks, 0);
         assert_eq!(session.update(&FakeTime(34)).ticks, 1);
+    }
+
+    #[test]
+    fn move_order_drives_walk_speed_then_returns_to_idle() {
+        let mut session = session();
+        let brave = session.world.source_handle(LevelObjectIndex(0)).unwrap();
+        let start = session.world.get(brave).unwrap().header.position;
+        let first_target = WorldCoord::new(start.x.wrapping_add(512), start.z);
+
+        session.enqueue(GameAction::Move {
+            units: vec![brave],
+            target: first_target,
+        });
+        session.step();
+
+        let object = session.world.get(brave).unwrap();
+        let crate::engine::objects::GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(person.state, PersonState::GoToMarker);
+        assert_eq!(person.movement.speed, person_type_defaults(2).speed);
+        assert_eq!(person.anim.animation_id, 21);
+        assert_ne!(object.header.position, start);
+
+        for _ in 0..32 {
+            session.step();
+            let object = session.world.get(brave).unwrap();
+            let crate::engine::objects::GameObjectData::Person(person) = &object.data else {
+                unreachable!()
+            };
+            if person.state == PersonState::Idle {
+                break;
+            }
+        }
+        let object = session.world.get(brave).unwrap();
+        let crate::engine::objects::GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(object.header.position, first_target);
+        assert_eq!(person.state, PersonState::Idle);
+        assert_eq!(person.movement.speed, 0);
+        assert_eq!(person.anim.animation_id, 15);
+
+        let second_target = WorldCoord::new(first_target.x, first_target.z.wrapping_add(512));
+        session.enqueue(GameAction::Move {
+            units: vec![brave],
+            target: second_target,
+        });
+        session.step();
+        let object = session.world.get(brave).unwrap();
+        let crate::engine::objects::GameObjectData::Person(person) = &object.data else {
+            unreachable!()
+        };
+        assert_eq!(person.state, PersonState::GoToMarker);
+        assert_eq!(person.movement.speed, person_type_defaults(2).speed);
+        assert_eq!(person.anim.animation_id, 21);
     }
 }

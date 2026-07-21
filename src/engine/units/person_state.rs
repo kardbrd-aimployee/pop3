@@ -19,8 +19,11 @@ pub enum PersonState {
     Dying = 0x02,
     Moving = 0x03,
     Wander = 0x04,
+    // Native movement documentation identifies 0x05 as STATE_WAIT. The
+    // historical Rust name remains to avoid a broad serialization rename.
     GoToPoint = 0x05,
     FollowPath = 0x06,
+    // Native STATE_GOTO used by player move orders.
     GoToMarker = 0x07,
     WaitForPath = 0x08,
     WaitAtMarker = 0x09,

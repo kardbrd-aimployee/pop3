@@ -1,12 +1,17 @@
-// Person animation state and selection — faithful to Person_SelectAnimation (0x004fed30),
-// Person_SetAnimation (0x004feed0), and Sprite_TickAnimCycles (0x004ea0e0).
+// Person animation state and selection. Logical animation selection follows
+// Person_SelectAnimation (0x004fed30) and Person_SetAnimationByState
+// (0x004fee80). Native Person_SetAnimation (0x004feed0) resolves that logical
+// ID into a VSTART index/render type and Animation_UpdateObjectTrack
+// (0x004b0b80) advances the resolved track.
 //
 // Animation fields in original binary live at object offsets +0x33..+0x3a.
-// The animation type table at DAT_0059fb30 maps (anim_type * 9 + subtype) to VSTART indices.
+// The animation type table at DAT_0059fb30 maps (anim_type * 9 + subtype) to
+// logical animation IDs. Person_SetAnimation resolves those through the shape
+// table at DAT_0059f638.
 
 use super::person_state::PersonState;
 
-/// g_PersonAnimationTable (DAT_0059fb30): table[anim_type][subtype] → VSTART animation index.
+/// g_PersonAnimationTable (DAT_0059fb30): table[anim_type][subtype] → logical animation ID.
 /// 26 animation types × 9 subtypes (0=none, 1=wild, 2=brave, ..., 7=shaman, 8=aod).
 /// -1 means no animation for that combination.
 /// Extracted from ~/decomp_export/sections/.data.bin at offset 0x2AB30.
@@ -39,8 +44,13 @@ pub const PERSON_ANIMATION_TABLE: [[i16; 9]; 26] = [
     /* 25 Run  */ [0, 1, 156, 157, 158, 159, 160, 26, -1],
 ];
 
-/// Animation speed multiplier per subtype (DAT_0059f8db, stride 0x0b).
-/// Ticks per frame = value + 1.
+/// Compatibility cadence used by the Rust logical-animation player.
+///
+/// This was originally inferred from early table inspection and must not be
+/// confused with a native per-subtype table. The original track updater reads
+/// its mode/timing fields from the 11-byte bank row selected by the resolved
+/// render type. Keeping this table for now preserves the already-captured Rust
+/// cadence until the native outer-loop call rate is measured.
 pub const ANIM_SPEED_MULTIPLIER: [u8; 9] = [
     0, // subtype 0 (none)
     4, // subtype 1 (wild)       → 5 ticks/frame
@@ -53,16 +63,54 @@ pub const ANIM_SPEED_MULTIPLIER: [u8; 9] = [
     0, // subtype 8 (aod)        → 1 tick/frame
 ];
 
-/// Per-unit animation state, matching original binary offsets +0x33..+0x3a.
+/// The initial selection made by `Person_SelectAnimation @ 0x004fed30` before
+/// linked-person and vehicle overrides are applied.
+///
+/// Most behavior handlers replace this default later with
+/// `Person_SetAnimationByState`, which is why a semantic Rust state such as
+/// construction must not be assumed to map directly to the visible work row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeStateAnimation {
+    TableRow(u8),
+    LogicalAnimation(u16),
+}
+
+pub fn native_state_animation(state: PersonState) -> NativeStateAnimation {
+    use NativeStateAnimation::{LogicalAnimation, TableRow};
+
+    match state {
+        PersonState::Idle
+        | PersonState::Moving
+        | PersonState::InsideTraining
+        | PersonState::Gathering
+        | PersonState::Fighting
+        | PersonState::InShield
+        | PersonState::EnteringVehicle
+        | PersonState::WaitingAtReincPillar => TableRow(0),
+        PersonState::InsideBuilding | PersonState::InTraining => TableRow(3),
+        PersonState::WaitOutside => LogicalAnimation(2),
+        PersonState::Training => LogicalAnimation(3),
+        PersonState::Dead => TableRow(12),
+        PersonState::Fleeing | PersonState::Preaching | PersonState::ExitingVehicle => TableRow(25),
+        _ => TableRow(1),
+    }
+}
+
+/// Per-unit animation state used by the Rust renderer.
+///
+/// This intentionally retains the logical animation ID. The native object
+/// does not: Person_SetAnimation resolves it and stores a VSTART index at
+/// +0x33 plus a render type at +0x3a. Keeping the logical ID lets the Rust
+/// atlas select the corresponding packed animation directly.
 #[derive(Debug, Clone, Copy)]
 pub struct AnimationState {
-    /// Current VSTART animation index (+0x33).
+    /// Current logical animation index (the index into ANIM_SHAPE_TABLE).
     pub animation_id: u16,
-    /// Animation flags (+0x35): bit 0 = loop, bit 1 = playing.
+    /// Rust playback flags: bit 0 = loop, bit 1 = playing.
     pub flags: u8,
-    /// Frame timing accumulator (+0x37).
+    /// Rust frame timing accumulator.
     pub tick_counter: u16,
-    /// Current frame within animation (+0x39).
+    /// Current frame within the packed animation.
     pub frame_index: u8,
     /// Total frames in current animation (cached from atlas data).
     pub frame_count: u8,
@@ -83,7 +131,7 @@ impl Default for AnimationState {
     }
 }
 
-/// Map the Rust engine's semantic person states to native animation rows.
+/// Map the Rust engine's semantic person states to visible animation rows.
 ///
 /// Several Rust states intentionally cover behavior that the original game
 /// expressed through a state plus a later `Person_SetAnimationByState` call.
@@ -166,20 +214,24 @@ pub fn lookup_animation(state: PersonState, subtype: u8) -> Option<u16> {
     lookup_animation_type(state_to_anim_type(state), subtype)
 }
 
-/// Select and set animation based on current state.
-/// Equivalent to Person_SelectAnimation + Person_SetAnimation.
+/// Select and set the Rust engine's visible animation based on current state.
+/// Idle/walk selection matches `Person_SelectAnimation`; implemented action
+/// states retain their explicit semantic rows until their native behavior
+/// handlers have been translated in full.
 /// `frame_counts` maps animation index → number of frames.
-/// `is_moving` overrides walk→idle when unit is stationary (matches decomp wander_timer==0 check).
+/// `movement_speed` overrides walk→idle when zero, matching the native
+/// comparison against the speed word at person offset +0x5f.
 pub fn select_animation(
     anim: &mut AnimationState,
     state: PersonState,
     subtype: u8,
     frame_counts: &[u8],
-    is_moving: bool,
+    movement_speed: u16,
 ) {
     let mut anim_type = state_to_anim_type(state);
-    // Override: walk type but not actually moving → use idle (matches decomp)
-    if anim_type == 1 && !is_moving {
+    // Person_SelectAnimation @ 0x004fed91: a walk-class state with zero
+    // speed uses the idle animation, regardless of the target/moving flags.
+    if anim_type == 1 && movement_speed == 0 {
         anim_type = 0;
     }
     let col = (subtype as usize).min(8);
@@ -216,8 +268,9 @@ pub fn select_animation(
     }
 }
 
-/// Advance animation by one tick.
-/// Equivalent to Sprite_TickAnimCycles (0x004ea0e0).
+/// Advance the Rust renderer's logical animation by one simulation tick.
+/// Native track control bits at +0x35 have different semantics; translating
+/// every native track mode remains separate from logical state selection.
 pub fn tick_animation(anim: &mut AnimationState) {
     // Not playing
     if anim.flags & 0x02 == 0 {
@@ -397,6 +450,35 @@ mod tests {
         assert_eq!(lookup_animation(PersonState::Idle, 8), None);
     }
 
+    #[test]
+    fn native_state_dispatch_matches_executable_switch() {
+        use NativeStateAnimation::{LogicalAnimation, TableRow};
+
+        assert_eq!(native_state_animation(PersonState::Idle), TableRow(0));
+        assert_eq!(native_state_animation(PersonState::Moving), TableRow(0));
+        assert_eq!(native_state_animation(PersonState::GoToMarker), TableRow(1));
+        assert_eq!(native_state_animation(PersonState::Building), TableRow(1));
+        assert_eq!(
+            native_state_animation(PersonState::InsideBuilding),
+            TableRow(3)
+        );
+        assert_eq!(
+            native_state_animation(PersonState::WaitOutside),
+            LogicalAnimation(2)
+        );
+        assert_eq!(
+            native_state_animation(PersonState::Training),
+            LogicalAnimation(3)
+        );
+        assert_eq!(native_state_animation(PersonState::Dead), TableRow(12));
+        assert_eq!(native_state_animation(PersonState::Fleeing), TableRow(25));
+        assert_eq!(native_state_animation(PersonState::Preaching), TableRow(25));
+        assert_eq!(
+            native_state_animation(PersonState::ExitingVehicle),
+            TableRow(25)
+        );
+    }
+
     // Frame counts for test animations: index 15 (idle brave) = 4 frames, 21 (walk brave) = 6 frames
     fn test_frame_counts() -> Vec<u8> {
         let mut fc = vec![1u8; 200];
@@ -410,13 +492,7 @@ mod tests {
     fn select_animation_sets_idle_brave() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(
-            &mut anim,
-            PersonState::Idle,
-            PERSON_SUBTYPE_BRAVE,
-            &fc,
-            false,
-        );
+        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, 0);
         assert_eq!(anim.animation_id, 15);
         assert_eq!(anim.frame_index, 0);
         assert_eq!(anim.frame_count, 4);
@@ -427,20 +503,14 @@ mod tests {
     fn select_animation_walk_changes_id() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(
-            &mut anim,
-            PersonState::Idle,
-            PERSON_SUBTYPE_BRAVE,
-            &fc,
-            false,
-        );
+        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, 0);
         assert_eq!(anim.animation_id, 15);
         select_animation(
             &mut anim,
             PersonState::GoToPoint,
             PERSON_SUBTYPE_BRAVE,
             &fc,
-            true,
+            0x30,
         );
         assert_eq!(anim.animation_id, 21);
         assert_eq!(anim.frame_index, 0); // reset on change
@@ -451,23 +521,11 @@ mod tests {
     fn select_animation_same_id_no_reset() {
         let fc = test_frame_counts();
         let mut anim = AnimationState::default();
-        select_animation(
-            &mut anim,
-            PersonState::Idle,
-            PERSON_SUBTYPE_BRAVE,
-            &fc,
-            false,
-        );
+        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, 0);
         anim.frame_index = 3;
         anim.tick_counter = 2;
         // Same state, same subtype → same animation_id → no reset
-        select_animation(
-            &mut anim,
-            PersonState::Idle,
-            PERSON_SUBTYPE_BRAVE,
-            &fc,
-            false,
-        );
+        select_animation(&mut anim, PersonState::Idle, PERSON_SUBTYPE_BRAVE, &fc, 0);
         assert_eq!(anim.frame_index, 3);
         assert_eq!(anim.tick_counter, 2);
     }
@@ -482,10 +540,24 @@ mod tests {
             PersonState::Dead,
             PERSON_SUBTYPE_BRAVE,
             &frame_counts,
-            false,
+            0,
         );
         assert_eq!(anim.animation_id, 27);
         assert_eq!(anim.flags, 0x02);
+    }
+
+    #[test]
+    fn goto_with_zero_speed_uses_idle_like_native_selector() {
+        let fc = test_frame_counts();
+        let mut anim = AnimationState::default();
+        select_animation(
+            &mut anim,
+            PersonState::GoToPoint,
+            PERSON_SUBTYPE_BRAVE,
+            &fc,
+            0,
+        );
+        assert_eq!(anim.animation_id, 15);
     }
 
     #[test]
