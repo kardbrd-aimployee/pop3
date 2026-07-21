@@ -17,7 +17,9 @@ use crate::engine::movement::{atan2, move_point_by_angle, WorldCoord};
 use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
 use crate::engine::state::rng::GameRng;
 use crate::engine::state::tribe::TribeArray;
-use crate::engine::units::animation::select_animation as select_person_animation;
+use crate::engine::units::animation::{
+    lookup_animation_type, select_animation as select_person_animation,
+};
 use crate::engine::units::coords::{
     cell_to_world, toroidal_delta, world_to_cell, world_to_render_pos,
 };
@@ -36,7 +38,10 @@ const FINAL_BUILD_TICKS: u16 = original_ticks_to_world_ticks(15);
 const SITE_WORK_MIN_ORIGINAL_TICKS: u16 = 32;
 const SITE_WORK_RANDOM_MASK: u32 = 0x3f;
 const WORK_ANIMATION_TICKS_PER_FRAME: u8 = original_ticks_to_world_ticks(3) as u8;
-const FOUNDATION_STROKE_TICKS: u16 = WORK_ANIMATION_TICKS_PER_FRAME as u16 * 5;
+const CONSTRUCTION_ACTION_ANIM_TYPE: u8 = 3;
+const CONSTRUCTION_ACTION_FRAME_COUNT: u16 = 6;
+const FOUNDATION_STROKE_TICKS: u16 =
+    WORK_ANIMATION_TICKS_PER_FRAME as u16 * CONSTRUCTION_ACTION_FRAME_COUNT;
 
 const BUILD_PHASE_TRAVEL_OR_FLATTEN: u8 = 0;
 const BUILD_PHASE_DELIVER: u8 = 1;
@@ -829,36 +834,36 @@ impl World {
 
                 match state_counter {
                     BUILD_PHASE_DELIVER => {
-                        self.set_person_animation(handle, 120);
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                         if self.decrement_person_timer(handle) == 0 {
                             self.finish_construction_delivery(handle, building_handle, rng);
                         }
                     }
                     BUILD_PHASE_SITE_WORK => {
-                        self.set_person_animation(handle, 120);
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                         if self.decrement_person_timer(handle) == 0 {
                             self.finish_construction_site_work(handle, building_handle);
                         }
                     }
                     BUILD_PHASE_WAIT_WOOD => {
-                        self.set_person_animation(handle, 120);
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                         self.start_wood_trip(handle, building_handle);
                     }
                     BUILD_PHASE_FINALIZE => {
-                        self.set_person_animation(handle, 120);
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                         if self.decrement_person_timer(handle) == 0 {
                             self.complete_construction(building_handle);
                         }
                     }
                     BUILD_PHASE_WAIT_FINALIZE => {
-                        self.set_person_animation(handle, 120);
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                     }
                     _ if !footprint_is_flat => {
-                        // Native animation 120 is the five-frame rising/jumping
-                        // construction stroke. Animation 115 is only its
-                        // downward digging counterpart; looping 115 made a
-                        // builder repeatedly collapse without ever rising.
-                        self.set_person_animation(handle, 120);
+                        // Native construction site work uses the six-frame
+                        // ordinary action row. Rows 19/20 belong to a separate
+                        // internal-object lower/rise sequence; treating row 20
+                        // as construction made braves look as though they died.
+                        self.set_person_animation(handle, construction_work_animation(subtype));
                         if self.person_timer(handle) == 0 {
                             self.set_person_timer(handle, FOUNDATION_STROKE_TICKS);
                         }
@@ -976,7 +981,7 @@ impl World {
                     person.state_counter = BUILD_PHASE_WAIT_WOOD;
                     person.movement.flags1 &= !0x1000;
                     person.movement.speed = 0;
-                    set_animation(person, 120);
+                    set_animation(person, construction_work_animation(object.header.subtype));
                 }
             }
             return;
@@ -993,7 +998,7 @@ impl World {
                     person.state_counter = BUILD_PHASE_WAIT_WOOD;
                     person.movement.flags1 &= !0x1000;
                     person.movement.speed = 0;
-                    set_animation(person, 120);
+                    set_animation(person, construction_work_animation(object.header.subtype));
                 }
             }
             return;
@@ -1122,7 +1127,7 @@ impl World {
                 person.construction_work_progress = 0;
                 person.movement.flags1 &= !0x1000;
                 person.movement.speed = 0;
-                set_animation(person, 120);
+                set_animation(person, construction_work_animation(object.header.subtype));
             }
         }
     }
@@ -1183,7 +1188,7 @@ impl World {
                 person.state_counter = BUILD_PHASE_SITE_WORK;
                 person.state_timer = next_site_work_ticks(rng);
                 person.construction_work_progress = 0;
-                set_animation(person, 120);
+                set_animation(person, construction_work_animation(object.header.subtype));
             }
         }
         self.object_revision = self.object_revision.wrapping_add(1).max(1);
@@ -1239,7 +1244,7 @@ impl World {
                     person.construction_work_progress = 0;
                     person.movement.flags1 &= !0x1000;
                     person.movement.speed = 0;
-                    set_animation(person, 120);
+                    set_animation(person, construction_work_animation(object.header.subtype));
                 }
             }
             self.object_revision = self.object_revision.wrapping_add(1).max(1);
@@ -1790,6 +1795,11 @@ fn walk_animation(subtype: u8) -> u16 {
     }
 }
 
+fn construction_work_animation(subtype: u8) -> u16 {
+    lookup_animation_type(CONSTRUCTION_ACTION_ANIM_TYPE, subtype)
+        .unwrap_or_else(|| idle_animation(subtype))
+}
+
 fn set_animation(person: &mut crate::engine::objects::PersonData, animation: u16) {
     if person.anim.animation_id != animation {
         person.anim.animation_id = animation;
@@ -1797,13 +1807,13 @@ fn set_animation(person: &mut crate::engine::objects::PersonData, animation: u16
         person.anim.tick_counter = 0;
         person.anim.flags = 0x03;
         person.anim.frame_count = match animation {
-            73 | 88 => 6,
+            32 | 73 | 88 => 6,
             115 => 8,
             120 => 5,
             _ => 1,
         };
         person.anim.ticks_per_frame = match animation {
-            73 | 88 | 115 | 120 => WORK_ANIMATION_TICKS_PER_FRAME,
+            32 | 73 | 88 | 115 | 120 => WORK_ANIMATION_TICKS_PER_FRAME,
             _ => 3,
         };
     }
@@ -2128,8 +2138,9 @@ mod tests {
         assert!(observed_animations.contains(&73));
         assert!(!observed_animations.contains(&115));
         assert!(observed_animations.contains(&88));
-        assert!(observed_animations.contains(&120));
-        for animation in [73, 120] {
+        assert!(observed_animations.contains(&32));
+        assert!(!observed_animations.contains(&120));
+        for animation in [32, 73] {
             assert!(observed_animation_frames
                 .iter()
                 .any(|&(id, frame)| id == animation && frame > 0));
@@ -2336,7 +2347,7 @@ mod tests {
                 GameObjectData::Person(person)
                     if person.state == PersonState::Building
                         && person.state_counter == BUILD_PHASE_TRAVEL_OR_FLATTEN
-                        && person.anim.animation_id == 120
+                        && person.anim.animation_id == 32
                         && person.state_timer > 0
             );
             if working {
@@ -2370,7 +2381,7 @@ mod tests {
         let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
             unreachable!()
         };
-        assert_eq!(person.anim.animation_id, 120);
+        assert_eq!(person.anim.animation_id, 32);
         assert_eq!(person.anim.frame_index, 0);
     }
 

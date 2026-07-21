@@ -35,8 +35,8 @@ pub const PERSON_ANIMATION_TABLE: [[i16; 9]; 26] = [
     /* 16 Swim */ [0, -1, 83, 84, 85, 86, 87, 125, -1],
     /* 17  ??? */ [0, -1, -1, -1, -1, -1, -1, 107, -1],
     /* 18 Crry */ [0, 0, 88, 89, 90, 91, 92, 127, -1],
-    /* 19 Dig  */ [0, 0, 115, 116, 117, 118, 119, 126, -1],
-    /* 20 Bld  */ [0, 108, 120, 121, 122, 123, 124, 128, -1],
+    /* 19 Int1 */ [0, 0, 115, 116, 117, 118, 119, 126, -1],
+    /* 20 Int2 */ [0, 108, 120, 121, 122, 123, 124, 128, -1],
     /* 21 Sit1 */ [0, 0, 131, 132, 133, 134, 135, 20, -1],
     /* 22 Sit2 */ [0, 0, 136, 137, 138, 139, 140, 20, -1],
     /* 23 Sit3 */ [0, 0, 141, 142, 143, 144, 145, 20, -1],
@@ -189,9 +189,10 @@ pub fn state_to_anim_type(state: PersonState) -> u8 {
         // Carrying the wood prop.
         PersonState::CarryingWood => 18,
 
-        // Final construction strokes. Foundation digging is selected by the
-        // authoritative construction state machine as animation row 19.
-        PersonState::Building => 20,
+        // Construction work. Person_ProcessGatheringState switches its site
+        // work subphase to the ordinary action row (native popTB.exe
+        // 0x00502a5e), rather than the unrelated rows 19/20 sequence.
+        PersonState::Building => 3,
 
         // The first of the four native seated variants.
         PersonState::SitDown => 21,
@@ -217,7 +218,9 @@ pub fn lookup_animation(state: PersonState, subtype: u8) -> Option<u16> {
 /// Select and set the Rust engine's visible animation based on current state.
 /// Idle/walk selection matches `Person_SelectAnimation`; implemented action
 /// states retain their explicit semantic rows until their native behavior
-/// handlers have been translated in full.
+/// handlers have been translated in full. In particular, native construction
+/// selects the ordinary action row; rows 19/20 are used by a separate internal
+/// object-state sequence and are not "dig" and "build" person actions.
 /// `frame_counts` maps animation index → number of frames.
 /// `movement_speed` overrides walk→idle when zero, matching the native
 /// comparison against the speed word at person offset +0x5f.
@@ -414,7 +417,7 @@ mod tests {
         );
         assert_eq!(
             lookup_animation(PersonState::Building, PERSON_SUBTYPE_BRAVE),
-            Some(120)
+            Some(32)
         );
         assert_eq!(
             lookup_animation(PersonState::Celebrating, PERSON_SUBTYPE_BRAVE),
