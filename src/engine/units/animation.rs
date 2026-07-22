@@ -189,10 +189,11 @@ pub fn state_to_anim_type(state: PersonState) -> u8 {
         // Carrying the wood prop.
         PersonState::CarryingWood => 18,
 
-        // Construction work. Person_ProcessGatheringState switches its site
-        // work subphase to the ordinary action row (native popTB.exe
-        // 0x00502a5e), rather than the unrelated rows 19/20 sequence.
-        PersonState::Building => 3,
+        // Construction (native state 0x0D) retains the ordinary locomotion
+        // row selected by Person_SelectAnimation. Person_EnterBuildingState
+        // (0x00501750) supplies a random work direction and moving flags; it
+        // does not select the row-3 action/prayer animation.
+        PersonState::Building => 1,
 
         // The first of the four native seated variants.
         PersonState::SitDown => 21,
@@ -218,9 +219,9 @@ pub fn lookup_animation(state: PersonState, subtype: u8) -> Option<u16> {
 /// Select and set the Rust engine's visible animation based on current state.
 /// Idle/walk selection matches `Person_SelectAnimation`; implemented action
 /// states retain their explicit semantic rows until their native behavior
-/// handlers have been translated in full. In particular, native construction
-/// selects the ordinary action row; rows 19/20 are used by a separate internal
-/// object-state sequence and are not "dig" and "build" person actions.
+/// handlers have been translated in full. Native construction keeps the walk
+/// row while the brave works the site; row 3 is a separate one-off action and
+/// rows 19/20 are an unrelated internal-object sequence.
 /// `frame_counts` maps animation index → number of frames.
 /// `movement_speed` overrides walk→idle when zero, matching the native
 /// comparison against the speed word at person offset +0x5f.
@@ -417,7 +418,7 @@ mod tests {
         );
         assert_eq!(
             lookup_animation(PersonState::Building, PERSON_SUBTYPE_BRAVE),
-            Some(32)
+            Some(21)
         );
         assert_eq!(
             lookup_animation(PersonState::Celebrating, PERSON_SUBTYPE_BRAVE),

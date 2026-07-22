@@ -17,9 +17,7 @@ use crate::engine::movement::{atan2, move_point_by_angle, WorldCoord};
 use crate::engine::objects::{CellGrid, GameObjectData, ObjectHandle, ObjectPool};
 use crate::engine::state::rng::GameRng;
 use crate::engine::state::tribe::TribeArray;
-use crate::engine::units::animation::{
-    lookup_animation_type, select_animation as select_person_animation,
-};
+use crate::engine::units::animation::select_animation as select_person_animation;
 use crate::engine::units::coords::{
     cell_to_world, toroidal_delta, world_to_cell, world_to_render_pos,
 };
@@ -38,10 +36,13 @@ const FINAL_BUILD_TICKS: u16 = original_ticks_to_world_ticks(15);
 const SITE_WORK_MIN_ORIGINAL_TICKS: u16 = 32;
 const SITE_WORK_RANDOM_MASK: u32 = 0x3f;
 const WORK_ANIMATION_TICKS_PER_FRAME: u8 = original_ticks_to_world_ticks(3) as u8;
-const CONSTRUCTION_ACTION_ANIM_TYPE: u8 = 3;
-const CONSTRUCTION_ACTION_FRAME_COUNT: u16 = 6;
-const FOUNDATION_STROKE_TICKS: u16 =
-    WORK_ANIMATION_TICKS_PER_FRAME as u16 * CONSTRUCTION_ACTION_FRAME_COUNT;
+// `pop_extract unit-animations` resolves the brave locomotion row (logical ID
+// 21) to four VSTART frames per direction. Construction only accepts braves,
+// so one terrain stroke can land exactly when that native cycle wraps.
+const CONSTRUCTION_HOP_FRAME_COUNT: u16 = 4;
+const CONSTRUCTION_HOP_TICKS_PER_FRAME: u8 = 3;
+const CONSTRUCTION_HOP_TICKS: u16 =
+    CONSTRUCTION_HOP_TICKS_PER_FRAME as u16 * CONSTRUCTION_HOP_FRAME_COUNT;
 
 const BUILD_PHASE_TRAVEL_OR_FLATTEN: u8 = 0;
 const BUILD_PHASE_DELIVER: u8 = 1;
@@ -859,13 +860,15 @@ impl World {
                         self.set_person_animation(handle, construction_work_animation(subtype));
                     }
                     _ if !footprint_is_flat => {
-                        // Native construction site work uses the six-frame
-                        // ordinary action row. Rows 19/20 belong to a separate
-                        // internal-object lower/rise sequence; treating row 20
-                        // as construction made braves look as though they died.
-                        self.set_person_animation(handle, construction_work_animation(subtype));
+                        // Native state 0x0D keeps the locomotion row while the
+                        // brave hops around the foundation. Row 3 is the prayer
+                        // pose from a different gathering subphase; rows 19/20
+                        // are an internal lower/rise sequence.
                         if self.person_timer(handle) == 0 {
-                            self.set_person_timer(handle, FOUNDATION_STROKE_TICKS);
+                            let stroke_ticks = next_foundation_stroke_ticks(rng);
+                            self.start_foundation_stroke(handle, subtype, stroke_ticks);
+                        } else {
+                            self.set_person_animation(handle, construction_work_animation(subtype));
                         }
                         if self.decrement_person_timer(handle) == 0 {
                             if let Some(offset) = work_offset {
@@ -1474,6 +1477,23 @@ impl World {
         }
     }
 
+    /// Start a construction work pass made of complete four-frame hops. The
+    /// terrain stroke is applied when this timer reaches zero, so the final
+    /// visible landing and the foundation change happen on the same tick.
+    fn start_foundation_stroke(&mut self, handle: ObjectHandle, subtype: u8, stroke_ticks: u16) {
+        let animation = construction_work_animation(subtype);
+        if let Some(object) = self.pool.get_mut(handle) {
+            if let GameObjectData::Person(person) = &mut object.data {
+                set_animation(person, animation);
+                person.anim.frame_index = 0;
+                person.anim.tick_counter = 0;
+                person.anim.frame_count = CONSTRUCTION_HOP_FRAME_COUNT as u8;
+                person.anim.ticks_per_frame = CONSTRUCTION_HOP_TICKS_PER_FRAME;
+                person.state_timer = stroke_ticks;
+            }
+        }
+    }
+
     fn tick_person_animation(&mut self, handle: ObjectHandle) {
         if let Some(object) = self.pool.get_mut(handle) {
             if let GameObjectData::Person(person) = &mut object.data {
@@ -1771,6 +1791,15 @@ fn next_site_work_ticks(rng: &mut GameRng) -> u16 {
     original_ticks_to_world_ticks(original_ticks)
 }
 
+/// Person_EnterBuildingState chooses 32..=95 original ticks for a terrain-work
+/// pass. Round that duration up to a complete native four-frame hop so the
+/// height update cannot cut the visible cycle in the middle.
+fn next_foundation_stroke_ticks(rng: &mut GameRng) -> u16 {
+    let original_ticks = SITE_WORK_MIN_ORIGINAL_TICKS + (rng.next() & SITE_WORK_RANDOM_MASK) as u16;
+    let world_ticks = original_ticks_to_world_ticks(original_ticks);
+    world_ticks.div_ceil(CONSTRUCTION_HOP_TICKS) * CONSTRUCTION_HOP_TICKS
+}
+
 fn idle_animation(subtype: u8) -> u16 {
     match subtype {
         2 => 15,
@@ -1796,8 +1825,7 @@ fn walk_animation(subtype: u8) -> u16 {
 }
 
 fn construction_work_animation(subtype: u8) -> u16 {
-    lookup_animation_type(CONSTRUCTION_ACTION_ANIM_TYPE, subtype)
-        .unwrap_or_else(|| idle_animation(subtype))
+    walk_animation(subtype)
 }
 
 fn set_animation(person: &mut crate::engine::objects::PersonData, animation: u16) {
@@ -1807,12 +1835,14 @@ fn set_animation(person: &mut crate::engine::objects::PersonData, animation: u16
         person.anim.tick_counter = 0;
         person.anim.flags = 0x03;
         person.anim.frame_count = match animation {
+            21 => CONSTRUCTION_HOP_FRAME_COUNT as u8,
             32 | 73 | 88 => 6,
             115 => 8,
             120 => 5,
             _ => 1,
         };
         person.anim.ticks_per_frame = match animation {
+            21 => CONSTRUCTION_HOP_TICKS_PER_FRAME,
             32 | 73 | 88 | 115 | 120 => WORK_ANIMATION_TICKS_PER_FRAME,
             _ => 3,
         };
@@ -2138,9 +2168,10 @@ mod tests {
         assert!(observed_animations.contains(&73));
         assert!(!observed_animations.contains(&115));
         assert!(observed_animations.contains(&88));
-        assert!(observed_animations.contains(&32));
+        assert!(observed_animations.contains(&21));
+        assert!(!observed_animations.contains(&32));
         assert!(!observed_animations.contains(&120));
-        for animation in [32, 73] {
+        for animation in [21, 73] {
             assert!(observed_animation_frames
                 .iter()
                 .any(|&(id, frame)| id == animation && frame > 0));
@@ -2347,7 +2378,7 @@ mod tests {
                 GameObjectData::Person(person)
                     if person.state == PersonState::Building
                         && person.state_counter == BUILD_PHASE_TRAVEL_OR_FLATTEN
-                        && person.anim.animation_id == 32
+                        && person.anim.animation_id == 21
                         && person.state_timer > 0
             );
             if working {
@@ -2358,7 +2389,9 @@ mod tests {
             unreachable!()
         };
         let first_stroke_ticks = person.state_timer;
-        assert_eq!(first_stroke_ticks, FOUNDATION_STROKE_TICKS - 1);
+        let scheduled_stroke_ticks = first_stroke_ticks + 1;
+        assert!(scheduled_stroke_ticks >= original_ticks_to_world_ticks(32));
+        assert_eq!(scheduled_stroke_ticks % CONSTRUCTION_HOP_TICKS, 0);
         assert_eq!(world.terrain.heights[12][13], 132);
         assert_eq!(world.terrain.heights[13][12], 68);
         let terrain_revision = world.terrain.revision();
@@ -2375,13 +2408,13 @@ mod tests {
             .into_iter()
             .filter(|height| !matches!(height, 132 | 68))
             .count();
-        assert_eq!(changed, 1, "one work stroke must change exactly one cell");
+        assert_eq!(changed, 1, "one work stroke must change one terrain vertex");
         assert!(matches!(world.terrain.heights[12][13], 132 | 116));
         assert!(matches!(world.terrain.heights[13][12], 68 | 84));
         let GameObjectData::Person(person) = &world.get(brave).unwrap().data else {
             unreachable!()
         };
-        assert_eq!(person.anim.animation_id, 32);
+        assert_eq!(person.anim.animation_id, 21);
         assert_eq!(person.anim.frame_index, 0);
     }
 
