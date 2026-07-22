@@ -6,6 +6,19 @@ Scope: person-state visuals, movement overlays, and state transitions
 
 Asset source: the owner's `data/original_game` files, decoded with `pop_extract unit-animations`
 
+## Unit checklists
+
+- [Brave](unit-animation-checklists/brave.md)
+- [Warrior](unit-animation-checklists/warrior.md)
+- [Preacher](unit-animation-checklists/preacher.md)
+- [Spy](unit-animation-checklists/spy.md)
+- [Firewarrior](unit-animation-checklists/firewarrior.md)
+- [Shaman](unit-animation-checklists/shaman.md)
+
+Each unit document lists its logical IDs and extracted frames. This document owns shared state and mechanic rules.
+
+The shared tables use brave frames as representative previews because construction accepts braves. Do not apply a brave logical ID to another subtype. Use the unit checklist for subtype-specific IDs and renderer support.
+
 ## Rules
 
 1. `PersonState` describes behavior. It does not identify a sprite sequence.
